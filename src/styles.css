@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+}
+
+html,
+body {
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+@layer components {
+  .button-primary {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-md bg-ember px-4 text-sm font-semibold text-white transition hover:bg-[#e34928] disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .button-secondary {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900;
+  }
+
+  .icon-button {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900;
+  }
+
+  .field {
+    @apply h-11 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-lagoon focus:ring-2 focus:ring-lagoon/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100;
+  }
+
+  .select-row {
+    @apply flex w-full items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-lagoon dark:border-slate-800 dark:bg-slate-950;
+  }
+
+  .select-row-active {
+    @apply border-ember bg-ember/5 dark:border-ember dark:bg-ember/10;
+  }
+}

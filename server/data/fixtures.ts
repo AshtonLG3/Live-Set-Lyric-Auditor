@@ -1,0 +1,105 @@
+import type { EventCandidate, TrackCandidate, TranscriptSegment } from "../../shared/types";
+
+export type CanonicalLine = {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+};
+
+export const fixtureTracks: TrackCandidate[] = [
+  {
+    id: "fixture-track-midnight-atlas",
+    title: "Midnight Atlas",
+    artist: "The Signal Keeps",
+    album: "City Voltage (Studio)",
+    isrc: "FIK202600001",
+    hasLyrics: true,
+    hasSubtitles: true,
+    rating: 88,
+    source: "fixture"
+  },
+  {
+    id: "fixture-track-rooftop-static",
+    title: "Rooftop Static",
+    artist: "Northline Echo",
+    album: "After the Power Cut",
+    hasLyrics: true,
+    hasSubtitles: false,
+    rating: 74,
+    source: "fixture"
+  }
+];
+
+export const fixtureEvents: EventCandidate[] = [
+  {
+    id: "fixture-event-cape-town-2026",
+    title: "The Signal Keeps at Civic Hall",
+    artist: "The Signal Keeps",
+    venue: "Civic Hall",
+    city: "Cape Town",
+    date: "2026-06-18T20:00:00+02:00",
+    url: "https://www.jambase.com/",
+    source: "fixture"
+  },
+  {
+    id: "fixture-event-berlin-2026",
+    title: "The Signal Keeps at Hafen Club",
+    artist: "The Signal Keeps",
+    venue: "Hafen Club",
+    city: "Berlin",
+    date: "2026-06-21T21:00:00+02:00",
+    url: "https://www.jambase.com/",
+    source: "fixture"
+  }
+];
+
+export const fixtureCanonicalLines: CanonicalLine[] = [
+  { id: "L1", start: 0, end: 4, text: "The night opens slowly under electric skies" },
+  { id: "L2", start: 4, end: 8, text: "We carry the chorus through the avenue" },
+  { id: "L3", start: 8, end: 12, text: "Every bright window keeps calling us home" },
+  { id: "L4", start: 12, end: 16, text: "Sing it once more until the morning arrives" },
+  { id: "L5", start: 16, end: 20, text: "The city remembers the sound of our names" },
+  { id: "L6", start: 20, end: 24, text: "We carry the chorus through the avenue" }
+];
+
+export const fixtureTranscript: TranscriptSegment[] = [
+  {
+    id: "T1",
+    start: 0.3,
+    end: 4.1,
+    text: "The night opens slowly under electric skies",
+    confidence: 0.93
+  },
+  {
+    id: "T2",
+    start: 4.2,
+    end: 8.5,
+    text: "Cape Town carry this chorus through the avenue",
+    confidence: 0.84
+  },
+  {
+    id: "T3",
+    start: 8.7,
+    end: 12.6,
+    text: "Every bright window keeps calling us home",
+    confidence: 0.9
+  },
+  {
+    id: "T4",
+    start: 12.8,
+    end: 17.4,
+    text: "Sing it once more sing it once more until the morning arrives",
+    confidence: 0.86
+  },
+  {
+    id: "T5",
+    start: 17.6,
+    end: 22.2,
+    text: "We carry the chorus through the avenue tonight",
+    confidence: 0.8
+  }
+];
+
+export const fixtureClipDuration = 24;
+

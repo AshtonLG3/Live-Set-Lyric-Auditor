@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+.env
+.env.*
+!.env.example
+coverage/
+npm-debug.log*
+*.local
+uploads/
+tmp/
+.playwright-mcp/
+dev-server*.log
+musicathon-live-set-lyric-auditor-smoke.png
