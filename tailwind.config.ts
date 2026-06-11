@@ -17,10 +17,10 @@ export default {
         panel: "0 18px 50px rgba(12, 18, 30, 0.12)"
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "Segoe UI", "Arial", "sans-serif"]
+        sans: ["Hanken Grotesk", "ui-sans-serif", "system-ui", "Segoe UI", "Arial", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Consolas", "monospace"]
       }
     }
   },
   plugins: []
 } satisfies Config;
-

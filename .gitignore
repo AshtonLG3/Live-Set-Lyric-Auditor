@@ -11,4 +11,6 @@ uploads/
 tmp/
 .playwright-mcp/
 dev-server*.log
+.codex-dev*.log
+.codex-qa/
 musicathon-live-set-lyric-auditor-smoke.png

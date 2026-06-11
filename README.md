@@ -4,16 +4,16 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase adds optional event context, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient fixture mode so judges can run the full flow even when API keys are unavailable.
 
-Version `0.3.0` adds three intake paths: uploaded media, ranged live-performance links, and Recall Rescue for a lyric fragment spoken, sung, or typed by the user. Linked provider media stays embedded and attributed; users can attach an authorized excerpt for real processing, while fixture audio keeps the contest demonstration reliable.
+Version `0.4.0` introduces a responsive two-surface workflow. **New Session** keeps the three intake paths: uploaded media, ranged live-performance links, and Recall Rescue for a lyric fragment spoken, sung, or typed by the user. **Analysis Studio** turns the result into a focused review workspace with a live waveform, track/event evidence, pipeline timeline, filterable candidates, approve/reject controls, confidence signals, and export-ready Passport preview. Linked provider media stays embedded and attributed; users can attach an authorized excerpt for real processing, while fixture audio keeps the contest demonstration reliable.
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.3.0`, dark/light theme control, and integration status.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.4.0`, dark/light theme control, and the New Session / Analysis Studio navigation.
 2. Use Recall Rescue to speak, sing, or type a remembered lyric fragment and anchor the best Musixmatch candidate.
 3. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
-4. Run analysis and watch the pipeline isolate, transcribe, match, compare, and generate the Passport.
-5. Review the preserved source evidence, recording identity, rights mode, structure map, and variant actions.
-6. Generate the optional ElevenLabs narration.
+4. Run analysis and move into Analysis Studio to watch the pipeline isolate, transcribe, match, compare, and generate the Passport.
+5. Filter and review timestamped candidates, approve/reject evidence, and inspect source identity, rights mode, structure map, and confidence.
+6. Generate the optional ElevenLabs narration and export the derived Passport JSON.
 
 ## API Surfaces
 
@@ -49,6 +49,7 @@ The contest build deliberately prioritizes Musixmatch-native value:
 - vocal-derived lyrics rescue when the user does not know the track
 - provider-aware live links with start/end evidence ranges
 - Recall Rescue from a personal spoken or sung lyric fragment
+- a desktop QA workbench and compact mobile review flow for decisions in the field
 
 JamBase and ElevenLabs remain supporting integrations. Lyrics mood/analysis search, translated lyric retrieval, and direct audio/fingerprint endpoint wiring are intentionally deferred until the contest Pro documentation/key confirms their exact request and response contracts.
 

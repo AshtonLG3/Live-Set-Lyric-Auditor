@@ -12,7 +12,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.3.0",
+  version: "0.4.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -38,7 +38,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.3.0",
+    version: "0.4.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -156,7 +156,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect(await screen.findByText(/v0.3.0/)).toBeInTheDocument();
+  expect(await screen.findByText(/v0.4.0/)).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
@@ -197,7 +197,10 @@ it("runs the seeded demo and renders a passport", async () => {
   render(<App />);
   fireEvent.click(await screen.findByText(/Seed demo/i));
   await waitFor(() => expect(screen.getByText("Midnight Atlas")).toBeInTheDocument());
+  expect(screen.getByRole("heading", { name: "Variant Candidates" })).toBeInTheDocument();
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "Approve candidate" })[0]);
+  expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
 });
