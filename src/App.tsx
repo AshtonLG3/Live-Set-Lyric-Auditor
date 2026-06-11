@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
-import { Activity, AudioLines, Moon, Plus, Sun } from "lucide-react";
+import {
+  Activity,
+  AudioLines,
+  CalendarDays,
+  CircleHelp,
+  Download,
+  FileText,
+  LayoutDashboard,
+  ListMusic,
+  MessageSquareDiff,
+  Moon,
+  Plus,
+  Settings,
+  Sun,
+  Upload
+} from "lucide-react";
 import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
-import { AnalysisStudio, type ReviewDecisions } from "./components/AnalysisStudio";
+import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
 import type { IntakeAnalysisInput } from "./components/ClipIntake";
 
@@ -25,6 +40,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [narration, setNarration] = useState<NarrationResponse | null>(null);
+  const [reviewDecisions, setReviewDecisions] = useState<ReviewDecisions>({});
   const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
 
   useEffect(() => {
@@ -85,6 +101,7 @@ export default function App() {
     setBusy(true);
     setError("");
     setNarration(null);
+    setReviewDecisions({});
     setWorkspace("studio");
     try {
       const { jobId } = await startAnalysis({
@@ -118,18 +135,43 @@ export default function App() {
     setSelectedTrack(track);
   }
 
-  function exportPassport(decisions: ReviewDecisions = {}) {
+  function decideVariant(id: string, decision: ReviewDecision) {
+    setReviewDecisions((current) => {
+      const next = { ...current };
+      if (next[id] === decision) delete next[id];
+      else next[id] = decision;
+      return next;
+    });
+  }
+
+  function startNewSession() {
+    setWorkspace("session");
+    setJob(null);
+    setNarration(null);
+    setReviewDecisions({});
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function navigate(workspaceTarget: Workspace, anchor?: string) {
+    if (workspaceTarget === "studio" && !job) return;
+    setWorkspace(workspaceTarget);
+    if (anchor) window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function exportPassport() {
     if (!job?.passport) return;
-    const reviewDecisions = job.passport.variants.map((variant) => ({
+    const review = job.passport.variants.map((variant) => ({
       variantId: variant.id,
-      decision: decisions[variant.id] ?? "pending"
+      decision: reviewDecisions[variant.id] ?? "pending"
     }));
     const reviewedPassport = {
       ...job.passport,
       review: {
         exportedAt: new Date().toISOString(),
-        status: reviewDecisions.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
-        decisions: reviewDecisions
+        status: review.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
+        decisions: review
       }
     };
     const blob = new Blob([JSON.stringify(reviewedPassport, null, 2)], { type: "application/json" });
@@ -142,75 +184,107 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-paper font-sans text-slate-950 transition-colors dark:bg-ink dark:text-slate-50">
-      <header className="app-topbar">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember text-white"><AudioLines size={21} /></div>
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold">{APP_NAME}</p>
-            <p className="text-[13px] font-medium text-slate-600 dark:text-slate-400">v{APP_VERSION} · {workspace === "studio" ? "Analysis Studio" : "New Session"}</p>
-          </div>
-        </div>
+    <div className="studio-app min-h-screen">
+      <header className="studio-app-topbar">
+        <button type="button" className="studio-app-brand" onClick={() => navigate("session")}>
+          <span className="studio-app-brand-mark"><AudioLines size={19} /></span>
+          <span><strong>{APP_NAME}</strong><small>v{APP_VERSION}</small></span>
+        </button>
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary workspace navigation">
-          <button type="button" className={`app-nav-button ${workspace === "session" ? "app-nav-button-active" : ""}`} onClick={() => setWorkspace("session")}><Plus size={16} /> New Session</button>
-          <button type="button" className={`app-nav-button ${workspace === "studio" ? "app-nav-button-active" : ""}`} onClick={() => setWorkspace("studio")}><Activity size={16} /> Analysis Studio</button>
+        <nav className="studio-app-topnav" aria-label="Primary navigation">
+          <TopNavButton label="Dashboard" active={workspace === "session"} onClick={() => navigate("session")} />
+          <TopNavButton label="Analysis" active={workspace === "studio"} disabled={!job} onClick={() => navigate("studio")} />
+          <TopNavButton label="Tracks" onClick={() => navigate("session", "track-anchor")} />
+          <TopNavButton label="Reports" disabled={!job} onClick={() => navigate("studio", "studio-passport")} />
         </nav>
 
-        <div className="flex items-center gap-2">
-          <span className="app-runtime-status hidden lg:inline-flex" title={runtimeStatus.detail} aria-label={`Runtime status: ${runtimeStatus.label}. ${runtimeStatus.detail}`}>
-            <span className={`app-runtime-dot app-runtime-dot-${health?.runtimeMode ?? "fixture"}`} />
-            {runtimeStatus.label}
+        <div className="studio-app-actions">
+          <button type="button" className="studio-new-session-button" onClick={startNewSession}><Plus size={16} /> <span>New Session</span></button>
+          <button type="button" className="studio-export-button" onClick={exportPassport} disabled={!job?.passport} title={job?.passport ? "Export the Passport with current review decisions" : "Run an analysis before exporting"}><Download size={17} /> <span>Export Passport</span></button>
+          <span className="app-runtime-status hidden 2xl:inline-flex" title={runtimeStatus.detail} aria-label={`Runtime status: ${runtimeStatus.label}. ${runtimeStatus.detail}`}>
+            <span className={`app-runtime-dot app-runtime-dot-${health?.runtimeMode ?? "fixture"}`} />{runtimeStatus.label}
           </span>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
-          >
-            {theme === "dark" ? <Sun className="text-brass" size={18} /> : <Moon className="text-slate-700" size={18} />}
+          <button type="button" className="studio-header-icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`} title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
         </div>
       </header>
 
-      {workspace === "session" ? (
-        <SessionWorkspace
-          health={health}
-          tracks={tracks}
-          selectedTrack={selectedTrack}
-          trackQuery={trackQuery}
-          events={events}
-          selectedEvent={selectedEvent}
-          eventCity={eventCity}
-          eventDate={eventDate}
-          busy={busy}
-          error={error}
-          onAnalyze={handleAnalyze}
-          onTrackMatched={handleRecallTrack}
-          onTrackQueryChange={setTrackQuery}
-          onTrackSearch={handleTrackSearch}
-          onTrackSelect={setSelectedTrack}
-          onEventCityChange={setEventCity}
-          onEventDateChange={setEventDate}
-          onEventSearch={handleEventSearch}
-          onEventSelect={setSelectedEvent}
-        />
-      ) : (
-        <AnalysisStudio
-          job={job}
-          health={health}
-          selectedTrack={selectedTrack}
-          selectedEvent={selectedEvent}
-          narration={narration}
-          error={error}
-          onNarrate={handleNarration}
-          onExport={exportPassport}
-          onNewSession={() => setWorkspace("session")}
-        />
-      )}
+      <div className="studio-app-frame">
+        <aside className="studio-app-sidebar">
+          <div className="studio-engine-lockup">
+            <span><AudioLines size={23} /></span>
+            <div><strong>Studio Engine</strong><small>v{APP_VERSION}-QA</small></div>
+          </div>
+          <nav aria-label="Studio modules">
+            <SideNavButton label="Overview" icon={<LayoutDashboard size={19} />} active={workspace === "session"} onClick={() => navigate("session")} />
+            <SideNavButton label="Timeline" icon={<Activity size={19} />} active={workspace === "studio"} disabled={!job} onClick={() => navigate("studio", "analysis-timeline")} />
+            <SideNavButton label="Variants" icon={<MessageSquareDiff size={19} />} disabled={!job} onClick={() => navigate("studio", "variant-candidates")} />
+            <SideNavButton label="Event Anchor" icon={<CalendarDays size={19} />} onClick={() => navigate("session", "event-anchor")} />
+            <SideNavButton label="Export" icon={<Upload size={19} />} disabled={!job?.passport} onClick={exportPassport} />
+          </nav>
+          <div className="studio-sidebar-footer">
+            <button type="button" className="studio-sidebar-new" onClick={startNewSession}><Plus size={17} /> New Session</button>
+            <span><CircleHelp size={16} /> Help</span>
+            <span><Settings size={16} /> Settings</span>
+          </div>
+        </aside>
+
+        <div className="studio-app-content">
+          {workspace === "session" ? (
+            <SessionWorkspace
+              health={health}
+              tracks={tracks}
+              selectedTrack={selectedTrack}
+              trackQuery={trackQuery}
+              events={events}
+              selectedEvent={selectedEvent}
+              eventCity={eventCity}
+              eventDate={eventDate}
+              busy={busy}
+              error={error}
+              onAnalyze={handleAnalyze}
+              onTrackMatched={handleRecallTrack}
+              onTrackQueryChange={setTrackQuery}
+              onTrackSearch={handleTrackSearch}
+              onTrackSelect={setSelectedTrack}
+              onEventCityChange={setEventCity}
+              onEventDateChange={setEventDate}
+              onEventSearch={handleEventSearch}
+              onEventSelect={setSelectedEvent}
+            />
+          ) : (
+            <AnalysisStudio
+              job={job}
+              health={health}
+              selectedTrack={selectedTrack}
+              selectedEvent={selectedEvent}
+              narration={narration}
+              error={error}
+              decisions={reviewDecisions}
+              onDecision={decideVariant}
+              onNarrate={handleNarration}
+            />
+          )}
+        </div>
+      </div>
+
+      <nav className="studio-global-mobile-nav lg:hidden" aria-label="Mobile navigation">
+        <button type="button" className={workspace === "session" ? "active" : ""} onClick={() => navigate("session")}><LayoutDashboard size={19} /><span>Dashboard</span></button>
+        <button type="button" className={workspace === "studio" ? "active" : ""} disabled={!job} onClick={() => navigate("studio")}><Activity size={19} /><span>Analysis</span></button>
+        <button type="button" onClick={() => navigate("session", "track-anchor")}><ListMusic size={19} /><span>Tracks</span></button>
+        <button type="button" disabled={!job} onClick={() => navigate("studio", "studio-passport")}><FileText size={19} /><span>Reports</span></button>
+      </nav>
     </div>
   );
+}
+
+function TopNavButton({ label, active, disabled, onClick }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void }) {
+  return <button type="button" className={active ? "active" : ""} disabled={disabled} onClick={onClick}>{label}</button>;
+}
+
+function SideNavButton({ label, icon, active, disabled, onClick }: { label: string; icon: React.ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
+  return <button type="button" className={active ? "active" : ""} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {

@@ -12,7 +12,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.4.0",
+  version: "0.5.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -38,7 +38,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.4.0",
+    version: "0.5.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -156,7 +156,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect(await screen.findByText(/v0.4.0/)).toBeInTheDocument();
+  expect((await screen.findAllByText(/v0.5.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Demo data")).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
@@ -175,7 +175,7 @@ it("accepts a YouTube live link and shows the selected range", async () => {
 
 it("uses remembered words to rescue a track", async () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Recall" }));
+  fireEvent.click(screen.getByRole("button", { name: "Recall lyric fragment" }));
   fireEvent.change(screen.getByLabelText("Remembered lyric words"), {
     target: { value: "we carry the chorus through the avenue" }
   });
@@ -196,8 +196,8 @@ it("imports a clip through drag and drop", async () => {
 
 it("runs the seeded demo and renders a passport", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByText(/Seed demo/i));
-  await waitFor(() => expect(screen.getByText("Midnight Atlas")).toBeInTheDocument());
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
   expect(screen.getByRole("heading", { name: "Variant Candidates" })).toBeInTheDocument();
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /Export Passport/i })).toHaveLength(1);
@@ -212,7 +212,7 @@ it("runs the seeded demo and renders a passport", async () => {
   fireEvent.click(screen.getByRole("button", { name: /All \(1\)/i }));
   fireEvent.click(screen.getAllByRole("button", { name: "Approve candidate" })[0]);
   expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
-  expect(screen.getByText(/1 approved, 0 rejected, 0 pending/i)).toBeInTheDocument();
+  expect(screen.getByText(/1 approved, 0 rejected, and 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
 });

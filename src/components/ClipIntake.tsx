@@ -192,9 +192,9 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   return (
     <div>
       <div className="mb-4 grid grid-cols-3 gap-1 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
-        <ModeButton active={mode === "upload"} onClick={() => setMode("upload")} icon={<Upload size={15} />} label="Upload" />
+        <ModeButton active={mode === "upload"} onClick={() => setMode("upload")} icon={<Upload size={15} />} label="Upload clip" />
         <ModeButton active={mode === "live_link"} onClick={() => setMode("live_link")} icon={<Link2 size={15} />} label="Live link" />
-        <ModeButton active={mode === "recall"} onClick={() => setMode("recall")} icon={<Mic size={15} />} label="Recall" />
+        <ModeButton active={mode === "recall"} onClick={() => setMode("recall")} icon={<Mic size={15} />} label="Recall lyric fragment" />
       </div>
 
       {mode === "upload" && (
@@ -223,7 +223,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               <FileAudio className={`mb-3 ${isDragging ? "text-ember" : "text-slate-500"}`} size={30} />
               <span className="text-base font-bold">{fileProcessing ? "Inspecting clip..." : isDragging ? "Drop clip to import" : "Drag a concert clip here"}</span>
               <span className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-                Audio or video · target {TARGET_CLIP_SECONDS}s · max {MAX_CLIP_SECONDS}s / 40 MB
+                Audio or video · target {TARGET_CLIP_SECONDS}s · max 40 MB
               </span>
               <button type="button" className="button-secondary mt-4" onClick={() => uploadInputRef.current?.click()} disabled={fileProcessing}>
                 <Upload size={16} /> Browse files
@@ -320,7 +320,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
           </div>
 
           {!linkClip && parsedSource && (
-            <InlineNotice tone="neutral" text="The provider player stays embedded. Without an attached excerpt, analysis uses the labeled contest fixture and never downloads the provider stream." />
+            <InlineNotice tone="neutral" text="The provider player stays embedded. Without an attached excerpt, analysis uses a clearly labeled demo-safe reference and never downloads the provider stream." />
           )}
         </div>
       )}

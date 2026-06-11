@@ -1,50 +1,54 @@
-# Design QA: Live-Set Lyric Auditor v0.4.0
+# Design QA: Live-Set Lyric Auditor v0.5.0
 
 ## Evidence
 
-- Desktop source visual truth: `C:\Users\mangezi\AppData\Local\Temp\stitch-musicathon-7de6a77d734a495fbf24922c9747ba6d\screen.png`
-- Mobile source visual truth: `C:\Users\mangezi\AppData\Local\Temp\stitch-musicathon-mobile-4513db02756c44d78dd6f0cc6b2d099f\screen.png`
-- Desktop implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-desktop-dark.png`
-- Mobile implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-mobile-dark.png`
-- Light-theme implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-desktop-light.png`
-- Clarified controls implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\clarified-controls.png`
-- Full-view desktop comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-desktop.png`
-- Full-view mobile comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-mobile.png`
-- Focused candidate-table comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-desktop-focus.png`
+- Primary source visual truth: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-cecfe175-5bdc-458d-a681-9151f2f297ac.png`
+- Stitch desktop export: `C:\Users\mangezi\AppData\Local\Temp\musicathon-stitch-dashboard\screen.png`
+- Stitch mobile export: `C:\Users\mangezi\AppData\Local\Temp\musicathon-stitch-mobile\screen.png`
+- Dashboard implementation, desktop dark: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-dashboard-desktop-dark.png`
+- Analysis implementation, desktop dark: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-analysis-desktop-viewport.png`
+- Dashboard implementation, desktop light: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-dashboard-desktop-light.png`
+- Dashboard implementation, mobile: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-dashboard-mobile-viewport.png`
+- Analysis implementation, mobile: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-analysis-mobile-dark.png`
+- Full-view desktop comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-comparison-full-desktop.png`
+- Focused desktop comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-comparison-focus-desktop.png`
+- Focused mobile comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-comparison-mobile.png`
 
 ## Viewports And State
 
-- Desktop: 1440 x 1000, fixture Passport complete, Analysis Studio, dark and light themes.
-- Mobile: 390 x 844, fixture Passport complete, Analysis Studio, dark theme.
-- Responsive metrics: desktop `scrollWidth <= innerWidth`; mobile `scrollWidth = innerWidth = 390`.
+- Desktop source and focused implementation: 1600 x 1380, dark theme. The source shows an in-progress scan while the implementation shows a completed seeded Passport, so the comparison is for shell, hierarchy, typography, color, panel language, timeline, and diff treatment rather than identical dynamic content.
+- Dashboard desktop: 1440 x 1000, initial intake state, dark and light themes.
+- Mobile: 390 x 844 viewport plus full-page captures, initial intake and completed Passport states, dark theme.
+- Responsive metrics: desktop `scrollWidth = innerWidth = 1600`; mobile `scrollWidth = innerWidth = 390`.
 
 ## Findings
 
 No actionable P0, P1, or P2 findings remain.
 
-- Typography: Hanken Grotesk supplies a more legible UI hierarchy while JetBrains Mono preserves the technical studio character. Session and studio headings render at 36px and 30px on desktop; small labels use a separate mono scale with zero letter spacing.
-- Spacing and layout: the desktop preserves the reference's waveform, evidence rail, filters, dense candidate table, confidence bars, and review footer. Mobile converts the rail into a later context section, uses a horizontal pipeline, card-based candidates, and a fixed four-action navigation bar.
-- Colors and tokens: cyan remains the live/verified signal, orange remains the review/risk signal, and neutral surfaces have distinct light and dark mappings. The light theme retains strong text contrast without making every heading compete at the same size.
-- Image quality and assets: the supplied concert cover remains a sharp raster asset on New Session. The studio waveform is a real canvas data visualization, and interface actions use Lucide icons consistently rather than placeholder glyphs.
-- Copy and content: Musixmatch identity, event evidence, source mode, rights status, candidate impact, and recommended action remain visible and specific to the product.
-- Interaction states: theme switching, workspace navigation, filtering, approve/reject toggles, narration, export, and mobile section navigation are implemented. Automated tests cover theme, intake modes, drag/drop, Recall Rescue, seeded Passport rendering, narration, and candidate approval.
-- Control honesty: the three filters now expose counts and a live result summary, the nonfunctional funnel was removed, export appears once at the completed Passport and includes review decisions, and runtime mode is presented as passive status text rather than a button-shaped control.
+- Fonts and typography: Hanken Grotesk carries readable headings and body copy; JetBrains Mono carries labels, timing, statuses, and studio telemetry. Heading sizes step down cleanly on mobile, letter spacing remains zero, and no labels or controls overflow.
+- Spacing and layout rhythm: the implementation preserves the Stitch shell, fixed module rail, compact top navigation, waveform header, rack panels, dense timeline, diff view, and metric strip. The initial state adds the requested cinematic hero, partner status strip, Clip Intake, Track Anchor, and Event Anchor without turning the page into a marketing layout.
+- Colors and tokens: deep neutral surfaces, cyan verification/live states, coral-orange review/actions, and warm secondary text match the source direction. Light mode maps the same hierarchy to high-contrast pale surfaces while preserving the dark cinematic hero.
+- Image quality and asset fidelity: the concert hero uses the supplied raster cover at a stable crop. The waveform is an actual canvas visualization rather than decorative CSS art. Lucide icons provide a consistent stroke language across navigation and controls.
+- Copy and content: the first screen explains the three entry paths in plain language. Musixmatch track identity and JamBase event context are explicit. Developer-facing `FIXTURE` labels and fixture-prefixed IDs were removed from the interface while the internal fallback remains available.
+- Interaction states and accessibility: theme switching, New Session, upload/live-link/recall tabs, track/event selection, seeded analysis, filters, approve/reject, narration, export, disabled states, and responsive navigation are implemented. Standard 390px mobile retains New Session, Export, and theme actions as icon buttons with accessible labels.
+- Responsive behavior: desktop sidebar and top navigation collapse into a four-item fixed mobile navigation. Partner, context, and pipeline groups scroll horizontally within their own tracks; the document itself has no horizontal overflow.
 
 ## Acceptable Deviations
 
-- The desktop reference's permanent module navigation was replaced by a compact top-level New Session / Analysis Studio switch. This keeps the existing intake workflow accessible and avoids duplicating non-MVP pages.
-- The mobile reference's diagnostic system log was replaced by the product's real candidate and evidence data, which is more useful for the contest workflow.
-- The implementation adds the analysis pipeline above the table on desktop so progress remains visible after transitioning from intake.
+- The Stitch source opens inside an active analysis. The requested implementation deliberately adds an understandable pre-analysis Dashboard before transitioning into the studio view.
+- The source mock exposes canonical lyric text. The implementation replaces that with licensed line references and derived alignment metadata to honor the Musixmatch non-persistence constraint.
+- The completed Passport contains more review and recording-identity detail than the source mock because these are functional contest requirements, not decorative additions.
 
 ## Patches Made During QA
 
-- Replaced `overflow-x: hidden` with `overflow-x: clip` so the sticky mobile header remains fixed while horizontal studio tracks stay contained.
-- Re-captured mobile at scroll positions 0 and 20; the header remained at viewport top and no horizontal overflow was present.
-- Verified the light-theme heading scale and contrast in both New Session and Analysis Studio.
-- Tightened the Risks filter to low-confidence, omitted, uncertain, or high-translation-risk candidates so it is meaningfully distinct from All in the seeded demo.
+- Replaced visible `FIXTURE RESCUE` and fixture-prefixed recording IDs with `Demo Ready` and clean demo identifiers.
+- Reworded live-link fallback copy as a `demo-safe reference` instead of a contest fixture.
+- Restored the top-level New Session icon at standard mobile widths and only collapses it below 351px.
+- Verified one Export Passport action, active desktop/mobile navigation, no horizontal document overflow, and no visible fixture terminology in completed analysis.
+- Captured matching desktop, mobile, dark, light, initial, and completed states and created combined comparison images before sign-off.
 
 ## Residual P3 Polish
 
-- A future pass could animate the waveform playhead from real job progress rather than the deterministic contest visualization.
+- The deterministic waveform can later be driven by decoded clip samples and live job progress when the external audio pipeline is fully configured.
 
 final result: passed

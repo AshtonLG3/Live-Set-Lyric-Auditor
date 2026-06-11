@@ -2,7 +2,7 @@
 
 ## 0-15 seconds
 
-Open New Session. Point out `v0.4.0`, the dark/light theme toggle, and the three intake modes: Upload, Live link, and Recall.
+Open Dashboard. Point out `v0.5.0`, the cinematic Start a Live Variant Passport hero, partner readiness, and the three intake modes: Upload clip, Live link, and Recall lyric fragment.
 
 ## 15-35 seconds
 
@@ -10,11 +10,11 @@ Open Recall, speak or type a remembered lyric fragment, and select the Musixmatc
 
 ## 35-60 seconds
 
-Attach an authorized excerpt when available, or use the explicitly labeled fixture fallback. Start analysis and land in Analysis Studio. Show the waveform, source validation, LALAL.AI isolation, ASR, recording match, RichSync selection, and variant classification.
+Attach an authorized excerpt when available, or run the judge-ready demo. Start analysis and land in the studio Analysis view. Show the waveform, processing timeline and log, recording anchors, compliance-safe diff, and variant classification.
 
 ## 60-80 seconds
 
-Filter the candidates, approve one review item, and show the preserved source URL/range, version confidence, sync fit, rights mode, and recommended QA action.
+Show Divergence Score, Cadence Offset, Vocal Texture, and Passport Status. Filter the candidates, approve one review item, and show the preserved source evidence and recommended QA action.
 
 ## 80-90 seconds
 

@@ -3,12 +3,15 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleAlert,
+  Radio,
   Search,
   ShieldCheck,
+  Sparkles,
   WandSparkles
 } from "lucide-react";
-import type { EventCandidate, HealthResponse, TrackCandidate } from "../../shared/types";
+import type { EventCandidate, HealthResponse, IntegrationName, TrackCandidate } from "../../shared/types";
 import { ClipIntake, type IntakeAnalysisInput } from "./ClipIntake";
+import { WaveformCanvas } from "./WaveformCanvas";
 
 type Props = {
   health: HealthResponse | null;
@@ -36,103 +39,115 @@ const coverImage = "/cover.png";
 
 export function SessionWorkspace(props: Props) {
   return (
-    <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-      <section className="relative overflow-hidden rounded-md border border-slate-200 bg-white shadow-panel dark:border-slate-800 dark:bg-slate-950">
-        <img src={coverImage} alt="Concert stage with crowd and lighting" className="h-48 w-full object-cover sm:h-56" />
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 flex items-end">
-          <div className="max-w-3xl px-5 pb-5 text-white sm:px-7">
-            <p className="mb-2 inline-flex items-center gap-2 rounded-md bg-black/35 px-3 py-1 text-xs font-semibold backdrop-blur">
-              <ShieldCheck size={14} /> Musixmatch Pro identity, timing, and rights review
-            </p>
-            <h1 className="text-3xl font-bold sm:text-4xl">Start a Live Variant Passport</h1>
-            <p className="mt-2 max-w-2xl text-base leading-6 text-slate-100">
-              Upload a clip, range a live-performance link, or sing the lyric fragment you remember.
-            </p>
+    <main id="dashboard-overview" className="studio-session">
+      <section className="studio-session-hero">
+        <img src={coverImage} alt="Concert stage with audience lighting" />
+        <div className="studio-session-hero-shade" />
+        <div className="studio-session-hero-content">
+          <p className="studio-kicker"><span /> Live Variant Passport</p>
+          <h1>Start a Live Variant Passport</h1>
+          <p>Upload a clip, paste a live-performance link, or recall a lyric fragment.</p>
+          <div className="studio-session-hero-meta">
+            <span><ShieldCheck size={15} /> Musixmatch identity and rights</span>
+            <span><Radio size={15} /> Live-performance evidence</span>
           </div>
         </div>
+        <div className="studio-session-hero-signal" aria-hidden="true"><WaveformCanvas progress={100} active={false} /></div>
       </section>
 
-      <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {(props.health?.integrations ?? []).map((integration) => (
-          <div key={integration.name} className="rounded-md border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[15px] font-bold">{integration.name}</p>
-              {integration.configured ? <CheckCircle2 className="text-lagoon" size={18} /> : <CircleAlert className="text-brass" size={18} />}
-            </div>
-            <p className="mt-1 text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{integration.mode}</p>
+      <section className="studio-partner-strip" aria-label="Integration readiness">
+        {(props.health?.integrations ?? []).map((integration) => {
+          const status = getPartnerStatus(integration.name, props.busy, Boolean(props.selectedTrack), Boolean(props.selectedEvent));
+          return (
+            <article key={integration.name} title={integration.detail}>
+              <div><span className={`studio-partner-dot ${integration.configured ? "live" : "demo"}`} /><strong>{integration.name}</strong></div>
+              <p>{status}</p>
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="studio-intake-grid">
+        <RackPanel id="clip-intake" title="Clip Intake" icon={<AudioLines size={18} />} status={props.busy ? "Processing" : "Ready"}>
+          <div className="studio-clip-intake">
+            <ClipIntake busy={props.busy} onAnalyze={(input) => props.onAnalyze(input)} onTrackMatched={props.onTrackMatched} />
           </div>
-        ))}
-      </section>
-
-      <section className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(360px,.85fr)]">
-        <Panel title="Clip Intake" icon={<AudioLines size={18} />}>
-          <ClipIntake busy={props.busy} onAnalyze={(input) => props.onAnalyze(input)} onTrackMatched={props.onTrackMatched} />
-          <button className="button-secondary mt-2 w-full" disabled={props.busy} onClick={() => void props.onAnalyze(undefined, true)}>
-            <WandSparkles size={17} /> Seed demo
+          <button className="studio-demo-button" disabled={props.busy} onClick={() => void props.onAnalyze(undefined, true)} title="Run the complete contest flow with seeded demo data">
+            <WandSparkles size={17} /> Run judge-ready demo
           </button>
-          {props.error && <p className="mt-3 rounded-md bg-ember/10 px-3 py-2 text-sm font-semibold text-ember">{props.error}</p>}
-        </Panel>
+          {props.error && <p className="studio-inline-error"><CircleAlert size={15} /> {props.error}</p>}
+        </RackPanel>
 
-        <div className="min-w-0 space-y-5">
-          <Panel title="Track Anchor" icon={<Search size={18} />}>
-            <div className="flex gap-2">
-              <input className="field w-full" value={props.trackQuery} onChange={(event) => props.onTrackQueryChange(event.target.value)} aria-label="Track search" />
-              <button className="icon-button" onClick={() => void props.onTrackSearch()} aria-label="Search tracks" title="Search tracks">
-                <Search size={18} />
-              </button>
+        <div className="studio-anchor-stack">
+          <RackPanel id="track-anchor" title="Track Anchor" icon={<Search size={18} />} status={props.selectedTrack ? "Anchored" : "Search"}>
+            <p className="studio-panel-intro">Selected Musixmatch track, artist, and recording version.</p>
+            <div className="studio-search-row">
+              <input className="field" value={props.trackQuery} onChange={(event) => props.onTrackQueryChange(event.target.value)} aria-label="Track search" />
+              <button className="studio-square-button" onClick={() => void props.onTrackSearch()} aria-label="Search tracks" title="Search Musixmatch tracks"><Search size={18} /></button>
             </div>
-            <div className="mt-3 space-y-2">
+            <div className="studio-choice-list">
               {props.tracks.map((track) => (
-                <button key={track.id} className={`select-row ${props.selectedTrack?.id === track.id ? "select-row-active" : ""}`} onClick={() => props.onTrackSelect(track)}>
+                <button key={track.id} className={`studio-choice-row ${props.selectedTrack?.id === track.id ? "active" : ""}`} onClick={() => props.onTrackSelect(track)}>
+                  <span className="studio-choice-indicator">{props.selectedTrack?.id === track.id ? <CheckCircle2 size={16} /> : null}</span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-bold">{track.title}</span>
-                    <span className="block truncate text-[13px] text-slate-600 dark:text-slate-400">{track.artist} · {track.album ?? "Metadata pending"}</span>
-                    <span className="mt-1 block text-[12px] text-slate-500 dark:text-slate-400">
-                      {track.hasRichSync ? "RichSync" : track.hasSubtitles ? "Line sync" : "Plain lyrics"}
-                      {track.commonTrackId ? ` · common ${track.commonTrackId}` : ""}
-                    </span>
+                    <strong>{track.title}</strong>
+                    <small>{track.artist} · {track.album ?? "Version pending"}</small>
+                    <em>{track.hasRichSync ? "Word-synced lyrics" : track.hasSubtitles ? "Line-synced lyrics" : "Lyrics available"}</em>
                   </span>
-                  <span className="text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{track.source}</span>
                 </button>
               ))}
             </div>
-          </Panel>
+          </RackPanel>
 
-          <Panel title="Event Anchor" icon={<CalendarDays size={18} />}>
-            <div className="grid grid-cols-2 gap-2">
-              <input className="field w-full" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" />
-              <input className="field w-full" type="date" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} aria-label="Event date" />
+          <RackPanel id="event-anchor" title="Event Anchor" icon={<CalendarDays size={18} />} status={props.selectedEvent ? "Event Found" : "Optional"}>
+            <p className="studio-panel-intro">City, date, venue, and JamBase concert evidence.</p>
+            <div className="studio-event-fields">
+              <input className="field" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" />
+              <input className="field" type="date" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} aria-label="Event date" />
             </div>
-            <button className="button-secondary mt-2 w-full" onClick={() => void props.onEventSearch()}>
-              <CalendarDays size={17} /> Refresh events
-            </button>
-            <div className="mt-3 space-y-2">
+            <button className="studio-ghost-button" onClick={() => void props.onEventSearch()}><CalendarDays size={16} /> Find JamBase event</button>
+            <div className="studio-choice-list">
               {props.events.map((event) => (
-                <button key={event.id} className={`select-row ${props.selectedEvent?.id === event.id ? "select-row-active" : ""}`} onClick={() => props.onEventSelect(event)}>
+                <button key={event.id} className={`studio-choice-row ${props.selectedEvent?.id === event.id ? "active" : ""}`} onClick={() => props.onEventSelect(event)}>
+                  <span className="studio-choice-indicator">{props.selectedEvent?.id === event.id ? <CheckCircle2 size={16} /> : null}</span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-bold">{event.title}</span>
-                    <span className="block truncate text-[13px] text-slate-600 dark:text-slate-400">{event.venue} · {event.city}</span>
+                    <strong>{event.title}</strong>
+                    <small>{event.venue} · {event.city}</small>
+                    <em>{formatEventDate(event.date)}</em>
                   </span>
-                  <span className="text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{event.source}</span>
                 </button>
               ))}
             </div>
-          </Panel>
+          </RackPanel>
         </div>
+      </section>
+
+      <section className="studio-ready-band">
+        <div><Sparkles size={19} /><span><strong>Ready to compare the live vocal</strong><small>The clip will be matched to the selected song and event before variant detection.</small></span></div>
+        <span className="studio-ready-signal"><i /> Intake configured</span>
       </section>
     </main>
   );
 }
 
-function Panel(props: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function RackPanel({ id, title, icon, status, children }: { id: string; title: string; icon: React.ReactNode; status: string; children: React.ReactNode }) {
   return (
-    <section className="min-w-0 rounded-md border border-slate-200 bg-white p-4 shadow-panel dark:border-slate-800 dark:bg-slate-950">
-      <div className="mb-4 flex items-center gap-2.5">
-        <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-200">{props.icon}</span>
-        <h2 className="text-lg font-bold leading-6 sm:text-xl">{props.title}</h2>
-      </div>
-      {props.children}
+    <section id={id} className="studio-rack-panel">
+      <header><span>{icon}{title}</span><small><i /> {status}</small></header>
+      <div className="studio-rack-body">{children}</div>
     </section>
   );
+}
+
+function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolean, hasEvent: boolean) {
+  if (name === "Musixmatch") return hasTrack ? "Track Ready" : "Catalog Ready";
+  if (name === "JamBase") return hasEvent ? "Event Found" : "Search Ready";
+  if (name === "ASR") return busy ? "Processing" : "Transcript Ready";
+  if (name === "LALAL.AI") return busy ? "Isolating Vocal" : "Vocal Ready";
+  return "Narration Ready";
+}
+
+function formatEventDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
