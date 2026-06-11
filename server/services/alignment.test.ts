@@ -29,6 +29,9 @@ describe("alignment pipeline", () => {
       canonicalLines: fixtureCanonicalLines,
       transcript: fixtureTranscript,
       sourceCoverage: 0.72,
+      canonicalSource: "fixture",
+      restricted: false,
+      matchMethod: "fixture_rescue",
       vocalIsolationSource: "fixture",
       vocalIsolationConfidence: 0.74,
       asrSource: "fixture"

@@ -4,7 +4,7 @@ import type { HealthResponse, IntegrationStatus, RuntimeMode } from "../shared/t
 const configured = (name: string) => Boolean(process.env[name]?.trim());
 
 export const env = {
-  port: Number(process.env.PORT ?? 3000),
+  port: Number(process.env.PORT ?? 4242),
   musixmatchKey: process.env.MUSIXMATCH_API_KEY,
   musixmatchBaseUrl: process.env.MUSIXMATCH_API_BASE_URL ?? "https://api.musixmatch.com/ws/1.1",
   jambaseKey: process.env.JAMBASE_API_KEY,
@@ -81,4 +81,3 @@ export function getHealth(): HealthResponse {
     integrations: getIntegrationStatus()
   };
 }
-

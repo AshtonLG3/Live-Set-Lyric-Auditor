@@ -10,22 +10,37 @@ export type CanonicalLine = {
 export const fixtureTracks: TrackCandidate[] = [
   {
     id: "fixture-track-midnight-atlas",
+    commonTrackId: "fixture-common-midnight-atlas",
     title: "Midnight Atlas",
     artist: "The Signal Keeps",
     album: "City Voltage (Studio)",
     isrc: "FIK202600001",
+    durationSeconds: 226,
     hasLyrics: true,
     hasSubtitles: true,
+    hasRichSync: true,
+    instrumental: false,
+    explicit: false,
+    language: "en",
+    genre: "Alternative / Electronic",
+    releaseType: "Album",
     rating: 88,
     source: "fixture"
   },
   {
     id: "fixture-track-rooftop-static",
+    commonTrackId: "fixture-common-rooftop-static",
     title: "Rooftop Static",
     artist: "Northline Echo",
     album: "After the Power Cut",
     hasLyrics: true,
     hasSubtitles: false,
+    hasRichSync: false,
+    instrumental: false,
+    explicit: true,
+    language: "en",
+    genre: "Indie Rock",
+    releaseType: "Single",
     rating: 74,
     source: "fixture"
   }
@@ -102,4 +117,3 @@ export const fixtureTranscript: TranscriptSegment[] = [
 ];
 
 export const fixtureClipDuration = 24;
-

@@ -25,12 +25,20 @@ export type HealthResponse = {
 
 export type TrackCandidate = {
   id: string;
+  commonTrackId?: string;
   title: string;
   artist: string;
   album?: string;
   isrc?: string;
+  durationSeconds?: number;
   hasLyrics: boolean;
   hasSubtitles: boolean;
+  hasRichSync?: boolean;
+  instrumental?: boolean;
+  explicit?: boolean;
+  language?: string;
+  genre?: string;
+  releaseType?: string;
   rating?: number;
   source: "musixmatch" | "fixture";
 };
@@ -73,7 +81,34 @@ export type VariantCandidate = {
   canonicalAlignmentReference: string;
   confidence: number;
   impactNote: string;
+  recommendedAction: string;
+  translationRisk: "low" | "medium" | "high";
   severity: "low" | "medium" | "high";
+};
+
+export type CanonicalSource = "richsync" | "subtitles" | "lyrics" | "metadata-only" | "fixture";
+
+export type RecordingIdentity = {
+  trackId: string;
+  commonTrackId?: string;
+  isrc?: string;
+  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
+  versionConfidence: number;
+  syncFitScore: number;
+  canonicalSource: CanonicalSource;
+};
+
+export type RightsStatus = {
+  status: "display_allowed" | "restricted" | "metadata_only" | "fixture";
+  language?: string;
+  copyright?: string;
+  attribution: string;
+  trackingRequired: boolean;
+};
+
+export type StructureMap = {
+  canonical: string[];
+  live: string[];
 };
 
 export type ConfidenceOverview = {
@@ -96,6 +131,9 @@ export type LiveVariantPassport = {
     asrSource: "external" | "fixture";
   };
   summary: string;
+  recordingIdentity: RecordingIdentity;
+  rights: RightsStatus;
+  structureMap: StructureMap;
   confidenceOverview: ConfidenceOverview;
   variants: VariantCandidate[];
   complianceNotes: string[];
@@ -127,4 +165,3 @@ export type NarrationResponse = {
   text: string;
   audioUrl?: string;
 };
-

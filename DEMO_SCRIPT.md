@@ -6,17 +6,16 @@ Open the dashboard. Point out the app version in the menu, dark/light theme togg
 
 ## 15-35 seconds
 
-Run the seeded demo or upload a short concert clip. Select the Musixmatch track anchor and JamBase event anchor. Explain that the app keeps Musixmatch lyric/subtitle references in memory only.
+Drag in an audio/video concert clip or run the seeded demo. Show vocal auto-identification, then point out the Musixmatch recording ID, common-track identity, RichSync readiness, and optional JamBase event anchor.
 
 ## 35-60 seconds
 
-Start analysis. The pipeline isolates vocals with LALAL.AI, transcribes the live vocal with a Whisper-style adapter, aligns against the canonical reference, and classifies live variant candidates.
+Start analysis. The pipeline validates the clip, isolates vocals with LALAL.AI, transcribes the live vocal, rescues/matches the recording, selects RichSync/subtitles/plain lyrics, and classifies live variant candidates.
 
 ## 60-80 seconds
 
-Review the Live Variant Passport: timestamped candidates, type labels, confidence scores, and impact notes for caption QA, archives, artist teams, and fan experiences.
+Review version confidence, sync fit, rights mode, the live structure map, and timestamped candidates with a recommended QA action and translation risk.
 
 ## 80-90 seconds
 
 Generate the ElevenLabs narration. Close on the value: studio lyric databases capture the canonical version, while this passport captures what fans actually heard live.
-

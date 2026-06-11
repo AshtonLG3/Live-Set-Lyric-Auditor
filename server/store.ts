@@ -10,10 +10,11 @@ export function createJob(): AnalysisJob {
     createdAt: now,
     updatedAt: now,
     progress: [
-      { id: "anchor", label: "Anchor track and event", status: "queued" },
+      { id: "ingest", label: "Validate imported clip", status: "queued" },
       { id: "isolate", label: "Isolate live vocal", status: "queued" },
       { id: "transcribe", label: "Transcribe vocal", status: "queued" },
-      { id: "compare", label: "Align to canonical reference", status: "queued" },
+      { id: "anchor", label: "Match recording and version", status: "queued" },
+      { id: "compare", label: "Compare word timing and structure", status: "queued" },
       { id: "passport", label: "Generate Live Variant Passport", status: "queued" }
     ]
   };
@@ -40,4 +41,3 @@ export function setStep(jobId: string, stepId: string, status: AnalysisJob["prog
     )
   }));
 }
-

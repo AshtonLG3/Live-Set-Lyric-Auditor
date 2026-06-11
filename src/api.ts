@@ -22,6 +22,9 @@ export async function startAnalysis(input: {
   trackQuery?: string;
   eventCity?: string;
   eventDate?: string;
+  durationSeconds?: number;
+  autoMatch?: boolean;
+  useFixture?: boolean;
 }): Promise<{ jobId: string }> {
   const formData = new FormData();
   if (input.file) formData.append("clip", input.file);
@@ -30,6 +33,9 @@ export async function startAnalysis(input: {
   if (input.trackQuery) formData.append("trackQuery", input.trackQuery);
   if (input.eventCity) formData.append("eventCity", input.eventCity);
   if (input.eventDate) formData.append("eventDate", input.eventDate);
+  if (input.durationSeconds) formData.append("durationSeconds", String(input.durationSeconds));
+  formData.append("autoMatch", String(Boolean(input.autoMatch)));
+  formData.append("useFixture", String(Boolean(input.useFixture)));
 
   const response = await fetch("/api/analyze", {
     method: "POST",
@@ -65,4 +71,3 @@ async function readError(response: Response): Promise<string> {
     return response.statusText;
   }
 }
-

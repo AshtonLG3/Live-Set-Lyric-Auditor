@@ -1,4 +1,4 @@
-import type { ConfidenceOverview, EventCandidate, LiveVariantPassport, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
+import type { CanonicalSource, ConfidenceOverview, EventCandidate, LiveVariantPassport, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -100,6 +100,8 @@ export function classifyVariants(
         : "No stable canonical alignment",
       confidence,
       impactNote: impactNote(type, confidence),
+      recommendedAction: recommendedAction(type),
+      translationRisk: translationRisk(type),
       severity: confidence >= 0.78 ? "high" : confidence >= 0.58 ? "medium" : "low"
     });
   });
@@ -115,6 +117,8 @@ export function classifyVariants(
       canonicalAlignmentReference: `${line.id} (canonical line absent from aligned ASR)`,
       confidence: round(0.58 * sourceCoverage),
       impactNote: "Potential caption or archive gap; queue for human review before marking as a confirmed omission.",
+      recommendedAction: "Review live-only caption coverage and confirm the omission.",
+      translationRisk: "high",
       severity: "medium"
     });
   });
@@ -131,6 +135,12 @@ export function buildPassport(input: {
   canonicalLines: CanonicalLine[];
   transcript: TranscriptSegment[];
   sourceCoverage: number;
+  canonicalSource: CanonicalSource;
+  restricted: boolean;
+  language?: string;
+  copyright?: string;
+  trackingUrl?: string;
+  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
   vocalIsolationSource: "lalalai" | "fixture";
   vocalIsolationConfidence: number;
   asrSource: "external" | "fixture";
@@ -147,6 +157,8 @@ export function buildPassport(input: {
 
   const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage);
   const summary = summarizePassport(variants, confidenceOverview.overall);
+  const syncFitScore = round(averageAlignment * 0.72 + input.sourceCoverage * 0.28);
+  const versionConfidence = scoreVersionConfidence(input.track, input.matchMethod, input.canonicalSource);
 
   return {
     id: input.id,
@@ -161,6 +173,29 @@ export function buildPassport(input: {
       asrSource: input.asrSource
     },
     summary,
+    recordingIdentity: {
+      trackId: input.track.id,
+      commonTrackId: input.track.commonTrackId,
+      isrc: input.track.isrc,
+      matchMethod: input.matchMethod,
+      versionConfidence,
+      syncFitScore,
+      canonicalSource: input.canonicalSource
+    },
+    rights: {
+      status: input.canonicalSource === "fixture"
+        ? "fixture"
+        : input.restricted
+          ? "restricted"
+          : input.canonicalSource === "metadata-only"
+            ? "metadata_only"
+            : "display_allowed",
+      language: input.language ?? input.track.language,
+      copyright: input.copyright,
+      attribution: "Lyrics powered by Musixmatch",
+      trackingRequired: Boolean(input.trackingUrl)
+    },
+    structureMap: buildStructureMap(variants),
     confidenceOverview,
     variants,
     complianceNotes: [
@@ -232,6 +267,62 @@ function impactNote(type: VariantType, confidence: number): string {
   return `${qualifier}: ${notes[type]}`;
 }
 
+function recommendedAction(type: VariantType): string {
+  const actions: Record<VariantType, string> = {
+    substitution: "Review lyric wording and downstream translations.",
+    skipped_line: "Confirm omission and update live-caption coverage.",
+    repeated_hook: "Extend live subtitle timing; canonical lyric can remain unchanged.",
+    extension: "Add a live-only caption segment or alternate-version note.",
+    city_shoutout: "Attach event-specific metadata; no canonical lyric edit required.",
+    adlib: "Mark as live ad-lib after human review.",
+    timing_drift: "Review RichSync timing against the performance tempo.",
+    uncertain: "Keep in the review queue and avoid automated edits."
+  };
+  return actions[type];
+}
+
+function translationRisk(type: VariantType): VariantCandidate["translationRisk"] {
+  if (type === "substitution" || type === "skipped_line") return "high";
+  if (type === "city_shoutout" || type === "extension" || type === "adlib") return "medium";
+  return "low";
+}
+
+function scoreVersionConfidence(
+  track: TrackCandidate,
+  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue",
+  canonicalSource: CanonicalSource
+): number {
+  const identitySignals = [track.id, track.commonTrackId, track.isrc, track.album].filter(Boolean).length / 4;
+  const sourceBoost = canonicalSource === "richsync" ? 1 : canonicalSource === "subtitles" ? 0.88 : canonicalSource === "lyrics" ? 0.72 : 0.48;
+  const methodBoost = matchMethod === "selected_track" ? 0.94 : matchMethod === "lyrics_rescue" ? 0.82 : 0.78;
+  return round(identitySignals * 0.38 + sourceBoost * 0.34 + methodBoost * 0.28);
+}
+
+function buildStructureMap(variants: VariantCandidate[]): LiveVariantPassport["structureMap"] {
+  const liveChanges = variants
+    .filter((variant) => variant.confidence >= 0.5)
+    .sort((a, b) => a.start - b.start)
+    .map((variant) => structureLabel(variant.type));
+  return {
+    canonical: ["Opening", "Verse passage", "Hook", "Late section", "Final hook"],
+    live: ["Live opening", ...liveChanges, "Live close"]
+  };
+}
+
+function structureLabel(type: VariantType): string {
+  const labels: Record<VariantType, string> = {
+    substitution: "Changed lyric",
+    skipped_line: "Skipped line",
+    repeated_hook: "Hook repeat",
+    extension: "Extended phrase",
+    city_shoutout: "City shoutout",
+    adlib: "Ad-lib",
+    timing_drift: "Tempo drift",
+    uncertain: "Uncertain section"
+  };
+  return labels[type];
+}
+
 function summarizePassport(variants: VariantCandidate[], overall: number): string {
   const prominent = variants
     .filter((variant) => variant.confidence >= 0.58)
@@ -274,4 +365,3 @@ function average(values: number[]): number {
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
-

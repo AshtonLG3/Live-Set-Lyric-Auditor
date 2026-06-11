@@ -1,10 +1,10 @@
-import type { EventCandidate, TrackCandidate } from "../../shared/types";
+import type { EventCandidate, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal } from "../adapters/asr";
 import { narratePassport } from "../adapters/elevenlabs";
 import { searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
-import { getCanonicalReference, searchTracks } from "../adapters/musixmatch";
+import { getCanonicalReference, identifyTrackFromLyrics, searchTracks } from "../adapters/musixmatch";
 import { jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 
@@ -15,16 +15,24 @@ export type AnalyzeInput = {
   trackQuery?: string;
   eventCity?: string;
   eventDate?: string;
+  durationSeconds?: number;
+  autoMatch?: boolean;
+  useFixture?: boolean;
 };
 
 export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<void> {
   try {
     updateJob(jobId, (job) => ({ ...job, status: "running" }));
 
-    setStep(jobId, "anchor", "running");
-    const track = await resolveTrack(input);
-    const event = await resolveEvent(input, track);
-    setStep(jobId, "anchor", "complete", `${track.title} by ${track.artist}${event ? ` at ${event.venue}` : ""}`);
+    setStep(jobId, "ingest", "running");
+    setStep(
+      jobId,
+      "ingest",
+      "complete",
+      input.file
+        ? `${input.file.originalname} · ${formatBytes(input.file.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
+        : "Seeded fixture clip loaded."
+    );
 
     setStep(jobId, "isolate", "running");
     const vocal = await isolateVocals(input.file);
@@ -34,9 +42,27 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const transcription = await transcribeLiveVocal(input.file);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
 
+    setStep(jobId, "anchor", "running");
+    const resolved = await resolveTrack(input, transcription.segments);
+    const track = resolved.track;
+    const event = await resolveEvent(input, track);
+    setStep(
+      jobId,
+      "anchor",
+      "complete",
+      `${track.title} by ${track.artist} · ${resolved.matchMethod.replaceAll("_", " ")}${event ? ` · ${event.venue}` : ""}`
+    );
+
     setStep(jobId, "compare", "running");
     const canonical = await getCanonicalReference(track);
-    setStep(jobId, "compare", "complete", `${canonical.lines.length} reference lines from ${canonical.source}.`);
+    setStep(
+      jobId,
+      "compare",
+      "complete",
+      canonical.restricted
+        ? "Lyrics restricted; passport switched to metadata-only comparison."
+        : `${canonical.lines.length} reference lines from ${canonical.source}.`
+    );
 
     setStep(jobId, "passport", "running");
     const passport = buildPassport({
@@ -44,10 +70,16 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       track,
       event,
       filename: input.file?.originalname ?? "seeded-demo-clip.mp3",
-      durationSeconds: input.file ? fixtureClipDuration : fixtureClipDuration,
+      durationSeconds: input.durationSeconds ?? fixtureClipDuration,
       canonicalLines: canonical.lines,
       transcript: transcription.segments,
       sourceCoverage: canonical.sourceCoverage,
+      canonicalSource: canonical.source,
+      restricted: canonical.restricted,
+      language: canonical.language,
+      copyright: canonical.copyright,
+      trackingUrl: canonical.trackingUrl,
+      matchMethod: resolved.matchMethod,
       vocalIsolationSource: vocal.source,
       vocalIsolationConfidence: vocal.confidence,
       asrSource: transcription.source
@@ -80,12 +112,27 @@ export async function createNarration(jobId: string) {
   return narratePassport(jobId, job.passport);
 }
 
-async function resolveTrack(input: AnalyzeInput): Promise<TrackCandidate> {
-  if (input.track) {
-    return input.track;
+async function resolveTrack(
+  input: AnalyzeInput,
+  transcript: TranscriptSegment[]
+): Promise<{
+  track: TrackCandidate;
+  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
+}> {
+  if (input.track && !input.autoMatch) {
+    return { track: input.track, matchMethod: "selected_track" };
+  }
+  if (input.autoMatch) {
+    const rescued = await identifyTrackFromLyrics(transcript);
+    if (rescued) {
+      return {
+        track: rescued,
+        matchMethod: rescued.source === "fixture" ? "fixture_rescue" : "lyrics_rescue"
+      };
+    }
   }
   const tracks = await searchTracks(input.trackQuery ?? fixtureTracks[0].title);
-  return tracks[0] ?? fixtureTracks[0];
+  return { track: tracks[0] ?? fixtureTracks[0], matchMethod: "selected_track" };
 }
 
 async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise<EventCandidate | null> {
@@ -100,3 +147,9 @@ async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise
   return events[0] ?? null;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

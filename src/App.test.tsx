@@ -2,9 +2,17 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import App from "./App";
 import type { AnalysisJob, HealthResponse } from "../shared/types";
 
+vi.mock("./clip", async () => {
+  const actual = await vi.importActual<typeof import("./clip")>("./clip");
+  return {
+    ...actual,
+    inspectClip: vi.fn(async (file: File) => ({ file, durationSeconds: 24, kind: "audio" as const }))
+  };
+});
+
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.1.0",
+  version: "0.2.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -30,7 +38,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.1.0",
+    version: "0.2.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -47,6 +55,25 @@ const completeJob: AnalysisJob = {
       asrSource: "fixture"
     },
     summary: "Detected 3 live variant candidates.",
+    recordingIdentity: {
+      trackId: "fixture-track-midnight-atlas",
+      commonTrackId: "fixture-common-midnight-atlas",
+      isrc: "FIK202600001",
+      matchMethod: "fixture_rescue",
+      versionConfidence: 0.91,
+      syncFitScore: 0.84,
+      canonicalSource: "fixture"
+    },
+    rights: {
+      status: "fixture",
+      language: "en",
+      attribution: "Lyrics powered by Musixmatch",
+      trackingRequired: false
+    },
+    structureMap: {
+      canonical: ["Opening", "Verse", "Hook"],
+      live: ["Live opening", "City shoutout", "Live close"]
+    },
     confidenceOverview: { overall: 0.81, asr: 0.88, alignment: 0.72, sourceCoverage: 0.74 },
     variants: [
       {
@@ -58,6 +85,8 @@ const completeJob: AnalysisJob = {
         canonicalAlignmentReference: "L2",
         confidence: 0.84,
         impactNote: "Reviewable",
+        recommendedAction: "Attach event-specific metadata.",
+        translationRisk: "medium",
         severity: "high"
       }
     ],
@@ -108,9 +137,17 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect(await screen.findByText(/v0.1.0/)).toBeInTheDocument();
+  expect(await screen.findByText(/v0.2.0/)).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
+});
+
+it("imports a clip through drag and drop", async () => {
+  render(<App />);
+  const file = new File(["audio"], "concert-snippet.mp3", { type: "audio/mpeg" });
+  fireEvent.drop(screen.getByTestId("clip-dropzone"), { dataTransfer: { files: [file] } });
+  expect(await screen.findByText("concert-snippet.mp3")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze clip/i })).toBeEnabled();
 });
 
 it("runs the seeded demo and renders a passport", async () => {
@@ -128,4 +165,3 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" }
   });
 }
-

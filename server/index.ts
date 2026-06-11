@@ -7,6 +7,7 @@ import { searchTracks } from "./adapters/musixmatch";
 import { createNarration, runAnalysis } from "./services/analysis";
 import { createJob, jobs } from "./store";
 import type { EventCandidate, TrackCandidate } from "../shared/types";
+import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -14,7 +15,7 @@ const app = express();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 30 * 1024 * 1024
+    fileSize: MAX_CLIP_BYTES
   }
 });
 
@@ -53,6 +54,21 @@ app.get("/api/events/search", async (req, res, next) => {
 
 app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
   try {
+    const useFixture = req.body.useFixture === "true";
+    const durationSeconds = Number(req.body.durationSeconds || 0);
+    if (!req.file && !useFixture) {
+      res.status(400).json({ error: "Import an audio or video clip before starting analysis." });
+      return;
+    }
+    if (req.file && !isSupportedClip(req.file)) {
+      res.status(415).json({ error: "Unsupported clip type. Use MP3, WAV, M4A, AAC, OGG, MP4, MOV, or WebM." });
+      return;
+    }
+    if (durationSeconds > MAX_CLIP_SECONDS) {
+      res.status(400).json({ error: `Keep clips under ${MAX_CLIP_SECONDS} seconds.` });
+      return;
+    }
+
     const job = createJob();
     res.status(202).json({ jobId: job.id });
 
@@ -64,7 +80,10 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
       event,
       trackQuery: req.body.trackQuery,
       eventCity: req.body.eventCity,
-      eventDate: req.body.eventDate
+      eventDate: req.body.eventDate,
+      durationSeconds: durationSeconds || undefined,
+      autoMatch: req.body.autoMatch === "true",
+      useFixture
     });
   } catch (error) {
     next(error);
@@ -90,7 +109,8 @@ app.post("/api/narrate/:jobId", async (req, res, next) => {
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected server error";
-  res.status(500).json({ error: message });
+  const status = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE" ? 413 : 500;
+  res.status(status).json({ error: status === 413 ? "Clip is larger than 40 MB." : message });
 });
 
 if (isProduction) {
@@ -121,4 +141,11 @@ function parseJsonField<T>(value: unknown): T | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isSupportedClip(file: Express.Multer.File): boolean {
+  if (file.mimetype.startsWith("audio/") || file.mimetype.startsWith("video/")) {
+    return true;
+  }
+  return /\.(mp3|wav|m4a|aac|ogg|mp4|mov|webm)$/i.test(file.originalname);
 }
