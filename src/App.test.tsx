@@ -157,6 +157,7 @@ afterEach(() => {
 it("shows the app version and theme toggle", async () => {
   render(<App />);
   expect(await screen.findByText(/v0.4.0/)).toBeInTheDocument();
+  expect(screen.getByText("Demo data")).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
@@ -199,8 +200,19 @@ it("runs the seeded demo and renders a passport", async () => {
   await waitFor(() => expect(screen.getByText("Midnight Atlas")).toBeInTheDocument());
   expect(screen.getByRole("heading", { name: "Variant Candidates" })).toBeInTheDocument();
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /Export Passport/i })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /Filter candidates/i })).not.toBeInTheDocument();
+  const performanceFilter = screen.getByRole("button", { name: /Performance \(1\)/i });
+  fireEvent.click(performanceFilter);
+  expect(performanceFilter).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText(/Showing 1 of 1: live-performance changes/i)).toBeInTheDocument();
+  const riskFilter = screen.getByRole("button", { name: /Risks \(0\)/i });
+  fireEvent.click(riskFilter);
+  expect(screen.getAllByText("No candidates match this filter.")).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: /All \(1\)/i }));
   fireEvent.click(screen.getAllByRole("button", { name: "Approve candidate" })[0]);
   expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
+  expect(screen.getByText(/1 approved, 0 rejected, 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
 });

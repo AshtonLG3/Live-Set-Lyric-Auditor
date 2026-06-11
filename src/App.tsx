@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Activity, AudioLines, Download, Moon, Plus, Sun } from "lucide-react";
+import { Activity, AudioLines, Moon, Plus, Sun } from "lucide-react";
 import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
-import { AnalysisStudio } from "./components/AnalysisStudio";
+import { AnalysisStudio, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
 import type { IntakeAnalysisInput } from "./components/ClipIntake";
 
@@ -25,6 +25,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [narration, setNarration] = useState<NarrationResponse | null>(null);
+  const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -117,9 +118,21 @@ export default function App() {
     setSelectedTrack(track);
   }
 
-  function exportPassport() {
+  function exportPassport(decisions: ReviewDecisions = {}) {
     if (!job?.passport) return;
-    const blob = new Blob([JSON.stringify(job.passport, null, 2)], { type: "application/json" });
+    const reviewDecisions = job.passport.variants.map((variant) => ({
+      variantId: variant.id,
+      decision: decisions[variant.id] ?? "pending"
+    }));
+    const reviewedPassport = {
+      ...job.passport,
+      review: {
+        exportedAt: new Date().toISOString(),
+        status: reviewDecisions.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
+        decisions: reviewDecisions
+      }
+    };
+    const blob = new Blob([JSON.stringify(reviewedPassport, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -145,10 +158,10 @@ export default function App() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {workspace === "studio" && (
-            <button type="button" className="app-export-button hidden sm:inline-flex" onClick={exportPassport} disabled={!job?.passport}><Download size={16} /> Export</button>
-          )}
-          <span className="hidden rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300 lg:inline-flex">{health?.runtimeMode ?? "fixture"} mode</span>
+          <span className="app-runtime-status hidden lg:inline-flex" title={runtimeStatus.detail} aria-label={`Runtime status: ${runtimeStatus.label}. ${runtimeStatus.detail}`}>
+            <span className={`app-runtime-dot app-runtime-dot-${health?.runtimeMode ?? "fixture"}`} />
+            {runtimeStatus.label}
+          </span>
           <button
             type="button"
             className="icon-button"
@@ -198,4 +211,10 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {
+  if (mode === "live") return { label: "Live APIs", detail: "All configured integrations are using live API responses." };
+  if (mode === "mixed") return { label: "Mixed sources", detail: "Available APIs are live; unavailable integrations use reliable demo data." };
+  return { label: "Demo data", detail: "External API keys are unavailable, so seeded contest data keeps the full demo working." };
 }

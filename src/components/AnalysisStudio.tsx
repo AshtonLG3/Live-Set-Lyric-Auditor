@@ -9,7 +9,6 @@ import {
   CircleAlert,
   Download,
   FileCheck2,
-  Filter,
   Fingerprint,
   LayoutDashboard,
   Link2,
@@ -31,7 +30,8 @@ import type {
 import { WaveformCanvas } from "./WaveformCanvas";
 
 type FilterMode = "all" | "performance" | "risk";
-type ReviewDecision = "approved" | "rejected";
+export type ReviewDecision = "approved" | "rejected";
+export type ReviewDecisions = Partial<Record<string, ReviewDecision>>;
 
 type Props = {
   job: AnalysisJob | null;
@@ -41,13 +41,13 @@ type Props = {
   narration: NarrationResponse | null;
   error: string;
   onNarrate: () => Promise<void> | void;
-  onExport: () => void;
+  onExport: (decisions: ReviewDecisions) => void;
   onNewSession: () => void;
 };
 
 export function AnalysisStudio(props: Props) {
   const [filter, setFilter] = useState<FilterMode>("all");
-  const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
+  const [decisions, setDecisions] = useState<ReviewDecisions>({});
   const passport = props.job?.passport;
   const track = passport?.track ?? props.selectedTrack;
   const event = passport?.event ?? props.selectedEvent ?? null;
@@ -56,6 +56,11 @@ export function AnalysisStudio(props: Props) {
   const completeSteps = steps.filter((step) => step.status === "complete").length;
   const progress = Math.round((completeSteps / Math.max(1, steps.length)) * 100);
   const filteredVariants = useMemo(() => variants.filter((variant) => matchesFilter(variant, filter)), [filter, variants]);
+  const filterCounts = useMemo(() => ({
+    all: variants.length,
+    performance: variants.filter((variant) => matchesFilter(variant, "performance")).length,
+    risk: variants.filter((variant) => matchesFilter(variant, "risk")).length
+  }), [variants]);
   const approvedCount = Object.values(decisions).filter((decision) => decision === "approved").length;
   const rejectedCount = Object.values(decisions).filter((decision) => decision === "rejected").length;
   const averageConfidence = variants.length
@@ -162,13 +167,15 @@ export function AnalysisStudio(props: Props) {
               <h1 className="mt-1 text-2xl font-bold md:text-3xl">Variant Candidates</h1>
               <p className="studio-subtle mt-1">Live vocal evidence aligned to the Musixmatch canonical reference</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="studio-filter-control">
               <div className="studio-filter-group" aria-label="Variant filters">
-                <FilterButton active={filter === "all"} label="All" onClick={() => setFilter("all")} />
-                <FilterButton active={filter === "performance"} label="Performance" onClick={() => setFilter("performance")} />
-                <FilterButton active={filter === "risk"} label="Risks" onClick={() => setFilter("risk")} />
+                <FilterButton active={filter === "all"} label="All" count={filterCounts.all} description="Show every detected candidate" onClick={() => setFilter("all")} />
+                <FilterButton active={filter === "performance"} label="Performance" count={filterCounts.performance} description="Show live-performance changes such as shoutouts, ad-libs, repeats, and extensions" onClick={() => setFilter("performance")} />
+                <FilterButton active={filter === "risk"} label="Risks" count={filterCounts.risk} description="Show low-confidence, omitted, uncertain, or high-translation-risk candidates" onClick={() => setFilter("risk")} />
               </div>
-              <button className="studio-icon-button" type="button" title="Filter candidates" aria-label="Filter candidates"><Filter size={17} /></button>
+              <p className="studio-filter-feedback" role="status" aria-live="polite">
+                Showing {filteredVariants.length} of {variants.length}: {filterDescription(filter)}
+              </p>
             </div>
           </header>
 
@@ -183,17 +190,17 @@ export function AnalysisStudio(props: Props) {
               <span>Time</span><span>Type</span><span>Live Content</span><span>Confidence</span><span>Action</span>
             </div>
             <div>
-              {filteredVariants.map((variant) => (
+              {filteredVariants.length ? filteredVariants.map((variant) => (
                 <CandidateRow key={variant.id} variant={variant} decision={decisions[variant.id]} onDecision={decide} />
-              ))}
+              )) : <FilterEmpty />}
             </div>
             <ReviewFooter variants={variants} approved={approvedCount} rejected={rejectedCount} average={averageConfidence} />
           </section>
 
           <section className="space-y-3 md:hidden">
-            {filteredVariants.map((variant) => (
+            {filteredVariants.length ? filteredVariants.map((variant) => (
               <CandidateCard key={variant.id} variant={variant} decision={decisions[variant.id]} onDecision={decide} />
-            ))}
+            )) : <FilterEmpty />}
             <ReviewFooter variants={variants} approved={approvedCount} rejected={rejectedCount} average={averageConfidence} />
           </section>
 
@@ -212,8 +219,9 @@ export function AnalysisStudio(props: Props) {
                 </div>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <button className="studio-secondary-button" type="button" onClick={() => void props.onNarrate()}><Sparkles size={16} /> Generate narration</button>
-                  <button className="studio-primary-button" type="button" onClick={props.onExport} disabled={!passport}><Download size={16} /> Export Passport</button>
+                  <button className="studio-primary-button" type="button" onClick={() => props.onExport(decisions)} disabled={!passport} title="Export the Passport with current approve, reject, and pending review states"><Download size={16} /> Export Passport</button>
                 </div>
+                <p className="studio-export-note">Export includes the current review state: {approvedCount} approved, {rejectedCount} rejected, {variants.length - approvedCount - rejectedCount} pending.</p>
                 {props.narration && (
                   <div className="studio-narration">
                     <p className="studio-label">{props.narration.mode}</p>
@@ -327,8 +335,12 @@ function DataLine({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function FilterButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return <button type="button" className={active ? "studio-filter-active" : ""} onClick={onClick}>{label}</button>;
+function FilterButton({ active, label, count, description, onClick }: { active: boolean; label: string; count: number; description: string; onClick: () => void }) {
+  return <button type="button" className={active ? "studio-filter-active" : ""} onClick={onClick} aria-pressed={active} aria-label={`${label} (${count})`} title={description}><span>{label}</span><span className="studio-filter-count">{count}</span></button>;
+}
+
+function FilterEmpty() {
+  return <p className="studio-filter-empty">No candidates match this filter.</p>;
 }
 
 function VariantBadge({ type }: { type: VariantType }) {
@@ -362,12 +374,18 @@ function ReadinessFlag({ label, active }: { label: string; active: boolean }) {
 
 function matchesFilter(variant: VariantCandidate, filter: FilterMode) {
   if (filter === "all") return true;
-  if (filter === "risk") return variant.severity === "high" || variant.confidence < 0.65 || variant.type === "uncertain" || variant.type === "skipped_line";
+  if (filter === "risk") return variant.confidence < 0.7 || variant.translationRisk === "high" || variant.type === "uncertain" || variant.type === "skipped_line";
   return ["adlib", "city_shoutout", "extension", "repeated_hook", "timing_drift"].includes(variant.type);
 }
 
+function filterDescription(filter: FilterMode) {
+  if (filter === "performance") return "live-performance changes";
+  if (filter === "risk") return "candidates needing focused review";
+  return "all detected candidates";
+}
+
 function riskMessage(variants: VariantCandidate[]) {
-  const risky = variants.filter((variant) => variant.severity === "high" || variant.confidence < 0.65);
+  const risky = variants.filter((variant) => matchesFilter(variant, "risk"));
   return risky.length ? `${risky.length} candidate${risky.length === 1 ? "" : "s"} need focused review before export.` : "No high-risk candidates detected in the current comparison.";
 }
 

@@ -78,10 +78,21 @@ button {
     @apply bg-slate-100 text-slate-950 dark:bg-slate-900 dark:text-white;
   }
 
-  .app-export-button {
-    @apply h-10 items-center gap-2 rounded-md bg-ember px-4 text-sm font-bold text-white transition hover:bg-[#e34928] disabled:cursor-not-allowed disabled:opacity-50;
+  .app-runtime-status {
+    @apply cursor-default items-center gap-2 px-2 text-xs font-semibold text-slate-600 dark:text-slate-300;
   }
 }
+
+.app-runtime-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #64748b;
+}
+
+.app-runtime-dot-live { background: #0f8c86; }
+.app-runtime-dot-mixed { background: #d97706; }
+.app-runtime-dot-fixture { background: #64748b; }
 
 .studio-shell {
   --studio-bg: #edf1f4;
@@ -379,14 +390,57 @@ button {
   background: var(--studio-panel-alt);
 }
 
+.studio-filter-control {
+  display: flex;
+  min-width: 320px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
 .studio-filter-group button {
+  display: inline-flex;
   min-height: 34px;
+  align-items: center;
+  gap: 7px;
   padding: 0 12px;
   border-radius: 4px;
   color: var(--studio-muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.studio-filter-count {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  border: 1px solid var(--studio-border);
+  border-radius: 9999px;
+  color: var(--studio-muted);
+  background: var(--studio-panel);
+  font-size: 10px;
+}
+
+.studio-filter-active .studio-filter-count {
+  border-color: color-mix(in srgb, var(--studio-cyan) 50%, var(--studio-border));
+  color: var(--studio-cyan);
+  background: var(--studio-cyan-soft);
+}
+
+.studio-filter-feedback {
+  color: var(--studio-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.studio-filter-empty {
+  padding: 42px 18px;
+  color: var(--studio-muted);
+  text-align: center;
 }
 
 .studio-filter-group .studio-filter-active {
@@ -698,6 +752,14 @@ button {
   background: var(--studio-panel-alt);
 }
 
+.studio-export-note {
+  margin-top: 9px;
+  color: var(--studio-muted);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: right;
+}
+
 .studio-mobile-nav {
   position: fixed;
   right: 0;
@@ -754,6 +816,7 @@ button {
   .studio-sidebar { order: 2; padding: 20px 16px 96px; border-top: 1px solid var(--studio-border); border-right: 0; }
   .studio-main-header { align-items: flex-start; flex-direction: column; }
   .studio-main-header > div:last-child { width: 100%; }
+  .studio-filter-control { min-width: 0; align-items: stretch; }
   .studio-filter-group { flex: 1; }
   .studio-filter-group button { flex: 1; padding: 0 8px; }
   .studio-timeline { margin-right: -16px; padding-right: 16px; }

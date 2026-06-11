@@ -7,6 +7,7 @@
 - Desktop implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-desktop-dark.png`
 - Mobile implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-mobile-dark.png`
 - Light-theme implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\studio-desktop-light.png`
+- Clarified controls implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\clarified-controls.png`
 - Full-view desktop comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-desktop.png`
 - Full-view mobile comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-mobile.png`
 - Focused candidate-table comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\compare-desktop-focus.png`
@@ -27,6 +28,7 @@ No actionable P0, P1, or P2 findings remain.
 - Image quality and assets: the supplied concert cover remains a sharp raster asset on New Session. The studio waveform is a real canvas data visualization, and interface actions use Lucide icons consistently rather than placeholder glyphs.
 - Copy and content: Musixmatch identity, event evidence, source mode, rights status, candidate impact, and recommended action remain visible and specific to the product.
 - Interaction states: theme switching, workspace navigation, filtering, approve/reject toggles, narration, export, and mobile section navigation are implemented. Automated tests cover theme, intake modes, drag/drop, Recall Rescue, seeded Passport rendering, narration, and candidate approval.
+- Control honesty: the three filters now expose counts and a live result summary, the nonfunctional funnel was removed, export appears once at the completed Passport and includes review decisions, and runtime mode is presented as passive status text rather than a button-shaped control.
 
 ## Acceptable Deviations
 
@@ -39,6 +41,7 @@ No actionable P0, P1, or P2 findings remain.
 - Replaced `overflow-x: hidden` with `overflow-x: clip` so the sticky mobile header remains fixed while horizontal studio tracks stay contained.
 - Re-captured mobile at scroll positions 0 and 20; the header remained at viewport top and no horizontal overflow was present.
 - Verified the light-theme heading scale and contrast in both New Session and Analysis Studio.
+- Tightened the Risks filter to low-confidence, omitted, uncertain, or high-translation-risk candidates so it is meaningfully distinct from All in the seeded demo.
 
 ## Residual P3 Polish
 

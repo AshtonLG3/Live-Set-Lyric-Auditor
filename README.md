@@ -13,7 +13,7 @@ Version `0.4.0` introduces a responsive two-surface workflow. **New Session** ke
 3. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
 4. Run analysis and move into Analysis Studio to watch the pipeline isolate, transcribe, match, compare, and generate the Passport.
 5. Filter and review timestamped candidates, approve/reject evidence, and inspect source identity, rights mode, structure map, and confidence.
-6. Generate the optional ElevenLabs narration and export the derived Passport JSON.
+6. Generate the optional ElevenLabs narration and export the derived Passport JSON with current approve, reject, and pending review decisions.
 
 ## API Surfaces
 
