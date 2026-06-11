@@ -116,4 +116,14 @@ export const fixtureTranscript: TranscriptSegment[] = [
   }
 ];
 
+export const fixtureRecallTranscript: TranscriptSegment[] = [
+  {
+    id: "R1",
+    start: 0,
+    end: 5.4,
+    text: "We carry the chorus through the avenue",
+    confidence: 0.84
+  }
+];
+
 export const fixtureClipDuration = 24;

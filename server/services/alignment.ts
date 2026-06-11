@@ -1,4 +1,4 @@
-import type { CanonicalSource, ConfidenceOverview, EventCandidate, LiveVariantPassport, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LiveVariantPassport, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -140,10 +140,11 @@ export function buildPassport(input: {
   language?: string;
   copyright?: string;
   trackingUrl?: string;
-  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
+  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
   vocalIsolationSource: "lalalai" | "fixture";
   vocalIsolationConfidence: number;
   asrSource: "external" | "fixture";
+  source: ClipSource;
 }): LiveVariantPassport {
   const alignments = alignTranscript(input.transcript, input.canonicalLines);
   const averageAlignment = average(alignments.map((alignment) => alignment.similarity));
@@ -170,7 +171,8 @@ export function buildPassport(input: {
       filename: input.filename,
       durationSeconds: input.durationSeconds,
       vocalIsolationSource: input.vocalIsolationSource,
-      asrSource: input.asrSource
+      asrSource: input.asrSource,
+      source: input.source
     },
     summary,
     recordingIdentity: {
@@ -201,7 +203,10 @@ export function buildPassport(input: {
     complianceNotes: [
       "Musixmatch lyric/subtitle content is used only as an in-memory analysis reference.",
       "The passport stores derived variant metadata, timestamps, and confidence notes only.",
-      "Uploaded clip buffers are processed in memory for this MVP and are not written to persistent storage."
+      "Uploaded clip buffers are processed in memory for this MVP and are not written to persistent storage.",
+      input.source.processingMode === "reference_fixture"
+        ? "The linked performance is preserved as evidence and previewed through its provider; provider audio is not downloaded."
+        : "Source media was supplied directly by the user for this analysis."
     ]
   };
 }
@@ -289,12 +294,18 @@ function translationRisk(type: VariantType): VariantCandidate["translationRisk"]
 
 function scoreVersionConfidence(
   track: TrackCandidate,
-  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue",
+  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue",
   canonicalSource: CanonicalSource
 ): number {
   const identitySignals = [track.id, track.commonTrackId, track.isrc, track.album].filter(Boolean).length / 4;
   const sourceBoost = canonicalSource === "richsync" ? 1 : canonicalSource === "subtitles" ? 0.88 : canonicalSource === "lyrics" ? 0.72 : 0.48;
-  const methodBoost = matchMethod === "selected_track" ? 0.94 : matchMethod === "lyrics_rescue" ? 0.82 : 0.78;
+  const methodBoost = matchMethod === "selected_track"
+    ? 0.94
+    : matchMethod === "recall_rescue"
+      ? 0.86
+      : matchMethod === "lyrics_rescue"
+        ? 0.82
+        : 0.78;
   return round(identitySignals * 0.38 + sourceBoost * 0.34 + methodBoost * 0.28);
 }
 

@@ -34,7 +34,8 @@ describe("alignment pipeline", () => {
       matchMethod: "fixture_rescue",
       vocalIsolationSource: "fixture",
       vocalIsolationConfidence: 0.74,
-      asrSource: "fixture"
+      asrSource: "fixture",
+      source: { kind: "fixture", processingMode: "fixture" }
     });
 
     const canonicalReferences = passport.variants.map((variant) => variant.canonicalAlignmentReference).join(" ");

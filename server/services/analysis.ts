@@ -1,10 +1,10 @@
-import type { EventCandidate, TrackCandidate, TranscriptSegment } from "../../shared/types";
+import type { ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
-import { transcribeLiveVocal } from "../adapters/asr";
+import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import { narratePassport } from "../adapters/elevenlabs";
 import { searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
-import { getCanonicalReference, identifyTrackFromLyrics, searchTracks } from "../adapters/musixmatch";
+import { getCanonicalReference, identifyTrackFromLyrics, searchTracks, searchTracksByLyrics } from "../adapters/musixmatch";
 import { jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 
@@ -18,7 +18,30 @@ export type AnalyzeInput = {
   durationSeconds?: number;
   autoMatch?: boolean;
   useFixture?: boolean;
+  source?: ClipSource;
 };
+
+export async function runRecallRescue(file?: Express.Multer.File, phrase?: string): Promise<RecallRescueResponse> {
+  const typedPhrase = phrase?.trim();
+  const transcription = typedPhrase
+    ? {
+        source: "external" as const,
+        segments: [{ id: "R1", start: 0, end: 0, text: typedPhrase, confidence: 1 }]
+      }
+    : await transcribeRecallFragment(file);
+  const candidates = await searchTracksByLyrics(transcription.segments);
+
+  return {
+    transcript: transcription.segments.map((segment) => segment.text).join(" ").trim(),
+    segments: transcription.segments,
+    candidates,
+    mode: typedPhrase
+      ? "typed_lyrics_search"
+      : transcription.source === "fixture"
+        ? "fixture"
+        : "asr_lyrics_search"
+  };
+}
 
 export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<void> {
   try {
@@ -31,7 +54,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       "complete",
       input.file
         ? `${input.file.originalname} · ${formatBytes(input.file.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
-        : "Seeded fixture clip loaded."
+        : input.source?.kind === "live_link"
+          ? `${providerLabel(input.source)} reference · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s · fixture audio fallback`
+          : "Seeded fixture clip loaded."
     );
 
     setStep(jobId, "isolate", "running");
@@ -69,7 +94,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       id: jobId,
       track,
       event,
-      filename: input.file?.originalname ?? "seeded-demo-clip.mp3",
+      filename: input.file?.originalname ?? sourceFilename(input.source),
       durationSeconds: input.durationSeconds ?? fixtureClipDuration,
       canonicalLines: canonical.lines,
       transcript: transcription.segments,
@@ -82,7 +107,11 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       matchMethod: resolved.matchMethod,
       vocalIsolationSource: vocal.source,
       vocalIsolationConfidence: vocal.confidence,
-      asrSource: transcription.source
+      asrSource: transcription.source,
+      source: input.source ?? {
+        kind: input.file ? "upload" : "fixture",
+        processingMode: input.file ? "uploaded_media" : "fixture"
+      }
     });
 
     updateJob(jobId, (job) => ({
@@ -117,7 +146,7 @@ async function resolveTrack(
   transcript: TranscriptSegment[]
 ): Promise<{
   track: TrackCandidate;
-  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
+  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
 }> {
   if (input.track && !input.autoMatch) {
     return { track: input.track, matchMethod: "selected_track" };
@@ -127,12 +156,30 @@ async function resolveTrack(
     if (rescued) {
       return {
         track: rescued,
-        matchMethod: rescued.source === "fixture" ? "fixture_rescue" : "lyrics_rescue"
+        matchMethod: input.source?.kind === "recall_recording"
+          ? "recall_rescue"
+          : rescued.source === "fixture"
+            ? "fixture_rescue"
+            : "lyrics_rescue"
       };
     }
   }
   const tracks = await searchTracks(input.trackQuery ?? fixtureTracks[0].title);
   return { track: tracks[0] ?? fixtureTracks[0], matchMethod: "selected_track" };
+}
+
+function providerLabel(source: ClipSource): string {
+  return source.provider ? source.provider.replaceAll("_", " ") : "Live link";
+}
+
+function sourceFilename(source?: ClipSource): string {
+  if (source?.kind === "live_link") {
+    return `${source.provider ?? "live"}-reference`;
+  }
+  if (source?.kind === "recall_recording") {
+    return "remembered-lyric.webm";
+  }
+  return "seeded-demo-clip.mp3";
 }
 
 async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise<EventCandidate | null> {

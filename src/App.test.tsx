@@ -12,7 +12,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.2.0",
+  version: "0.3.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -38,7 +38,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.2.0",
+    version: "0.3.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -52,7 +52,8 @@ const completeJob: AnalysisJob = {
       filename: "seed.mp3",
       durationSeconds: 24,
       vocalIsolationSource: "fixture",
-      asrSource: "fixture"
+      asrSource: "fixture",
+      source: { kind: "upload", processingMode: "uploaded_media" }
     },
     summary: "Detected 3 live variant candidates.",
     recordingIdentity: {
@@ -121,6 +122,24 @@ beforeEach(() => {
     if (url === "/api/analyze") {
       return jsonResponse({ jobId: "job-1" }, 202);
     }
+    if (url === "/api/recall") {
+      return jsonResponse({
+        transcript: "we carry the chorus through the avenue",
+        segments: [{ id: "R1", start: 0, end: 4, text: "we carry the chorus through the avenue", confidence: 0.9 }],
+        candidates: [
+          {
+            id: "fixture-track-midnight-atlas",
+            title: "Midnight Atlas",
+            artist: "The Signal Keeps",
+            album: "City Voltage",
+            hasLyrics: true,
+            hasSubtitles: true,
+            source: "fixture"
+          }
+        ],
+        mode: "typed_lyrics_search"
+      });
+    }
     if (url === "/api/analyze/job-1") {
       return jsonResponse(completeJob);
     }
@@ -137,9 +156,33 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect(await screen.findByText(/v0.2.0/)).toBeInTheDocument();
+  expect(await screen.findByText(/v0.3.0/)).toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
+});
+
+it("accepts a YouTube live link and shows the selected range", async () => {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Live link" }));
+  fireEvent.change(screen.getByLabelText("Live performance URL"), {
+    target: { value: "https://www.youtube.com/watch?v=M7lc1UVf-VE" }
+  });
+  expect(await screen.findByTitle("Live performance preview")).toBeInTheDocument();
+  expect(screen.getByText(/0:00-0:30/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze selected range/i })).toBeEnabled();
+});
+
+it("uses remembered words to rescue a track", async () => {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Recall" }));
+  fireEvent.change(screen.getByLabelText("Remembered lyric words"), {
+    target: { value: "we carry the chorus through the avenue" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Find the track/i }));
+  expect(await screen.findByText(/Recognized fragment/i)).toBeInTheDocument();
+  const matches = screen.getAllByRole("button", { name: /Midnight Atlas/i });
+  fireEvent.click(matches[0]);
+  expect(screen.getByRole("button", { name: /Continue with a live link/i })).toBeInTheDocument();
 });
 
 it("imports a clip through drag and drop", async () => {

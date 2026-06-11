@@ -1,6 +1,6 @@
 import type { TranscriptSegment } from "../../shared/types";
 import { env } from "../config";
-import { fixtureTranscript } from "../data/fixtures";
+import { fixtureRecallTranscript, fixtureTranscript } from "../data/fixtures";
 
 export type TranscriptionResult = {
   source: "external" | "fixture";
@@ -17,8 +17,16 @@ type ExternalSegment = {
 };
 
 export async function transcribeLiveVocal(file?: Express.Multer.File): Promise<TranscriptionResult> {
+  return transcribe(file, fixtureTranscript);
+}
+
+export async function transcribeRecallFragment(file?: Express.Multer.File): Promise<TranscriptionResult> {
+  return transcribe(file, fixtureRecallTranscript);
+}
+
+async function transcribe(file: Express.Multer.File | undefined, fixtureSegments: TranscriptSegment[]): Promise<TranscriptionResult> {
   if (!env.asrApiUrl || !file) {
-    return { source: "fixture", segments: fixtureTranscript };
+    return { source: "fixture", segments: fixtureSegments };
   }
 
   try {
@@ -48,9 +56,9 @@ export async function transcribeLiveVocal(file?: Express.Multer.File): Promise<T
         };
       })
       .filter((segment): segment is TranscriptSegment => segment !== null);
-    return segments.length > 0 ? { source: "external", segments } : { source: "fixture", segments: fixtureTranscript };
+    return segments.length > 0 ? { source: "external", segments } : { source: "fixture", segments: fixtureSegments };
   } catch {
-    return { source: "fixture", segments: fixtureTranscript };
+    return { source: "fixture", segments: fixtureSegments };
   }
 }
 

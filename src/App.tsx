@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AudioLines,
@@ -7,32 +7,25 @@ import {
   CheckCircle2,
   CircleAlert,
   ClipboardList,
-  FileCheck2,
-  FileAudio,
-  FileVideo,
   Fingerprint,
   Languages,
   Moon,
-  Play,
   Search,
   ShieldCheck,
   Sparkles,
   Sun,
-  Trash2,
-  Upload,
   WandSparkles
 } from "lucide-react";
 import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
 import type { AnalysisJob, AnalysisStep, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
-import { APP_NAME, APP_VERSION, MAX_CLIP_SECONDS, TARGET_CLIP_SECONDS } from "../shared/version";
-import { formatFileSize, inspectClip, type ClipSelection } from "./clip";
+import { APP_NAME, APP_VERSION } from "../shared/version";
+import { ClipIntake, type IntakeAnalysisInput } from "./components/ClipIntake";
 
 const coverImage = "/cover.png";
 
 type Theme = "light" | "dark";
 
 export default function App() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("lal-theme") as Theme) || "dark");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [trackQuery, setTrackQuery] = useState("Midnight Atlas");
@@ -42,11 +35,6 @@ export default function App() {
   const [eventDate, setEventDate] = useState("2026-06-18");
   const [events, setEvents] = useState<EventCandidate[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventCandidate | null | undefined>();
-  const [clip, setClip] = useState<ClipSelection | undefined>();
-  const [fileError, setFileError] = useState("");
-  const [fileProcessing, setFileProcessing] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [autoMatch, setAutoMatch] = useState(true);
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -67,10 +55,15 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedTrack) return;
-    void searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate }).then((items) => {
-      setEvents(items);
-      setSelectedEvent(items[0] ?? null);
-    });
+    void searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate })
+      .then((items) => {
+        setEvents(items);
+        setSelectedEvent(items[0] ?? null);
+      })
+      .catch(() => {
+        setEvents([]);
+        setSelectedEvent(null);
+      });
   }, [selectedTrack, eventCity, eventDate]);
 
   useEffect(() => {
@@ -111,21 +104,18 @@ export default function App() {
     setSelectedEvent(items[0] ?? null);
   }
 
-  async function handleAnalyze(useFixture = false) {
-    if (!useFixture && !clip) {
-      setFileError("Import a clip before starting analysis.");
-      return;
-    }
+  async function handleAnalyze(input?: IntakeAnalysisInput, useFixture = false) {
     setBusy(true);
     setError("");
     setNarration(null);
     try {
       const { jobId } = await startAnalysis({
-        file: useFixture ? undefined : clip?.file,
-        durationSeconds: useFixture ? undefined : clip?.durationSeconds,
-        autoMatch: useFixture ? true : autoMatch,
+        file: useFixture ? undefined : input?.file,
+        durationSeconds: useFixture ? undefined : input?.durationSeconds,
+        autoMatch: useFixture ? true : input?.autoMatch,
         useFixture,
-        track: autoMatch ? undefined : selectedTrack,
+        source: useFixture ? { kind: "fixture", processingMode: "fixture" } : input?.source,
+        track: input?.autoMatch === false ? selectedTrack : undefined,
         event: selectedEvent ?? null,
         trackQuery,
         eventCity,
@@ -144,46 +134,23 @@ export default function App() {
     setNarration(await createNarration(job.id));
   }
 
-  async function handleFileChange(nextFile?: File) {
-    setFileError("");
-    if (!nextFile) {
-      setClip(undefined);
-      return;
-    }
-    setFileProcessing(true);
-    try {
-      setClip(await inspectClip(nextFile));
-    } catch (clipError) {
-      setClip(undefined);
-      setFileError(clipError instanceof Error ? clipError.message : "Could not import this clip.");
-    } finally {
-      setFileProcessing(false);
-    }
-  }
-
-  function removeClip() {
-    setClip(undefined);
-    setFileError("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setIsDragging(false);
-    void handleFileChange(event.dataTransfer.files?.[0]);
+  function handleRecallTrack(track: TrackCandidate) {
+    setTrackQuery(`${track.title} ${track.artist}`);
+    setTracks((current) => [track, ...current.filter((item) => item.id !== track.id)]);
+    setSelectedTrack(track);
   }
 
   return (
     <div className="min-h-screen bg-paper text-slate-950 transition-colors dark:bg-ink dark:text-slate-50">
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-ink/92">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white backdrop-blur dark:border-slate-800 dark:bg-ink">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ember text-white shadow-panel">
               <AudioLines size={21} />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-normal">{APP_NAME}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">v{APP_VERSION} · QA dashboard</p>
+              <p className="truncate text-base font-bold tracking-normal">{APP_NAME}</p>
+              <p className="text-[13px] font-medium text-slate-600 dark:text-slate-400">v{APP_VERSION} · QA dashboard</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -197,7 +164,7 @@ export default function App() {
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
             >
-              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+              {theme === "dark" ? <Sun className="text-brass" size={18} /> : <Moon className="text-slate-700" size={18} />}
             </button>
           </div>
         </div>
@@ -218,7 +185,7 @@ export default function App() {
               </p>
               <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">Live Variant Passport</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
-                Match the recording, compare canonical word timing to the live vocal, and turn performance changes into reviewable actions.
+                Upload a clip, range a live-performance link, or sing what you remember. Then compare canonical word timing to the vocal.
               </p>
             </div>
           </div>
@@ -231,90 +198,25 @@ export default function App() {
               className="rounded-md border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold">{integration.name}</p>
+                <p className="text-[15px] font-bold">{integration.name}</p>
                 {integration.configured ? (
                   <CheckCircle2 className="text-lagoon" size={18} />
                 ) : (
                   <CircleAlert className="text-brass" size={18} />
                 )}
               </div>
-              <p className="mt-1 text-xs uppercase text-slate-500 dark:text-slate-400">{integration.mode}</p>
+              <p className="mt-1 text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{integration.mode}</p>
             </div>
           ))}
         </section>
 
-        <section className="mt-5 grid gap-5 lg:grid-cols-[390px_minmax(0,1fr)]">
-          <div className="space-y-5">
-            <Panel title="Clip Intake" icon={<Upload size={18} />}>
-              <div
-                data-testid="clip-dropzone"
-                className={`flex min-h-44 flex-col items-center justify-center rounded-md border border-dashed px-4 py-5 text-center transition ${
-                  isDragging
-                    ? "border-ember bg-ember/10"
-                    : clip
-                      ? "border-lagoon bg-lagoon/5"
-                      : "border-slate-300 bg-slate-50 hover:border-ember dark:border-slate-700 dark:bg-slate-900/70"
-                }`}
-                onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }}
-                onDragOver={(event) => event.preventDefault()}
-                onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setIsDragging(false); }}
-                onDrop={handleDrop}
-              >
-                {clip ? (
-                  <>
-                    {clip.kind === "video" ? <FileVideo className="mb-3 text-lagoon" size={30} /> : <FileCheck2 className="mb-3 text-lagoon" size={30} />}
-                    <span className="max-w-full truncate text-sm font-semibold">{clip.file.name}</span>
-                    <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {clip.kind} · {formatFileSize(clip.file.size)} · {clip.durationSeconds ? `${clip.durationSeconds.toFixed(1)}s` : "duration checked on server"}
-                    </span>
-                    <div className="mt-4 flex gap-2">
-                      <button type="button" className="button-secondary" onClick={() => fileInputRef.current?.click()}>
-                        <Upload size={16} /> Replace
-                      </button>
-                      <button type="button" className="icon-button" onClick={removeClip} aria-label="Remove imported clip" title="Remove imported clip">
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <FileAudio className={`mb-3 ${isDragging ? "text-ember" : "text-slate-500"}`} size={30} />
-                    <span className="text-sm font-semibold">{fileProcessing ? "Inspecting clip..." : isDragging ? "Drop clip to import" : "Drag a concert clip here"}</span>
-                    <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Audio or video · target {TARGET_CLIP_SECONDS}s · max {MAX_CLIP_SECONDS}s / 40 MB
-                    </span>
-                    <button type="button" className="button-secondary mt-4" onClick={() => fileInputRef.current?.click()} disabled={fileProcessing}>
-                      <Upload size={16} /> Browse files
-                    </button>
-                  </>
-                )}
-                <input
-                  ref={fileInputRef}
-                  className="sr-only"
-                  type="file"
-                  accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.mov,.webm"
-                  onChange={(event) => void handleFileChange(event.target.files?.[0])}
-                />
-              </div>
-              {fileError && <p className="mt-2 text-sm text-ember">{fileError}</p>}
-              <div className="mt-3 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
-                <div className="grid grid-cols-2 gap-1">
-                  <button type="button" className={`segmented-button ${autoMatch ? "segmented-button-active" : ""}`} onClick={() => setAutoMatch(true)}>
-                    <Fingerprint size={15} /> Auto-identify vocal
-                  </button>
-                  <button type="button" className={`segmented-button ${!autoMatch ? "segmented-button-active" : ""}`} onClick={() => setAutoMatch(false)}>
-                    <Search size={15} /> Selected track
-                  </button>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button className="button-primary" disabled={busy || fileProcessing || !clip || Boolean(fileError)} onClick={() => void handleAnalyze(false)}>
-                  <Play size={17} /> Analyze clip
-                </button>
-                <button className="button-secondary" disabled={busy} onClick={() => void handleAnalyze(true)}>
-                  <WandSparkles size={17} /> Seed demo
-                </button>
-              </div>
+        <section className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[390px_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-5">
+            <Panel title="Clip Intake" icon={<AudioLines size={18} />}>
+              <ClipIntake busy={busy} onAnalyze={(input) => handleAnalyze(input)} onTrackMatched={handleRecallTrack} />
+              <button className="button-secondary mt-2 w-full" disabled={busy} onClick={() => void handleAnalyze(undefined, true)}>
+                <WandSparkles size={17} /> Seed demo
+              </button>
             </Panel>
 
             <Panel title="Track Anchor" icon={<Search size={18} />}>
@@ -337,14 +239,14 @@ export default function App() {
                     onClick={() => setSelectedTrack(track)}
                   >
                     <span>
-                      <span className="block text-sm font-semibold">{track.title}</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{track.artist} · {track.album ?? "Metadata pending"}</span>
+                      <span className="block text-[15px] font-bold">{track.title}</span>
+                      <span className="text-[13px] text-slate-600 dark:text-slate-400">{track.artist} · {track.album ?? "Metadata pending"}</span>
                       <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
                         {track.hasRichSync ? "RichSync" : track.hasSubtitles ? "Line sync" : "Plain lyrics"}
                         {track.commonTrackId ? ` · common ${track.commonTrackId}` : ""}
                       </span>
                     </span>
-                    <span className="text-xs uppercase text-slate-500">{track.source}</span>
+                    <span className="text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{track.source}</span>
                   </button>
                 ))}
               </div>
@@ -366,17 +268,17 @@ export default function App() {
                     onClick={() => setSelectedEvent(event)}
                   >
                     <span>
-                      <span className="block text-sm font-semibold">{event.title}</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{event.venue} · {event.city}</span>
+                      <span className="block text-[15px] font-bold">{event.title}</span>
+                      <span className="text-[13px] text-slate-600 dark:text-slate-400">{event.venue} · {event.city}</span>
                     </span>
-                    <span className="text-xs uppercase text-slate-500">{event.source}</span>
+                    <span className="text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{event.source}</span>
                   </button>
                 ))}
               </div>
             </Panel>
           </div>
 
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <Panel title="Analysis Timeline" icon={<Activity size={18} />}>
               <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                 <div className="h-full rounded-full bg-lagoon transition-all" style={{ width: `${progressPercent}%` }} />
@@ -385,8 +287,8 @@ export default function App() {
                 {(job?.progress ?? defaultSteps).map((step) => (
                   <div key={step.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
                     <StatusIcon status={step.status} />
-                    <p className="mt-2 text-sm font-semibold">{step.label}</p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{step.detail ?? step.status}</p>
+                    <p className="mt-2 text-[15px] font-bold leading-5">{step.label}</p>
+                    <p className="mt-1 text-[13px] leading-5 text-slate-600 dark:text-slate-400">{step.detail ?? step.status}</p>
                   </div>
                 ))}
               </div>
@@ -421,7 +323,7 @@ export default function App() {
               <Panel title="Variant Candidates" icon={<ClipboardList size={18} />}>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-800">
+                    <thead className="border-b border-slate-200 text-[12px] font-bold uppercase text-slate-600 dark:border-slate-800 dark:text-slate-400">
                       <tr>
                         <th className="py-3 pr-4">Time</th>
                         <th className="py-3 pr-4">Type</th>
@@ -442,7 +344,7 @@ export default function App() {
                 {passport ? (
                   <div className="space-y-4">
                     <div>
-                      <p className="text-xs uppercase text-slate-500 dark:text-slate-400">Track</p>
+                      <p className="text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">Track</p>
                       <h2 className="mt-1 text-xl font-semibold">{passport.track.title}</h2>
                       <p className="text-sm text-slate-500 dark:text-slate-400">{passport.track.artist}</p>
                     </div>
@@ -450,6 +352,23 @@ export default function App() {
                       <Metric label="Overall" value={`${Math.round(passport.confidenceOverview.overall * 100)}%`} />
                       <Metric label="ASR" value={`${Math.round(passport.confidenceOverview.asr * 100)}%`} />
                       <Metric label="Align" value={`${Math.round(passport.confidenceOverview.alignment * 100)}%`} />
+                    </div>
+                    <div className="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
+                      <p className="text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">Source</p>
+                      <p className="mt-1 font-semibold">
+                        {passport.clip.source.provider?.replaceAll("_", " ") ?? passport.clip.source.kind.replaceAll("_", " ")}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {passport.clip.source.processingMode.replaceAll("_", " ")}
+                        {passport.clip.source.startSeconds !== undefined && passport.clip.source.endSeconds !== undefined
+                          ? ` · ${passport.clip.source.startSeconds}s-${passport.clip.source.endSeconds}s`
+                          : ""}
+                      </p>
+                      {passport.clip.source.url && (
+                        <a className="mt-2 block truncate text-xs font-semibold text-lagoon hover:underline" href={passport.clip.source.url} target="_blank" rel="noreferrer">
+                          {passport.clip.source.url}
+                        </a>
+                      )}
                     </div>
                     <p className="rounded-md bg-slate-50 p-3 text-sm leading-6 dark:bg-slate-900">{passport.summary}</p>
                     <div className="flex flex-wrap gap-2">
@@ -512,12 +431,12 @@ export default function App() {
 
 function Panel(props: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-4 shadow-panel dark:border-slate-800 dark:bg-slate-950">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+    <section className="min-w-0 rounded-md border border-slate-200 bg-white p-4 shadow-panel dark:border-slate-800 dark:bg-slate-950">
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-200">
           {props.icon}
         </span>
-        <h2 className="text-base font-semibold">{props.title}</h2>
+        <h2 className="text-lg font-bold leading-6 sm:text-xl">{props.title}</h2>
       </div>
       {props.children}
     </section>
@@ -542,7 +461,7 @@ function VariantRow({ variant, muted }: { variant: VariantCandidate; muted?: boo
       </td>
       <td className="max-w-sm py-3 pr-4 text-slate-700 dark:text-slate-300">
         <span className="block">{variant.liveText}</span>
-        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{variant.recommendedAction}</span>
+        <span className="mt-1 block text-[13px] leading-5 text-slate-600 dark:text-slate-400">{variant.recommendedAction}</span>
         <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold uppercase text-violetmark"><Languages size={12} /> {variant.translationRisk} translation risk</span>
       </td>
       <td className="py-3 pr-4 font-semibold">{Math.round(variant.confidence * 100)}%</td>
@@ -553,7 +472,7 @@ function VariantRow({ variant, muted }: { variant: VariantCandidate; muted?: boo
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-      <p className="text-xs uppercase text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="text-[12px] font-semibold uppercase text-slate-600 dark:text-slate-400">{label}</p>
       <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
@@ -570,7 +489,7 @@ function ReadinessFlag({ label, active }: { label: string; active: boolean }) {
 function StructureLane({ label, items, tone }: { label: string; items: string[]; tone: "canonical" | "live" }) {
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mb-2 text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">{label}</p>
       <div className="flex flex-wrap items-center gap-2">
         {items.map((item, index) => (
           <div key={`${item}-${index}`} className="flex items-center gap-2">
@@ -590,7 +509,7 @@ function formatTime(value: number): string {
 }
 
 const defaultSteps: AnalysisStep[] = [
-  { id: "ingest", label: "Validate imported clip", status: "queued" as const },
+  { id: "ingest", label: "Validate source and clip", status: "queued" as const },
   { id: "isolate", label: "Isolate live vocal", status: "queued" as const },
   { id: "transcribe", label: "Transcribe vocal", status: "queued" as const },
   { id: "anchor", label: "Match recording and version", status: "queued" as const },

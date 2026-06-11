@@ -49,6 +49,10 @@ export async function searchTracks(query: string): Promise<TrackCandidate[]> {
 }
 
 export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate | undefined> {
+  return (await searchTracksByLyrics(segments))[0];
+}
+
+export async function searchTracksByLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate[]> {
   const phrase = segments
     .map((segment) => segment.text)
     .join(" ")
@@ -58,14 +62,13 @@ export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Pr
     .join(" ");
 
   if (!phrase) {
-    return undefined;
+    return [];
   }
   if (!env.musixmatchKey) {
-    return fixtureTracks[0];
+    return fixtureTracks;
   }
 
-  const matches = await searchMusixmatch(new URLSearchParams({ q_lyrics: phrase, f_has_lyrics: "1" }));
-  return matches[0];
+  return searchMusixmatch(new URLSearchParams({ q_lyrics: phrase, f_has_lyrics: "1" }));
 }
 
 export async function getCanonicalReference(track: TrackCandidate): Promise<CanonicalReference> {

@@ -4,9 +4,9 @@ import path from "node:path";
 import { env, getHealth } from "./config";
 import { searchEvents } from "./adapters/jambase";
 import { searchTracks } from "./adapters/musixmatch";
-import { createNarration, runAnalysis } from "./services/analysis";
+import { createNarration, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobs } from "./store";
-import type { EventCandidate, TrackCandidate } from "../shared/types";
+import type { ClipSource, EventCandidate, TrackCandidate } from "../shared/types";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -52,12 +52,42 @@ app.get("/api/events/search", async (req, res, next) => {
   }
 });
 
+app.post("/api/recall", upload.single("fragment"), async (req, res, next) => {
+  try {
+    const phrase = String(req.body.phrase ?? "").trim();
+    if (!req.file && !phrase) {
+      res.status(400).json({ error: "Record a fragment or enter the words you remember." });
+      return;
+    }
+    if (req.file && !isSupportedClip(req.file)) {
+      res.status(415).json({ error: "Unsupported recording type." });
+      return;
+    }
+    res.json(await runRecallRescue(req.file, phrase));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
   try {
     const useFixture = req.body.useFixture === "true";
-    const durationSeconds = Number(req.body.durationSeconds || 0);
-    if (!req.file && !useFixture) {
+    const source = parseJsonField<ClipSource>(req.body.source);
+    const requestedDuration = Number(req.body.durationSeconds || 0);
+    const rangedDuration = source?.startSeconds !== undefined && source.endSeconds !== undefined
+      ? source.endSeconds - source.startSeconds
+      : 0;
+    const durationSeconds = requestedDuration || rangedDuration;
+    if (!req.file && !useFixture && source?.kind !== "live_link") {
       res.status(400).json({ error: "Import an audio or video clip before starting analysis." });
+      return;
+    }
+    if (source?.kind === "live_link" && !isSafeSourceUrl(source.url)) {
+      res.status(400).json({ error: "Enter a valid HTTP or HTTPS live-performance link." });
+      return;
+    }
+    if (source?.kind === "live_link" && rangedDuration <= 0) {
+      res.status(400).json({ error: "The clip end must be after its start." });
       return;
     }
     if (req.file && !isSupportedClip(req.file)) {
@@ -83,7 +113,8 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
       eventDate: req.body.eventDate,
       durationSeconds: durationSeconds || undefined,
       autoMatch: req.body.autoMatch === "true",
-      useFixture
+      useFixture,
+      source
     });
   } catch (error) {
     next(error);
@@ -148,4 +179,14 @@ function isSupportedClip(file: Express.Multer.File): boolean {
     return true;
   }
   return /\.(mp3|wav|m4a|aac|ogg|mp4|mov|webm)$/i.test(file.originalname);
+}
+
+function isSafeSourceUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

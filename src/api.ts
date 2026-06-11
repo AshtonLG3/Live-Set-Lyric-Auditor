@@ -1,4 +1,4 @@
-import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, HealthResponse, NarrationResponse, RecallRescueResponse, TrackCandidate } from "../shared/types";
 
 export async function getHealth(): Promise<HealthResponse> {
   return fetchJson("/api/health");
@@ -25,6 +25,7 @@ export async function startAnalysis(input: {
   durationSeconds?: number;
   autoMatch?: boolean;
   useFixture?: boolean;
+  source?: ClipSource;
 }): Promise<{ jobId: string }> {
   const formData = new FormData();
   if (input.file) formData.append("clip", input.file);
@@ -36,11 +37,23 @@ export async function startAnalysis(input: {
   if (input.durationSeconds) formData.append("durationSeconds", String(input.durationSeconds));
   formData.append("autoMatch", String(Boolean(input.autoMatch)));
   formData.append("useFixture", String(Boolean(input.useFixture)));
+  if (input.source) formData.append("source", JSON.stringify(input.source));
 
   const response = await fetch("/api/analyze", {
     method: "POST",
     body: formData
   });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return response.json();
+}
+
+export async function rescueRecall(input: { file?: File; phrase?: string }): Promise<RecallRescueResponse> {
+  const formData = new FormData();
+  if (input.file) formData.append("fragment", input.file);
+  if (input.phrase) formData.append("phrase", input.phrase);
+  const response = await fetch("/api/recall", { method: "POST", body: formData });
   if (!response.ok) {
     throw new Error(await readError(response));
   }

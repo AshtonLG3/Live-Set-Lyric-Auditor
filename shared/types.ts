@@ -62,6 +62,17 @@ export type TranscriptSegment = {
   confidence: number;
 };
 
+export type SourceProvider = "youtube" | "vimeo" | "soundcloud" | "direct_media" | "other";
+
+export type ClipSource = {
+  kind: "upload" | "live_link" | "recall_recording" | "fixture";
+  processingMode: "uploaded_media" | "authorized_excerpt" | "reference_fixture" | "recall_recording" | "fixture";
+  provider?: SourceProvider;
+  url?: string;
+  startSeconds?: number;
+  endSeconds?: number;
+};
+
 export type VariantType =
   | "substitution"
   | "skipped_line"
@@ -92,7 +103,7 @@ export type RecordingIdentity = {
   trackId: string;
   commonTrackId?: string;
   isrc?: string;
-  matchMethod: "selected_track" | "lyrics_rescue" | "fixture_rescue";
+  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
   versionConfidence: number;
   syncFitScore: number;
   canonicalSource: CanonicalSource;
@@ -129,6 +140,7 @@ export type LiveVariantPassport = {
     durationSeconds: number;
     vocalIsolationSource: "lalalai" | "fixture";
     asrSource: "external" | "fixture";
+    source: ClipSource;
   };
   summary: string;
   recordingIdentity: RecordingIdentity;
@@ -164,4 +176,11 @@ export type NarrationResponse = {
   mode: "elevenlabs" | "fixture";
   text: string;
   audioUrl?: string;
+};
+
+export type RecallRescueResponse = {
+  transcript: string;
+  segments: TranscriptSegment[];
+  candidates: TrackCandidate[];
+  mode: "typed_lyrics_search" | "asr_lyrics_search" | "fixture";
 };

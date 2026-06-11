@@ -36,7 +36,8 @@ describe("fixture-safe adapters", () => {
       matchMethod: "fixture_rescue",
       vocalIsolationSource: "fixture",
       vocalIsolationConfidence: 0.74,
-      asrSource: "fixture"
+      asrSource: "fixture",
+      source: { kind: "fixture", processingMode: "fixture" }
     });
     const narration = await narratePassport("job-1", passport);
     expect(narration.mode).toBe("fixture");
