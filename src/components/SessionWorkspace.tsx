@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import type { EventCandidate, HealthResponse, IntegrationName, TrackCandidate } from "../../shared/types";
 import { ClipIntake, type IntakeAnalysisInput } from "./ClipIntake";
-import { WaveformCanvas } from "./WaveformCanvas";
 
 type Props = {
   health: HealthResponse | null;
@@ -35,7 +34,7 @@ type Props = {
   onEventSelect: (event: EventCandidate) => void;
 };
 
-const coverImage = "/cover.png";
+const coverImage = "/hero-concert-v2.png";
 
 export function SessionWorkspace(props: Props) {
   return (
@@ -52,7 +51,6 @@ export function SessionWorkspace(props: Props) {
             <span><Radio size={15} /> Live-performance evidence</span>
           </div>
         </div>
-        <div className="studio-session-hero-signal" aria-hidden="true"><WaveformCanvas progress={100} active={false} /></div>
       </section>
 
       <section className="studio-partner-strip" aria-label="Integration readiness">
@@ -78,7 +76,7 @@ export function SessionWorkspace(props: Props) {
           {props.error && <p className="studio-inline-error"><CircleAlert size={15} /> {props.error}</p>}
         </RackPanel>
 
-        <div className="studio-anchor-stack">
+        <div id="anchors" className="studio-anchor-stack">
           <RackPanel id="track-anchor" title="Track Anchor" icon={<Search size={18} />} status={props.selectedTrack ? "Anchored" : "Search"}>
             <p className="studio-panel-intro">Selected Musixmatch track, artist, and recording version.</p>
             <div className="studio-search-row">

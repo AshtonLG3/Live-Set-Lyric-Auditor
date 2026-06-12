@@ -2,18 +2,14 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AudioLines,
-  CalendarDays,
-  CircleHelp,
   Download,
   FileText,
   LayoutDashboard,
-  ListMusic,
+  Link2,
   MessageSquareDiff,
   Moon,
   Plus,
-  Settings,
   Sun,
-  Upload
 } from "lucide-react";
 import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
@@ -28,6 +24,7 @@ type Workspace = "session" | "studio";
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem("lal-theme") as Theme) || "dark");
   const [workspace, setWorkspace] = useState<Workspace>("session");
+  const [activeSection, setActiveSection] = useState("clip-intake");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [trackQuery, setTrackQuery] = useState("Midnight Atlas");
   const [tracks, setTracks] = useState<TrackCandidate[]>([]);
@@ -103,6 +100,7 @@ export default function App() {
     setNarration(null);
     setReviewDecisions({});
     setWorkspace("studio");
+    setActiveSection("analysis-timeline");
     try {
       const { jobId } = await startAnalysis({
         file: useFixture ? undefined : input?.file,
@@ -146,6 +144,7 @@ export default function App() {
 
   function startNewSession() {
     setWorkspace("session");
+    setActiveSection("clip-intake");
     setJob(null);
     setNarration(null);
     setReviewDecisions({});
@@ -156,6 +155,7 @@ export default function App() {
   function navigate(workspaceTarget: Workspace, anchor?: string) {
     if (workspaceTarget === "studio" && !job) return;
     setWorkspace(workspaceTarget);
+    setActiveSection(anchor ?? (workspaceTarget === "session" ? "clip-intake" : "analysis-timeline"));
     if (anchor) window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
     else window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -194,8 +194,6 @@ export default function App() {
         <nav className="studio-app-topnav" aria-label="Primary navigation">
           <TopNavButton label="Dashboard" active={workspace === "session"} onClick={() => navigate("session")} />
           <TopNavButton label="Analysis" active={workspace === "studio"} disabled={!job} onClick={() => navigate("studio")} />
-          <TopNavButton label="Tracks" onClick={() => navigate("session", "track-anchor")} />
-          <TopNavButton label="Reports" disabled={!job} onClick={() => navigate("studio", "studio-passport")} />
         </nav>
 
         <div className="studio-app-actions">
@@ -216,18 +214,21 @@ export default function App() {
             <span><AudioLines size={23} /></span>
             <div><strong>Studio Engine</strong><small>v{APP_VERSION}-QA</small></div>
           </div>
-          <nav aria-label="Studio modules">
-            <SideNavButton label="Overview" icon={<LayoutDashboard size={19} />} active={workspace === "session"} onClick={() => navigate("session")} />
-            <SideNavButton label="Timeline" icon={<Activity size={19} />} active={workspace === "studio"} disabled={!job} onClick={() => navigate("studio", "analysis-timeline")} />
-            <SideNavButton label="Variants" icon={<MessageSquareDiff size={19} />} disabled={!job} onClick={() => navigate("studio", "variant-candidates")} />
-            <SideNavButton label="Event Anchor" icon={<CalendarDays size={19} />} onClick={() => navigate("session", "event-anchor")} />
-            <SideNavButton label="Export" icon={<Upload size={19} />} disabled={!job?.passport} onClick={exportPassport} />
+          <nav aria-label={`${workspace === "session" ? "Dashboard" : "Analysis"} sections`}>
+            <p className="studio-sidebar-context-label">{workspace === "session" ? "Dashboard" : "Analysis"}</p>
+            {workspace === "session" ? (
+              <>
+                <SideNavButton label="Clip Intake" icon={<AudioLines size={19} />} active={activeSection === "clip-intake"} onClick={() => navigate("session", "clip-intake")} />
+                <SideNavButton label="Track & Event" icon={<Link2 size={19} />} active={activeSection === "anchors"} onClick={() => navigate("session", "anchors")} />
+              </>
+            ) : (
+              <>
+                <SideNavButton label="Pipeline" icon={<Activity size={19} />} active={activeSection === "analysis-timeline"} onClick={() => navigate("studio", "analysis-timeline")} />
+                <SideNavButton label="Variant Review" icon={<MessageSquareDiff size={19} />} active={activeSection === "variant-candidates"} onClick={() => navigate("studio", "variant-candidates")} />
+                <SideNavButton label="Passport Preview" icon={<FileText size={19} />} active={activeSection === "studio-passport"} onClick={() => navigate("studio", "studio-passport")} />
+              </>
+            )}
           </nav>
-          <div className="studio-sidebar-footer">
-            <button type="button" className="studio-sidebar-new" onClick={startNewSession}><Plus size={17} /> New Session</button>
-            <span><CircleHelp size={16} /> Help</span>
-            <span><Settings size={16} /> Settings</span>
-          </div>
         </aside>
 
         <div className="studio-app-content">
@@ -272,8 +273,6 @@ export default function App() {
       <nav className="studio-global-mobile-nav lg:hidden" aria-label="Mobile navigation">
         <button type="button" className={workspace === "session" ? "active" : ""} onClick={() => navigate("session")}><LayoutDashboard size={19} /><span>Dashboard</span></button>
         <button type="button" className={workspace === "studio" ? "active" : ""} disabled={!job} onClick={() => navigate("studio")}><Activity size={19} /><span>Analysis</span></button>
-        <button type="button" onClick={() => navigate("session", "track-anchor")}><ListMusic size={19} /><span>Tracks</span></button>
-        <button type="button" disabled={!job} onClick={() => navigate("studio", "studio-passport")}><FileText size={19} /><span>Reports</span></button>
       </nav>
     </div>
   );

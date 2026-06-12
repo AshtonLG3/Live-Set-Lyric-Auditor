@@ -8,7 +8,7 @@ Version `0.5.0` merges the Google Stitch Studio-Pro visual system with a non-tec
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.5.0`, dark/light theme control, Dashboard / Analysis / Tracks / Reports navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.5.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Use Recall Rescue to speak, sing, or type a remembered lyric fragment and anchor the best Musixmatch candidate.
 3. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
 4. Run analysis and move into Analysis to watch the timeline isolate, transcribe, match, compare, and generate the Passport.

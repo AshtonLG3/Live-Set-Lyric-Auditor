@@ -158,6 +158,11 @@ it("shows the app version and theme toggle", async () => {
   render(<App />);
   expect((await screen.findAllByText(/v0.5.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Demo data")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Help")).not.toBeInTheDocument();
+  expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
