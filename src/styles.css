@@ -1117,6 +1117,15 @@ button {
   background: var(--app-bg);
 }
 
+#clip-intake,
+#track-anchor,
+#event-anchor,
+#analysis-timeline,
+#studio-passport,
+#variant-candidates {
+  scroll-margin-top: 82px;
+}
+
 .studio-global-mobile-nav {
   position: fixed;
   right: 0;

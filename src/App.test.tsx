@@ -161,6 +161,9 @@ it("shows the app version and theme toggle", async () => {
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clip Intake" })).toHaveAttribute("aria-current", "location");
+  expect(screen.getByRole("button", { name: "Track Anchor" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Event Anchor" })).toBeInTheDocument();
   expect(screen.queryByText("Help")).not.toBeInTheDocument();
   expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   fireEvent.click(screen.getByLabelText(/switch to light theme/i));
@@ -204,6 +207,10 @@ it("runs the seeded demo and renders a passport", async () => {
   fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
   expect(screen.getByRole("heading", { name: "Variant Candidates" })).toBeInTheDocument();
+  const variantsSectionLink = screen.getByRole("button", { name: "Variants" });
+  fireEvent.click(variantsSectionLink);
+  expect(variantsSectionLink).toHaveAttribute("aria-current", "location");
+  expect(screen.getByRole("button", { name: "Timeline" })).not.toHaveAttribute("aria-current");
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /Export Passport/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: /Filter candidates/i })).not.toBeInTheDocument();

@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AudioLines,
+  CalendarDays,
   Download,
   FileText,
   LayoutDashboard,
-  Link2,
   MessageSquareDiff,
   Moon,
   Plus,
+  Search,
   Sun,
 } from "lucide-react";
 import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
@@ -156,7 +157,10 @@ export default function App() {
     if (workspaceTarget === "studio" && !job) return;
     setWorkspace(workspaceTarget);
     setActiveSection(anchor ?? (workspaceTarget === "session" ? "clip-intake" : "analysis-timeline"));
-    if (anchor) window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+    if (anchor) window.setTimeout(() => {
+      const target = document.getElementById(anchor);
+      if (target && typeof target.scrollIntoView === "function") target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
     else window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -219,13 +223,14 @@ export default function App() {
             {workspace === "session" ? (
               <>
                 <SideNavButton label="Clip Intake" icon={<AudioLines size={19} />} active={activeSection === "clip-intake"} onClick={() => navigate("session", "clip-intake")} />
-                <SideNavButton label="Track & Event" icon={<Link2 size={19} />} active={activeSection === "anchors"} onClick={() => navigate("session", "anchors")} />
+                <SideNavButton label="Track Anchor" icon={<Search size={19} />} active={activeSection === "track-anchor"} onClick={() => navigate("session", "track-anchor")} />
+                <SideNavButton label="Event Anchor" icon={<CalendarDays size={19} />} active={activeSection === "event-anchor"} onClick={() => navigate("session", "event-anchor")} />
               </>
             ) : (
               <>
-                <SideNavButton label="Pipeline" icon={<Activity size={19} />} active={activeSection === "analysis-timeline"} onClick={() => navigate("studio", "analysis-timeline")} />
-                <SideNavButton label="Variant Review" icon={<MessageSquareDiff size={19} />} active={activeSection === "variant-candidates"} onClick={() => navigate("studio", "variant-candidates")} />
+                <SideNavButton label="Timeline" icon={<Activity size={19} />} active={activeSection === "analysis-timeline"} onClick={() => navigate("studio", "analysis-timeline")} />
                 <SideNavButton label="Passport Preview" icon={<FileText size={19} />} active={activeSection === "studio-passport"} onClick={() => navigate("studio", "studio-passport")} />
+                <SideNavButton label="Variants" icon={<MessageSquareDiff size={19} />} active={activeSection === "variant-candidates"} onClick={() => navigate("studio", "variant-candidates")} />
               </>
             )}
           </nav>
@@ -283,7 +288,7 @@ function TopNavButton({ label, active, disabled, onClick }: { label: string; act
 }
 
 function SideNavButton({ label, icon, active, disabled, onClick }: { label: string; icon: React.ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
-  return <button type="button" className={active ? "active" : ""} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
+  return <button type="button" className={active ? "active" : ""} aria-current={active ? "location" : undefined} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
 }
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {

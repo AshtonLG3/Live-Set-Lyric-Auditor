@@ -5,6 +5,9 @@
 - Primary source visual truth: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-cecfe175-5bdc-458d-a681-9151f2f297ac.png`
 - Stitch desktop export: `C:\Users\mangezi\AppData\Local\Temp\musicathon-stitch-dashboard\screen.png`
 - Stitch mobile export: `C:\Users\mangezi\AppData\Local\Temp\musicathon-stitch-mobile\screen.png`
+- User-supplied Stitch dashboard reference: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-ba56a175-0391-46d6-a30f-df5152f69062.png`
+- User-supplied Stitch anchoring reference: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-db023b4f-5edf-4a79-81ca-970516816235.png`
+- User-supplied Stitch export reference: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-826789a3-a69c-480c-bd72-0fb230b5b0d4.png`
 - Dashboard implementation, desktop dark: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-dashboard-desktop-dark.png`
 - Analysis implementation, desktop dark: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-analysis-desktop-viewport.png`
 - Dashboard implementation, desktop light: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-dashboard-desktop-light.png`
@@ -19,6 +22,8 @@
 - Navigation-refinement dashboard, mobile dark: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-nav-cleanup-dashboard-mobile-dark.png`
 - Navigation-refinement desktop comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-nav-cleanup-comparison-desktop.png`
 - Navigation-refinement mobile comparison: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-nav-cleanup-comparison-mobile.png`
+- Combined Passport setup implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-combined-passport-setup-desktop.png`
+- Variants active-state implementation: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-variants-active-desktop.png`
 
 ## Viewports And State
 
@@ -57,6 +62,9 @@ No actionable P0, P1, or P2 findings remain.
 - Removed the duplicate lower-left New Session action plus inactive Help and Settings chrome.
 - Removed the hero waveform canvas and replaced the old telemetry-heavy cover with a vivid, clean concert raster asset.
 - Verified the refined shell exposes exactly one New Session action, two top-level destinations, two mobile destinations, no dead Help/Settings labels, and no horizontal overflow at 1440px or 390px.
+- Preserved Dashboard quick links for `Clip Intake`, `Track Anchor`, and `Event Anchor` while keeping them inside one New Passport workflow.
+- Added explicit active-section state with `aria-current="location"`; selecting `Variants` now highlights Variants rather than leaving Timeline focused.
+- Added sticky-header scroll margins to every sidebar target so section headings remain visible after quick navigation.
 
 ## Residual P3 Polish
 
