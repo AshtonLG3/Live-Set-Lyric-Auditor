@@ -6,6 +6,7 @@ export type IntegrationName =
   | "Musixmatch"
   | "LALAL.AI"
   | "JamBase"
+  | "Cyanite"
   | "ElevenLabs"
   | "ASR";
 
@@ -47,11 +48,55 @@ export type EventCandidate = {
   id: string;
   title: string;
   artist: string;
+  artistId?: string;
   venue: string;
+  venueId?: string;
   city: string;
   date: string;
+  tourName?: string;
+  festivalName?: string;
+  lineup?: string[];
+  setlist?: {
+    available: boolean;
+    songs?: string[];
+    sourceUrl?: string;
+  };
   url?: string;
   source: "jambase" | "fixture";
+};
+
+export type LiveContext = {
+  source: "jambase" | "fixture";
+  eventId: string;
+  artistId?: string;
+  venueId?: string;
+  tourName?: string;
+  festivalName?: string;
+  lineup: string[];
+  setlist: {
+    available: boolean;
+    position?: number;
+    songCount?: number;
+    previousSong?: string;
+    nextSong?: string;
+    sourceUrl?: string;
+  };
+  summary: string;
+  confidence: number;
+};
+
+export type PerformanceContext = {
+  source: "cyanite" | "fixture";
+  status: "complete" | "fallback";
+  energyLevel: number;
+  bpm?: number;
+  dominantEmotions: string[];
+  instruments: string[];
+  valence?: number;
+  arousal?: number;
+  arrangement: "full_band" | "stripped_back" | "high_intensity" | "crowd_forward" | "uncertain";
+  summary: string;
+  confidence: number;
 };
 
 export type TranscriptSegment = {
@@ -143,6 +188,8 @@ export type LiveVariantPassport = {
     source: ClipSource;
   };
   summary: string;
+  liveContext: LiveContext | null;
+  performanceContext: PerformanceContext;
   recordingIdentity: RecordingIdentity;
   rights: RightsStatus;
   structureMap: StructureMap;

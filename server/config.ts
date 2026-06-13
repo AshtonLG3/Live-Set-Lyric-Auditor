@@ -2,6 +2,7 @@ import { APP_NAME, APP_VERSION } from "../shared/version";
 import type { HealthResponse, IntegrationStatus, RuntimeMode } from "../shared/types";
 
 const configured = (name: string) => Boolean(process.env[name]?.trim());
+const configuredAny = (...names: string[]) => names.some(configured);
 
 export const env = {
   port: Number(process.env.PORT ?? 4242),
@@ -9,6 +10,8 @@ export const env = {
   musixmatchBaseUrl: process.env.MUSIXMATCH_API_BASE_URL ?? "https://api.musixmatch.com/ws/1.1",
   jambaseKey: process.env.JAMBASE_API_KEY,
   jambaseBaseUrl: process.env.JAMBASE_API_BASE_URL ?? "https://api.data.jambase.com/v3",
+  cyaniteToken: process.env.CYANITE_API_TOKEN ?? process.env.CYANITE_API_KEY,
+  cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
   lalalKey: process.env.LALAL_LICENSE_KEY,
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
@@ -40,8 +43,16 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configured("JAMBASE_API_KEY"),
       mode: configured("JAMBASE_API_KEY") ? "live" : "fixture",
       detail: configured("JAMBASE_API_KEY")
-        ? "Event search adapter enabled."
-        : "Using seeded concert anchors."
+        ? "Event search, catalog identifiers, and live-context evidence enabled."
+        : "Using seeded concert and setlist context."
+    },
+    {
+      name: "Cyanite",
+      configured: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY"),
+      mode: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY") ? "live" : "fixture",
+      detail: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY")
+        ? "Energy, mood, BPM, instrument, and arrangement profiling enabled."
+        : "Using a seeded live-performance profile."
     },
     {
       name: "ElevenLabs",

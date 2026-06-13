@@ -13,6 +13,7 @@ import {
   Fingerprint,
   Gauge,
   Link2,
+  ListMusic,
   ShieldCheck,
   Sparkles,
   X
@@ -67,7 +68,9 @@ export function AnalysisStudio(props: Props) {
   const active = status === "running" || status === "queued";
   const focusVariant = filteredVariants[0] ?? variants[0];
   const divergence = Math.round((1 - (passport?.confidenceOverview.alignment ?? 0.72)) * 100);
-  const vocalTexture = (passport?.confidenceOverview.sourceCoverage ?? 0.74) >= 0.8 ? "Clear" : "Crowd-forward";
+  const liveContext = passport?.liveContext;
+  const performanceContext = passport?.performanceContext;
+  const energyLevel = Math.round((performanceContext?.energyLevel ?? 0.86) * 100);
   const riskCount = filterCounts.risk;
 
   return (
@@ -148,10 +151,40 @@ export function AnalysisStudio(props: Props) {
           </div>
         </section>
 
+        <section className="studio-intelligence-grid" aria-label="Live and performance context">
+          <article className="studio-panel studio-intelligence-card">
+            <div className="studio-panel-heading"><span><ListMusic size={17} /> Live Context</span><span className="studio-mono">{liveContext?.source === "jambase" ? "JamBase" : "Demo Ready"}</span></div>
+            <div className="studio-intelligence-body">
+              <div className="studio-data-list">
+                <DataLine label="Event" value={event ? `${event.venue}, ${event.city}` : "Event anchor pending"} />
+                <DataLine label="Tour / festival" value={liveContext?.tourName ?? liveContext?.festivalName ?? "Not supplied"} />
+                <DataLine label="Setlist position" value={formatSetlistPosition(liveContext?.setlist.position, liveContext?.setlist.songCount)} />
+                <DataLine label="Lineup" value={liveContext?.lineup.join(", ") || event?.artist || "Not supplied"} />
+              </div>
+              <p>{liveContext?.summary ?? "JamBase event, venue, lineup, and setlist evidence will appear after anchoring."}</p>
+            </div>
+          </article>
+
+          <article className="studio-panel studio-intelligence-card">
+            <div className="studio-panel-heading"><span><AudioWaveform size={17} /> Performance Context</span><span className="studio-mono">{performanceContext?.source === "cyanite" ? "Cyanite" : "Demo Profile"}</span></div>
+            <div className="studio-intelligence-body">
+              <div className="studio-performance-readout">
+                <div><span>Energy</span><strong>{energyLevel}%</strong></div>
+                <div><span>Tempo</span><strong>{performanceContext?.bpm ? `${performanceContext.bpm} BPM` : "Pending"}</strong></div>
+                <div><span>Arrangement</span><strong>{formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}</strong></div>
+              </div>
+              <div className="studio-context-tags">
+                {(performanceContext?.dominantEmotions ?? ["Energetic", "Uplifting", "Powerful"]).map((emotion) => <span key={emotion}>{formatSourceMode(emotion)}</span>)}
+              </div>
+              <p>{performanceContext?.summary ?? "Cyanite-derived energy, mood, BPM, and arrangement context will appear after profiling."}</p>
+            </div>
+          </article>
+        </section>
+
         <section className="studio-metric-strip" aria-label="Passport metrics">
           <MetricCard icon={<Gauge size={16} />} label="Divergence Score" value={`${divergence}%`} detail="Derived from alignment fit" tone="orange" />
           <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={`+${Math.max(40, Math.round((1 - (passport?.confidenceOverview.alignment ?? 0.72)) * 420))}ms`} detail="Live timing against reference" tone="cyan" />
-          <MetricCard icon={<AudioWaveform size={16} />} label="Vocal Texture" value={vocalTexture} detail={`${Math.round((passport?.confidenceOverview.sourceCoverage ?? 0.74) * 100)}% source coverage`} />
+          <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={`${energyLevel}%`} detail={`${formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}${performanceContext?.bpm ? ` · ${performanceContext.bpm} BPM` : ""}`} tone={energyLevel >= 78 ? "orange" : "cyan"} />
           <MetricCard icon={<BadgeCheck size={16} />} label="Passport Status" value={riskCount ? "Review" : "Valid"} detail={riskCount ? `${riskCount} risk candidate${riskCount === 1 ? "" : "s"}` : "Ready to export"} tone={riskCount ? "orange" : "cyan"} />
         </section>
 
@@ -209,6 +242,7 @@ export function AnalysisStudio(props: Props) {
                 <DataLine label="Common track" value={formatRecordingId(passport?.recordingIdentity.commonTrackId ?? "not supplied")} />
                 <DataLine label="Attribution" value={passport?.rights.attribution ?? "Lyrics powered by Musixmatch"} />
                 <DataLine label="Language" value={passport?.rights.language?.toUpperCase() ?? track?.language?.toUpperCase() ?? "EN"} />
+                <DataLine label="Performance profile" value={performanceContext?.source === "cyanite" ? "Cyanite live analysis" : "Demo-safe fallback"} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <ReadinessFlag label="Lyrics" active={track?.hasLyrics ?? true} />
@@ -274,10 +308,12 @@ function formatRecordingId(value: string) { return value.replace(/^fixture-/i, "
 function formatTime(value: number) { const minutes = Math.floor(value / 60); const seconds = value - minutes * 60; return `${String(minutes).padStart(2, "0")}:${seconds.toFixed(1).padStart(4, "0")}`; }
 function formatOffset(value: number) { return `00:${formatTime(value)}`; }
 function formatEventDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
+function formatSetlistPosition(position?: number, songCount?: number) { return position ? `${position}${songCount ? ` of ${songCount}` : ""}` : "Not confirmed"; }
 
 const defaultSteps: AnalysisStep[] = [
   { id: "ingest", label: "Validate source", status: "complete" },
   { id: "isolate", label: "Isolate live vocal", status: "complete" },
+  { id: "profile", label: "Profile live arrangement", status: "complete" },
   { id: "transcribe", label: "Transcribe vocal", status: "running" },
   { id: "anchor", label: "Match recording", status: "queued" },
   { id: "compare", label: "Compare timing", status: "queued" },

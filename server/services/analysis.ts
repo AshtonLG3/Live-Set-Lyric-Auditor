@@ -1,8 +1,9 @@
 import type { ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
+import { analyzePerformance } from "../adapters/cyanite";
 import { narratePassport } from "../adapters/elevenlabs";
-import { searchEvents } from "../adapters/jambase";
+import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracks, searchTracksByLyrics } from "../adapters/musixmatch";
 import { jobs, setStep, updateJob } from "../store";
@@ -63,6 +64,15 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const vocal = await isolateVocals(input.file);
     setStep(jobId, "isolate", "complete", vocal.detail);
 
+    setStep(jobId, "profile", "running");
+    const performanceContext = await analyzePerformance({ file: input.file, source: input.source });
+    setStep(
+      jobId,
+      "profile",
+      "complete",
+      `${performanceContext.source === "cyanite" ? "Cyanite" : "Demo profile"} · ${Math.round(performanceContext.energyLevel * 100)}% energy · ${performanceContext.arrangement.replaceAll("_", " ")}`
+    );
+
     setStep(jobId, "transcribe", "running");
     const transcription = await transcribeLiveVocal(input.file);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
@@ -71,6 +81,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const resolved = await resolveTrack(input, transcription.segments);
     const track = resolved.track;
     const event = await resolveEvent(input, track);
+    const liveContext = buildLiveContext(event, track);
     setStep(
       jobId,
       "anchor",
@@ -111,7 +122,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       source: input.source ?? {
         kind: input.file ? "upload" : "fixture",
         processingMode: input.file ? "uploaded_media" : "fixture"
-      }
+      },
+      liveContext,
+      performanceContext
     });
 
     updateJob(jobId, (job) => ({

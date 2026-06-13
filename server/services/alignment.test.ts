@@ -40,6 +40,8 @@ describe("alignment pipeline", () => {
 
     const canonicalReferences = passport.variants.map((variant) => variant.canonicalAlignmentReference).join(" ");
     expect(passport.variants.length).toBeGreaterThan(2);
+    expect(passport.performanceContext.arrangement).toBe("uncertain");
+    expect(passport.liveContext).toBeNull();
     expect(JSON.stringify(passport)).not.toContain("canonicalLines");
     for (const line of fixtureCanonicalLines) {
       expect(canonicalReferences).not.toContain(line.text);

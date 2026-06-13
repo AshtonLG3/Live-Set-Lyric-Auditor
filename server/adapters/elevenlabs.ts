@@ -58,6 +58,8 @@ function narrationText(passport: LiveVariantPassport): string {
     .slice(0, 3)
     .map((variant) => variant.type.replace("_", " "))
     .join(", ");
-  return `Live Set Lyric Auditor analyzed ${passport.track.title} by ${passport.track.artist} from ${event}. ${passport.summary} The strongest candidate categories are ${topVariants || "none"}. This passport is derived analysis only and does not store the canonical lyric reference.`;
+  const liveContext = passport.liveContext?.setlist.position
+    ? `JamBase places the song at position ${passport.liveContext.setlist.position} in the available setlist.`
+    : passport.liveContext?.summary ?? "No setlist position was available.";
+  return `Live Set Lyric Auditor analyzed ${passport.track.title} by ${passport.track.artist} from ${event}. ${passport.summary} ${liveContext} Cyanite performance context: ${passport.performanceContext.summary} The strongest candidate categories are ${topVariants || "none"}. This passport is derived analysis only and does not store the canonical lyric reference.`;
 }
-

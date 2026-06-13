@@ -12,12 +12,13 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.5.0",
+  version: "0.6.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
     { name: "LALAL.AI", configured: false, mode: "fixture", detail: "fixture" },
     { name: "JamBase", configured: false, mode: "fixture", detail: "fixture" },
+    { name: "Cyanite", configured: false, mode: "fixture", detail: "fixture" },
     { name: "ElevenLabs", configured: false, mode: "fixture", detail: "fixture" },
     { name: "ASR", configured: false, mode: "fixture", detail: "fixture" }
   ]
@@ -31,6 +32,7 @@ const completeJob: AnalysisJob = {
   progress: [
     { id: "anchor", label: "Anchor track and event", status: "complete" },
     { id: "isolate", label: "Isolate live vocal", status: "complete" },
+    { id: "profile", label: "Profile live arrangement", status: "complete" },
     { id: "transcribe", label: "Transcribe vocal", status: "complete" },
     { id: "compare", label: "Align to canonical reference", status: "complete" },
     { id: "passport", label: "Generate Live Variant Passport", status: "complete" }
@@ -38,7 +40,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.5.0",
+    version: "0.6.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -47,7 +49,20 @@ const completeJob: AnalysisJob = {
       hasSubtitles: true,
       source: "fixture"
     },
-    event: null,
+    event: {
+      id: "fixture-event-cape-town-2026",
+      title: "The Signal Keeps at Civic Hall",
+      artist: "The Signal Keeps",
+      artistId: "fixture-artist-signal-keeps",
+      venue: "Civic Hall",
+      venueId: "fixture-venue-civic-hall",
+      city: "Cape Town",
+      date: "2026-06-18T20:00:00+02:00",
+      tourName: "City Voltage Tour",
+      lineup: ["The Signal Keeps", "Northline Echo"],
+      setlist: { available: true, songs: ["Signal Fire", "Midnight Atlas", "Afterimage"] },
+      source: "fixture"
+    },
     clip: {
       filename: "seed.mp3",
       durationSeconds: 24,
@@ -56,6 +71,30 @@ const completeJob: AnalysisJob = {
       source: { kind: "upload", processingMode: "uploaded_media" }
     },
     summary: "Detected 3 live variant candidates.",
+    liveContext: {
+      source: "fixture",
+      eventId: "fixture-event-cape-town-2026",
+      artistId: "fixture-artist-signal-keeps",
+      venueId: "fixture-venue-civic-hall",
+      tourName: "City Voltage Tour",
+      lineup: ["The Signal Keeps", "Northline Echo"],
+      setlist: { available: true, position: 2, songCount: 3, previousSong: "Signal Fire", nextSong: "Afterimage" },
+      summary: "City Voltage Tour. Midnight Atlas appears at position 2 of 3 in the available setlist.",
+      confidence: 0.9
+    },
+    performanceContext: {
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.86,
+      bpm: 128,
+      dominantEmotions: ["Energetic", "Uplifting", "Powerful"],
+      instruments: ["Electric Guitar", "Synthesizer", "Drums"],
+      valence: 0.58,
+      arousal: 0.9,
+      arrangement: "high_intensity",
+      summary: "High-intensity full-band performance with an energetic, crowd-facing arrangement.",
+      confidence: 0.82
+    },
     recordingIdentity: {
       trackId: "fixture-track-midnight-atlas",
       commonTrackId: "fixture-common-midnight-atlas",
@@ -156,7 +195,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.5.0/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.6.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Demo data")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -212,6 +251,10 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(variantsSectionLink).toHaveAttribute("aria-current", "location");
   expect(screen.getByRole("button", { name: "Timeline" })).not.toHaveAttribute("aria-current");
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
+  expect(screen.getByText("Live Context")).toBeInTheDocument();
+  expect(screen.getByText("Performance Context")).toBeInTheDocument();
+  expect(screen.getByText("2 of 3")).toBeInTheDocument();
+  expect(screen.getAllByText("86%").length).toBeGreaterThan(0);
   expect(screen.getAllByRole("button", { name: /Export Passport/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: /Filter candidates/i })).not.toBeInTheDocument();
   const performanceFilter = screen.getByRole("button", { name: /Performance \(1\)/i });

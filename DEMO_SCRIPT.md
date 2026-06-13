@@ -2,7 +2,7 @@
 
 ## 0-15 seconds
 
-Open Dashboard. Point out `v0.5.0`, the cinematic Start a Live Variant Passport hero, partner readiness, and the three intake modes: Upload clip, Live link, and Recall lyric fragment.
+Open Dashboard. Point out `v0.6.0`, the cinematic Start a Live Variant Passport hero, partner readiness including Cyanite, and the three intake modes: Upload clip, Live link, and Recall lyric fragment.
 
 ## 15-35 seconds
 
@@ -10,11 +10,11 @@ Open Recall, speak or type a remembered lyric fragment, and select the Musixmatc
 
 ## 35-60 seconds
 
-Attach an authorized excerpt when available, or run the judge-ready demo. Start analysis and land in the studio Analysis view. Show the waveform, processing timeline and log, recording anchors, compliance-safe diff, and variant classification.
+Attach an authorized excerpt when available, or run the judge-ready demo. Start analysis and land in the studio Analysis view. Show the waveform, processing timeline, the new Profile live arrangement stage, recording anchors, compliance-safe diff, and variant classification.
 
 ## 60-80 seconds
 
-Show Divergence Score, Cadence Offset, Vocal Texture, and Passport Status. Filter the candidates, approve one review item, and show the preserved source evidence and recommended QA action.
+Show JamBase Live Context with event, lineup, and setlist position. Then show Cyanite Performance Context with live energy, tempo, mood, and arrangement. Filter the candidates, approve one review item, and show the recommended QA action.
 
 ## 80-90 seconds
 

@@ -12,6 +12,7 @@ export function createJob(): AnalysisJob {
     progress: [
       { id: "ingest", label: "Validate source and clip", status: "queued" },
       { id: "isolate", label: "Isolate live vocal", status: "queued" },
+      { id: "profile", label: "Profile live arrangement", status: "queued" },
       { id: "transcribe", label: "Transcribe vocal", status: "queued" },
       { id: "anchor", label: "Match recording and version", status: "queued" },
       { id: "compare", label: "Compare word timing and structure", status: "queued" },

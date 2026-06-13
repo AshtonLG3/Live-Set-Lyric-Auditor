@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { searchEvents } from "./jambase";
+import { buildLiveContext, searchEvents } from "./jambase";
+import { analyzePerformance } from "./cyanite";
 import { isolateVocals } from "./lalal";
 import { searchTracks } from "./musixmatch";
 import { narratePassport } from "./elevenlabs";
@@ -15,6 +16,20 @@ describe("fixture-safe adapters", () => {
   it("returns JamBase fixture events when no API key is configured", async () => {
     const events = await searchEvents({ artist: "The Signal Keeps", city: "Cape Town" });
     expect(events[0]?.source).toBe("fixture");
+  });
+
+  it("derives a setlist-aware live context from the event anchor", () => {
+    const context = buildLiveContext(fixtureEvents[0], fixtureTracks[0]);
+    expect(context?.setlist.position).toBe(2);
+    expect(context?.artistId).toBeTruthy();
+    expect(context?.summary).toContain("position 2");
+  });
+
+  it("returns fixture performance context when Cyanite is not configured", async () => {
+    await expect(analyzePerformance({ source: { kind: "fixture", processingMode: "fixture" } })).resolves.toMatchObject({
+      source: "fixture",
+      arrangement: "high_intensity"
+    });
   });
 
   it("returns fixture vocal isolation without a file or key", async () => {

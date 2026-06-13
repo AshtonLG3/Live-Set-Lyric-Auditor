@@ -1,4 +1,4 @@
-import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LiveVariantPassport, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -145,6 +145,8 @@ export function buildPassport(input: {
   vocalIsolationConfidence: number;
   asrSource: "external" | "fixture";
   source: ClipSource;
+  liveContext?: LiveContext | null;
+  performanceContext?: PerformanceContext;
 }): LiveVariantPassport {
   const alignments = alignTranscript(input.transcript, input.canonicalLines);
   const averageAlignment = average(alignments.map((alignment) => alignment.similarity));
@@ -175,6 +177,17 @@ export function buildPassport(input: {
       source: input.source
     },
     summary,
+    liveContext: input.liveContext ?? null,
+    performanceContext: input.performanceContext ?? {
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.5,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Performance profiling was unavailable for this source.",
+      confidence: 0.4
+    },
     recordingIdentity: {
       trackId: input.track.id,
       commonTrackId: input.track.commonTrackId,
@@ -206,7 +219,10 @@ export function buildPassport(input: {
       "Uploaded clip buffers are processed in memory for this MVP and are not written to persistent storage.",
       input.source.processingMode === "reference_fixture"
         ? "The linked performance is preserved as evidence and previewed through its provider; provider audio is not downloaded."
-        : "Source media was supplied directly by the user for this analysis."
+        : "Source media was supplied directly by the user for this analysis.",
+      input.performanceContext?.source === "cyanite"
+        ? "Configured Cyanite analysis contributes derived energy, mood, BPM, and arrangement metadata."
+        : "Performance context uses seeded demo metadata when Cyanite analysis is unavailable."
     ]
   };
 }

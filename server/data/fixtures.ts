@@ -1,4 +1,4 @@
-import type { EventCandidate, TrackCandidate, TranscriptSegment } from "../../shared/types";
+import type { EventCandidate, PerformanceContext, TrackCandidate, TranscriptSegment } from "../../shared/types";
 
 export type CanonicalLine = {
   id: string;
@@ -51,9 +51,18 @@ export const fixtureEvents: EventCandidate[] = [
     id: "fixture-event-cape-town-2026",
     title: "The Signal Keeps at Civic Hall",
     artist: "The Signal Keeps",
+    artistId: "fixture-artist-signal-keeps",
     venue: "Civic Hall",
+    venueId: "fixture-venue-civic-hall",
     city: "Cape Town",
     date: "2026-06-18T20:00:00+02:00",
+    tourName: "City Voltage Tour",
+    lineup: ["The Signal Keeps", "Northline Echo"],
+    setlist: {
+      available: true,
+      songs: ["Signal Fire", "Midnight Atlas", "Rooftop Static", "Afterimage"],
+      sourceUrl: "https://www.jambase.com/"
+    },
     url: "https://www.jambase.com/",
     source: "fixture"
   },
@@ -61,9 +70,14 @@ export const fixtureEvents: EventCandidate[] = [
     id: "fixture-event-berlin-2026",
     title: "The Signal Keeps at Hafen Club",
     artist: "The Signal Keeps",
+    artistId: "fixture-artist-signal-keeps",
     venue: "Hafen Club",
+    venueId: "fixture-venue-hafen-club",
     city: "Berlin",
     date: "2026-06-21T21:00:00+02:00",
+    tourName: "City Voltage Tour",
+    lineup: ["The Signal Keeps"],
+    setlist: { available: false },
     url: "https://www.jambase.com/",
     source: "fixture"
   }
@@ -127,3 +141,17 @@ export const fixtureRecallTranscript: TranscriptSegment[] = [
 ];
 
 export const fixtureClipDuration = 24;
+
+export const fixturePerformanceContext: PerformanceContext = {
+  source: "fixture",
+  status: "fallback",
+  energyLevel: 0.86,
+  bpm: 128,
+  dominantEmotions: ["energetic", "uplifting", "powerful"],
+  instruments: ["electric guitar", "synthesizer", "drums"],
+  valence: 0.58,
+  arousal: 0.9,
+  arrangement: "high_intensity",
+  summary: "High-intensity full-band performance with an energetic, crowd-facing arrangement.",
+  confidence: 0.82
+};
