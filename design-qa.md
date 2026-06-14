@@ -2,7 +2,7 @@
 
 ## Evidence
 
-- Source visual truth: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-remote-attachments\019ec62c-d9c8-7ca3-9696-b57cb9c42c75\e065ee45-3422-43d6-8479-4da70bf18ab8\1-Photo-1.jpg`
+- Source visual truth: `C:\Users\mangezi\OneDrive\Documents\Live-Set Lyric Auditor\.codex-remote-attachments\019ec62c-d9c8-7ca3-9696-b57cb9c42c75\e065ee45-3422-43d6-8479-4da70bf18ab8\1-Photo-1.jpg`
 - Implementation screenshot: unavailable because the in-app Browser is not callable in this session and standalone Playwright requires separate user approval.
 - Viewport target: 576 x 1280 mobile, dark theme, Recall lyric fragment state; Upload clip is the new camera-capture comparison state.
 
