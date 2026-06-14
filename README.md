@@ -66,9 +66,13 @@ npm run dev
 
 Open `http://127.0.0.1:4242`.
 
+For a phone on the same Wi-Fi network, open the computer's LAN address, for example `http://192.168.0.44:4242`. The development server binds to `0.0.0.0` by default so LAN devices can connect; Windows Firewall must allow Node.js on the active network profile.
+
 Optional environment variables:
 
 ```bash
+HOST=0.0.0.0
+PORT=4242
 MUSIXMATCH_API_KEY=
 JAMBASE_API_KEY=
 JAMBASE_API_BASE_URL=https://api.data.jambase.com/v3
@@ -79,7 +83,6 @@ ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 ASR_API_URL=
 ASR_API_KEY=
-PORT=4242
 ```
 
 ## Replit

@@ -159,8 +159,8 @@ if (isProduction) {
   app.use(vite.middlewares);
 }
 
-app.listen(env.port, () => {
-  console.log(`Live-Set Lyric Auditor listening on http://localhost:${env.port}`);
+app.listen(env.port, env.host, () => {
+  console.log(`Live-Set Lyric Auditor listening on http://${env.host}:${env.port}`);
 });
 
 function parseJsonField<T>(value: unknown): T | undefined {

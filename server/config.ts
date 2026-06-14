@@ -5,6 +5,7 @@ const configured = (name: string) => Boolean(process.env[name]?.trim());
 const configuredAny = (...names: string[]) => names.some(configured);
 
 export const env = {
+  host: process.env.HOST?.trim() || "0.0.0.0",
   port: Number(process.env.PORT ?? 4242),
   musixmatchKey: process.env.MUSIXMATCH_API_KEY,
   musixmatchBaseUrl: process.env.MUSIXMATCH_API_BASE_URL ?? "https://api.musixmatch.com/ws/1.1",
