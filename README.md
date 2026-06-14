@@ -4,16 +4,17 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
-Version `0.6.0` adds live-performance intelligence without making the workflow more technical. **Dashboard** explains where to begin through a cinematic hero, partner readiness, Upload clip / Live link / Recall lyric fragment intake, and explicit Musixmatch and JamBase anchors. **Analysis** turns the result into a DAW-inspired review workspace with waveform telemetry, a live-arrangement profiling stage, compliance-safe diff view, JamBase Live Context, Cyanite Performance Context, filterable candidates, approve/reject controls, narration, and reviewed Passport export. Linked provider media stays attributed; seeded demo data keeps the contest flow reliable when external keys are unavailable.
+Version `0.7.0` adds mobile live capture and clearer media-permission recovery. **Upload clip** now pairs file import with a rear-camera **Record live** action for short stage-performance videos, while Recall Rescue explains when mobile microphone recording requires HTTPS and keeps typed recall available. **Analysis** retains the DAW-inspired review workspace, live-arrangement profiling, compliance-safe diff view, JamBase Live Context, Cyanite Performance Context, review controls, narration, and reviewed Passport export.
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.6.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
-2. Use Recall Rescue to speak, sing, or type a remembered lyric fragment and anchor the best Musixmatch candidate.
-3. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
-4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
-5. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before reviewing timestamped candidates.
-6. Generate the optional ElevenLabs narration and export the derived Passport JSON with current approve, reject, and pending review decisions.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.7.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
+3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable.
+4. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
+5. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
+6. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before reviewing timestamped candidates.
+7. Generate the optional ElevenLabs narration and export the derived Passport JSON with current approve, reject, and pending review decisions.
 
 ## API Surfaces
 
@@ -23,7 +24,7 @@ Version `0.6.0` adds live-performance intelligence without making the workflow m
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** configurable Whisper-style endpoint via `ASR_API_URL`.
-- **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue or direct auditing.
+- **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, or recorded sources.
 

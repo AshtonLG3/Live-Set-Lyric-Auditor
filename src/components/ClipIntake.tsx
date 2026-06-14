@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
+  Camera,
   CircleAlert,
   ExternalLink,
   FileAudio,
@@ -39,6 +40,7 @@ type Props = {
 
 export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const excerptInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -70,6 +72,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   );
   const rangeDuration = endSeconds - startSeconds;
   const validRange = rangeDuration > 0 && rangeDuration <= MAX_CLIP_SECONDS;
+  const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
 
   useEffect(() => () => {
     stopMediaStream();
@@ -100,8 +103,8 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   async function startRecording() {
     setRecordingError("");
     setRecallResult(undefined);
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setRecordingError("Microphone recording is unavailable in this browser. Enter the remembered words instead.");
+    if (microphoneUnavailableMessage) {
+      setRecordingError(microphoneUnavailableMessage);
       return;
     }
     try {
@@ -126,7 +129,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
       }, 500);
     } catch (error) {
       stopMediaStream();
-      setRecordingError(error instanceof Error ? error.message : "Microphone permission was not granted.");
+      setRecordingError(getMicrophoneCaptureErrorMessage(error));
     }
   }
 
@@ -181,6 +184,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
     setUploadClip(undefined);
     setFileError("");
     if (uploadInputRef.current) uploadInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
   function removeLinkClip() {
@@ -217,7 +221,12 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
           }}
         >
           {uploadClip ? (
-            <ClipSummary clip={uploadClip} onReplace={() => uploadInputRef.current?.click()} onRemove={removeUploadClip} />
+            <ClipSummary
+              clip={uploadClip}
+              onReplace={() => uploadInputRef.current?.click()}
+              onCapture={() => cameraInputRef.current?.click()}
+              onRemove={removeUploadClip}
+            />
           ) : (
             <>
               <FileAudio className={`mb-3 ${isDragging ? "text-ember" : "text-slate-500"}`} size={30} />
@@ -225,9 +234,15 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               <span className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
                 Audio or video · target {TARGET_CLIP_SECONDS}s · max 40 MB
               </span>
-              <button type="button" className="button-secondary mt-4" onClick={() => uploadInputRef.current?.click()} disabled={fileProcessing}>
-                <Upload size={16} /> Browse files
-              </button>
+              <div className="studio-capture-actions mt-4">
+                <button type="button" className="button-secondary" onClick={() => uploadInputRef.current?.click()} disabled={fileProcessing}>
+                  <Upload size={16} /> Browse files
+                </button>
+                <button type="button" className="button-secondary" onClick={() => cameraInputRef.current?.click()} disabled={fileProcessing}>
+                  <Camera size={16} /> Record live
+                </button>
+              </div>
+              <span className="mt-2 text-xs text-slate-500">Record live opens the rear camera on supported phones.</span>
             </>
           )}
           <input
@@ -235,6 +250,15 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             className="sr-only"
             type="file"
             accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.mov,.webm"
+            onChange={(event) => void importClip(event.target.files?.[0], "upload")}
+          />
+          <input
+            ref={cameraInputRef}
+            className="sr-only"
+            type="file"
+            accept="video/*"
+            capture="environment"
+            aria-label="Record a live performance video"
             onChange={(event) => void importClip(event.target.files?.[0], "upload")}
           />
         </div>
@@ -330,8 +354,9 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
           <div className="flex min-h-32 flex-col items-center justify-center rounded-md border border-slate-200 bg-slate-50 p-4 text-center dark:border-slate-800 dark:bg-slate-900/70">
             <button
               type="button"
-              className={`grid h-14 w-14 place-items-center rounded-full text-white transition ${isRecording ? "bg-ember" : "bg-violetmark hover:bg-[#5e46e8]"}`}
+              className={`grid h-14 w-14 place-items-center rounded-full text-white transition ${isRecording ? "bg-ember" : microphoneUnavailableMessage ? "cursor-not-allowed bg-slate-500 opacity-70" : "bg-violetmark hover:bg-[#5e46e8]"}`}
               onClick={isRecording ? stopRecording : () => void startRecording()}
+              disabled={!isRecording && Boolean(microphoneUnavailableMessage)}
               aria-label={isRecording ? "Stop recording" : "Record remembered lyric"}
               title={isRecording ? "Stop recording" : "Record remembered lyric"}
             >
@@ -341,6 +366,8 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             <p className="mt-1 text-xs text-slate-500">Up to {MAX_RECALL_SECONDS} seconds</p>
             {recordingUrl && <audio className="mt-3 h-9 w-full" controls src={recordingUrl} />}
           </div>
+
+          {microphoneUnavailableMessage && <InlineNotice tone="warning" text={microphoneUnavailableMessage} />}
 
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
@@ -475,7 +502,7 @@ function ModeButton(props: { active: boolean; onClick: () => void; icon: React.R
   );
 }
 
-function ClipSummary({ clip, onReplace, onRemove, compact = false }: { clip: ClipSelection; onReplace: () => void; onRemove: () => void; compact?: boolean }) {
+function ClipSummary({ clip, onReplace, onCapture, onRemove, compact = false }: { clip: ClipSelection; onReplace: () => void; onCapture?: () => void; onRemove: () => void; compact?: boolean }) {
   return (
     <div className={`flex w-full ${compact ? "items-center justify-between gap-3 text-left" : "flex-col items-center text-center"}`}>
       <div className={compact ? "flex min-w-0 items-center gap-3" : "contents"}>
@@ -487,8 +514,9 @@ function ClipSummary({ clip, onReplace, onRemove, compact = false }: { clip: Cli
           </span>
         </div>
       </div>
-      <div className={`${compact ? "shrink-0" : "mt-4"} flex gap-2`}>
+      <div className={`${compact ? "shrink-0" : "studio-clip-summary-actions mt-4"} flex gap-2`}>
         <button type="button" className="button-secondary" onClick={onReplace}><Upload size={16} /> Replace</button>
+        {onCapture && <button type="button" className="button-secondary" onClick={onCapture}><Camera size={16} /> Record another</button>}
         <button type="button" className="icon-button" onClick={onRemove} aria-label="Remove imported clip" title="Remove imported clip"><Trash2 size={17} /></button>
       </div>
     </div>
@@ -508,4 +536,24 @@ function pickRecordingMimeType(): string | undefined {
   if (typeof MediaRecorder.isTypeSupported !== "function") return undefined;
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+export function getMicrophoneUnavailableMessage(): string {
+  if (typeof window !== "undefined" && window.isSecureContext === false) {
+    return "Microphone capture needs HTTPS on mobile. Open this app from an HTTPS address, or enter the remembered words instead. Camera capture remains available under Upload clip.";
+  }
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    return "Microphone recording is unavailable in this browser. Enter the remembered words instead, or use Record live under Upload clip.";
+  }
+  return "";
+}
+
+function getMicrophoneCaptureErrorMessage(error: unknown): string {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    if (error.name === "NotAllowedError") return "Microphone access was blocked. Allow microphone permission in the browser's site settings, then try again.";
+    if (error.name === "NotFoundError") return "No microphone was found on this device. Enter the remembered words instead.";
+    if (error.name === "NotReadableError") return "The microphone is busy in another app. Close the other recording app, then try again.";
+    if (error.name === "SecurityError") return "Microphone capture needs HTTPS on mobile. Open this app from an HTTPS address, then try again.";
+  }
+  return error instanceof Error && error.message ? error.message : "Microphone permission was not granted.";
 }

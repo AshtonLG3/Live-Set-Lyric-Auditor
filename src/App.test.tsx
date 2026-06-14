@@ -6,13 +6,17 @@ vi.mock("./clip", async () => {
   const actual = await vi.importActual<typeof import("./clip")>("./clip");
   return {
     ...actual,
-    inspectClip: vi.fn(async (file: File) => ({ file, durationSeconds: 24, kind: "audio" as const }))
+    inspectClip: vi.fn(async (file: File) => ({
+      file,
+      durationSeconds: 24,
+      kind: file.type.startsWith("video/") ? "video" as const : "audio" as const
+    }))
   };
 });
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.6.0",
+  version: "0.7.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -40,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.6.0",
+    version: "0.7.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -195,7 +199,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.6.0/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.7.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Demo data")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -233,11 +237,36 @@ it("uses remembered words to rescue a track", async () => {
   expect(screen.getByRole("button", { name: /Continue with a live link/i })).toBeInTheDocument();
 });
 
+it("explains that mobile microphone capture needs HTTPS on an insecure origin", async () => {
+  vi.stubGlobal("isSecureContext", false);
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Recall lyric fragment" }));
+
+  expect(screen.getByText(/Microphone capture needs HTTPS on mobile/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Record remembered lyric" })).toBeDisabled();
+  expect(screen.getByText(/Camera capture remains available under Upload clip/i)).toBeInTheDocument();
+});
+
 it("imports a clip through drag and drop", async () => {
   render(<App />);
   const file = new File(["audio"], "concert-snippet.mp3", { type: "audio/mpeg" });
   fireEvent.drop(screen.getByTestId("clip-dropzone"), { dataTransfer: { files: [file] } });
   expect(await screen.findByText("concert-snippet.mp3")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze clip/i })).toBeEnabled();
+});
+
+it("offers rear-camera capture and imports the recorded video", async () => {
+  render(<App />);
+  const cameraInput = screen.getByLabelText("Record a live performance video");
+  expect(cameraInput).toHaveAttribute("accept", "video/*");
+  expect(cameraInput).toHaveAttribute("capture", "environment");
+
+  const file = new File(["video"], "live-stage.mp4", { type: "video/mp4" });
+  fireEvent.change(cameraInput, { target: { files: [file] } });
+
+  expect(await screen.findByText("live-stage.mp4")).toBeInTheDocument();
+  expect(screen.getByText(/video ·/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Record another/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Analyze clip/i })).toBeEnabled();
 });
 

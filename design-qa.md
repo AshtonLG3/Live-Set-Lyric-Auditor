@@ -1,37 +1,41 @@
-# Design QA: Live-Set Lyric Auditor v0.6.0
+# Design QA: Live-Set Lyric Auditor v0.7.0
 
 ## Evidence
 
-- Primary source visual truth: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-cecfe175-5bdc-458d-a681-9151f2f297ac.png`
-- Stitch anchoring reference: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-db023b4f-5edf-4a79-81ca-970516816235.png`
-- Previous passed implementation baseline: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-qa\v050-analysis-desktop-viewport.png`
-- v0.6.0 implementation screenshot: unavailable because both the in-app Browser preview and the Codex Chrome connection stopped accepting a controllable tab during the final capture pass.
+- Source visual truth: `C:\Users\mangezi\OneDrive\Documents\Musicathon\.codex-remote-attachments\019ec62c-d9c8-7ca3-9696-b57cb9c42c75\e065ee45-3422-43d6-8479-4da70bf18ab8\1-Photo-1.jpg`
+- Implementation screenshot: unavailable because the in-app Browser is not callable in this session and standalone Playwright requires separate user approval.
+- Viewport target: 576 x 1280 mobile, dark theme, Recall lyric fragment state; Upload clip is the new camera-capture comparison state.
 
-## Viewport And State
+## Full-View Comparison Evidence
 
-- Intended desktop comparison: 1440 x 1000, completed judge-ready demo, dark and light themes.
-- Intended mobile comparison: 390 x 844, completed judge-ready demo, dark theme.
-- Runtime verification succeeded through the API: the completed Passport reports v0.6.0, all seven processing stages, JamBase setlist position 2 of 4, and the seeded Cyanite performance profile.
+- The source shows the existing mobile header, three intake modes, Recall Rescue card, warning copy, track anchor, and fixed bottom navigation.
+- No current rendered screenshot could be captured, so typography, spacing, colors, and responsive layout cannot be signed off from visual evidence.
+
+## Focused Region Comparison Evidence
+
+- Target region: Clip Intake mode selector, Upload clip action area, Recall Rescue warning, and top-bar version/theme controls.
+- Focused comparison is blocked by the same missing implementation capture.
 
 ## Findings
 
-- [P1] Final visual comparison could not be completed.
-  Location: Analysis workspace, Live Context and Performance Context panels.
-  Evidence: the source visuals and previous passed baseline are available, but no current rendered screenshot could be captured after the browser-control connection failed.
-  Impact: typography, spacing, overflow, and responsive stacking for the new panels cannot be signed off from rendered evidence.
-  Fix: reconnect either the in-app Browser or Codex Chrome integration, capture desktop dark/light and mobile completed states, compare them with the source visual in a combined image, and resolve any visible P0-P2 drift.
+- [P1] Current mobile visual comparison is blocked.
+  Location: Clip Intake on the mobile Dashboard.
+  Evidence: the source screenshot is available, but there is no rendered v0.7.0 screenshot for a combined comparison.
+  Impact: camera-button wrapping, warning density, and small-screen spacing cannot be visually approved.
+  Fix: capture the app at the source viewport, compare both states together, and resolve any P0-P2 drift.
 
 ## Verified Outside Visual QA
 
-- Typecheck, lint, 20 automated tests, production build, and the fixture analysis API pass.
-- UI tests assert the v0.6.0 menu, Cyanite integration status, new profiling stage, Live Context, Performance Context, setlist position, and energy value.
-- Responsive CSS stacks the context panels at 767px and the three-column performance readout at 420px.
+- Typecheck, lint, 22 automated tests, and the production build pass.
+- Tests verify the visible v0.7.0 menu version, dark/light theme toggle, rear-camera `capture="environment"` input, camera-video import, and HTTPS-required microphone state.
+- The camera action reuses the existing file inspection and analysis path, including duration, size, type, replace, and remove behavior.
 
-## Patches Made Since v0.5.0
+## Patches Made Since v0.6.0
 
-- Added a compact Live Context panel using existing rack-panel and data-list patterns.
-- Added a compact Performance Context panel with energy, tempo, arrangement, mood tags, and an honest live/demo provider label.
-- Replaced the speculative Vocal Texture metric with the derived Live Energy metric.
-- Added Cyanite to partner readiness and the pipeline timeline.
+- Added Browse files and Record live as complementary Upload clip actions.
+- Added rear-camera capture for short stage-performance video on supported phones.
+- Added secure-context microphone diagnostics and permission-specific recovery messages.
+- Added responsive wrapping for camera and replacement controls.
+- Bumped visible and package version metadata to v0.7.0.
 
 final result: blocked
