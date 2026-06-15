@@ -7,6 +7,10 @@ export default defineConfig({
     outDir: "dist/client",
     emptyOutDir: true
   },
+  server: {
+    host: "0.0.0.0",
+    allowedHosts: [".replit.dev"]
+  },
   test: {
     globals: true,
     environment: "jsdom",

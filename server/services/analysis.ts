@@ -1,4 +1,4 @@
-import type { AnalysisJob, ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate } from "../../shared/types";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
@@ -242,12 +242,15 @@ export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Pr
   return updated;
 }
 
-export async function createNarration(jobId: string) {
+export async function createNarration(jobId: string, manualVariants: VariantCandidate[] = []) {
   const job = jobs.get(jobId);
   if (!job?.passport) {
     throw new Error("Analysis job is not complete.");
   }
-  return narratePassport(jobId, job.passport);
+  const passport = manualVariants.length
+    ? { ...job.passport, variants: [...job.passport.variants, ...manualVariants.slice(0, 25)] }
+    : job.passport;
+  return narratePassport(jobId, passport);
 }
 
 async function resolveTrack(

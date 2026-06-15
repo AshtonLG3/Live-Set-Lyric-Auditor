@@ -137,6 +137,7 @@ export type VariantType =
   | "repeated_hook"
   | "extension"
   | "city_shoutout"
+  | "crowd_response"
   | "adlib"
   | "timing_drift"
   | "uncertain";
@@ -148,11 +149,14 @@ export type VariantCandidate = {
   end: number;
   liveText: string;
   canonicalAlignmentReference: string;
+  canonicalExcerpt?: string;
   confidence: number;
   impactNote: string;
   recommendedAction: string;
   translationRisk: "low" | "medium" | "high";
   severity: "low" | "medium" | "high";
+  evidenceSource?: "asr_alignment" | "manual_entry";
+  reviewerNote?: string;
 };
 
 export type CanonicalSource = "richsync" | "subtitles" | "lyrics" | "metadata-only" | "fixture";

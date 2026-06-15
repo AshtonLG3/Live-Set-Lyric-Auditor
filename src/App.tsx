@@ -13,7 +13,7 @@ import {
   Sun,
 } from "lucide-react";
 import { createNarration, getAnalysis, getHealth, reanchorAnalysis, searchEvents, searchTracks, startAnalysis } from "./api";
-import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
+import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
@@ -39,6 +39,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [narration, setNarration] = useState<NarrationResponse | null>(null);
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecisions>({});
+  const [manualVariants, setManualVariants] = useState<VariantCandidate[]>([]);
   const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
 
   useEffect(() => {
@@ -120,6 +121,7 @@ export default function App() {
     setError("");
     setNarration(null);
     setReviewDecisions({});
+    setManualVariants([]);
     setWorkspace("studio");
     setActiveSection("analysis-timeline");
     try {
@@ -145,7 +147,7 @@ export default function App() {
   async function handleNarration() {
     if (!job?.id || !job.passport) return;
     setError("");
-    setNarration(await createNarration(job.id));
+    setNarration(await createNarration(job.id, manualVariants));
   }
 
   async function handleCorrectTrack(track: TrackCandidate) {
@@ -175,12 +177,18 @@ export default function App() {
     });
   }
 
+  function addManualVariant(variant: VariantCandidate) {
+    setManualVariants((current) => [...current, variant]);
+    setReviewDecisions((current) => ({ ...current, [variant.id]: "approved" }));
+  }
+
   function startNewSession() {
     setWorkspace("session");
     setActiveSection("clip-intake");
     setJob(null);
     setNarration(null);
     setReviewDecisions({});
+    setManualVariants([]);
     setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -198,12 +206,14 @@ export default function App() {
 
   function exportPassport() {
     if (!job?.passport) return;
-    const review = job.passport.variants.map((variant) => ({
+    const variants = [...job.passport.variants, ...manualVariants];
+    const review = variants.map((variant) => ({
       variantId: variant.id,
       decision: reviewDecisions[variant.id] ?? "pending"
     }));
     const reviewedPassport = {
       ...job.passport,
+      variants,
       review: {
         exportedAt: new Date().toISOString(),
         status: review.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
@@ -261,8 +271,8 @@ export default function App() {
             ) : (
               <>
                 <SideNavButton label="Timeline" icon={<Activity size={19} />} active={activeSection === "analysis-timeline"} onClick={() => navigate("studio", "analysis-timeline")} />
-                <SideNavButton label="Passport Preview" icon={<FileText size={19} />} active={activeSection === "studio-passport"} onClick={() => navigate("studio", "studio-passport")} />
                 <SideNavButton label="Variants" icon={<MessageSquareDiff size={19} />} active={activeSection === "variant-candidates"} onClick={() => navigate("studio", "variant-candidates")} />
+                <SideNavButton label="Diff Detail" icon={<FileText size={19} />} active={activeSection === "studio-passport"} onClick={() => navigate("studio", "studio-passport")} />
               </>
             )}
           </nav>
@@ -300,7 +310,9 @@ export default function App() {
               narration={narration}
               error={error}
               decisions={reviewDecisions}
+              manualVariants={manualVariants}
               onDecision={decideVariant}
+              onAddManualVariant={addManualVariant}
               onNarrate={handleNarration}
               onCorrectTrack={handleCorrectTrack}
             />

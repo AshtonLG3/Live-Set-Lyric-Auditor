@@ -24,7 +24,7 @@ describe("alignment pipeline", () => {
     expect(variants.filter((variant) => variant.type === "skipped_line")).toHaveLength(fixtureCanonicalLines.length);
   });
 
-  it("builds a passport without exposing canonical line text", () => {
+  it("builds a passport with cached review excerpts but without storing canonicalLines", () => {
     const passport = buildPassport({
       id: "job-1",
       track: fixtureTracks[0],
@@ -47,9 +47,8 @@ describe("alignment pipeline", () => {
     expect(passport.variants.length).toBeGreaterThan(2);
     expect(passport.performanceContext.arrangement).toBe("uncertain");
     expect(passport.liveContext).toBeNull();
+    expect(passport.variants.some((variant) => variant.canonicalExcerpt)).toBe(true);
     expect(JSON.stringify(passport)).not.toContain("canonicalLines");
-    for (const line of fixtureCanonicalLines) {
-      expect(canonicalReferences).not.toContain(line.text);
-    }
+    for (const line of fixtureCanonicalLines) expect(canonicalReferences).not.toContain(line.text);
   });
 });

@@ -98,11 +98,13 @@ export function classifyVariants(
       canonicalAlignmentReference: alignment.canonical
         ? `${alignment.canonical.id} (${Math.round(alignment.similarity * 100)}% token overlap)`
         : "No stable canonical alignment",
+      canonicalExcerpt: alignment.canonical ? trimSnippet(alignment.canonical.text) : undefined,
       confidence,
       impactNote: impactNote(type, confidence),
       recommendedAction: recommendedAction(type),
       translationRisk: translationRisk(type),
-      severity: confidence >= 0.78 ? "high" : confidence >= 0.58 ? "medium" : "low"
+      severity: confidence >= 0.78 ? "high" : confidence >= 0.58 ? "medium" : "low",
+      evidenceSource: "asr_alignment"
     });
   });
 
@@ -115,11 +117,13 @@ export function classifyVariants(
       end: line.end,
       liveText: "[not detected in live vocal]",
       canonicalAlignmentReference: `${line.id} (canonical line absent from aligned ASR)`,
+      canonicalExcerpt: trimSnippet(line.text),
       confidence: round(0.58 * sourceCoverage),
       impactNote: "Potential caption or archive gap; queue for human review before marking as a confirmed omission.",
       recommendedAction: "Review live-only caption coverage and confirm the omission.",
       translationRisk: "high",
-      severity: "medium"
+      severity: "medium",
+      evidenceSource: "asr_alignment"
     });
   });
 
@@ -217,7 +221,10 @@ export function buildPassport(input: {
     variants,
     complianceNotes: [
       "Musixmatch lyric/subtitle content is used only as an in-memory analysis reference.",
-      "The passport stores derived variant metadata, timestamps, and confidence notes only.",
+      input.restricted
+        ? "Canonical lyric display is restricted for this track; reference panels remain metadata-only."
+        : "Short cached reference excerpts are included for reviewer display under the configured lyric terms.",
+      "The passport stores variant metadata, timestamps, reviewer notes, and cached excerpts needed for audit review.",
       "Uploaded clip buffers are processed in memory for this MVP and are not written to persistent storage.",
       input.source.processingMode === "reference_fixture"
         ? "The linked performance is preserved as evidence and previewed through its provider; provider audio is not downloaded."
@@ -274,6 +281,7 @@ function scoreVariantConfidence(asr: number, similarity: number, sourceCoverage:
     repeated_hook: 0.06,
     extension: 0.03,
     city_shoutout: 0.1,
+    crowd_response: 0.07,
     adlib: -0.02,
     timing_drift: 0.02,
     uncertain: -0.18
@@ -290,6 +298,7 @@ function impactNote(type: VariantType, confidence: number): string {
     repeated_hook: "repeated hook or phrase that may change caption timing and fan-facing summaries.",
     extension: "extended phrase or added tag that may require live-only caption coverage.",
     city_shoutout: "location-specific live change useful for event metadata and fan experiences.",
+    crowd_response: "audience response or call-and-response moment missing from automated transcription.",
     adlib: "unmatched vocal phrase likely outside the canonical lyric reference.",
     timing_drift: "timing offset that can affect subtitle alignment.",
     uncertain: "weak signal that should remain in review rather than automation."
@@ -304,6 +313,7 @@ function recommendedAction(type: VariantType): string {
     repeated_hook: "Extend live subtitle timing; canonical lyric can remain unchanged.",
     extension: "Add a live-only caption segment or alternate-version note.",
     city_shoutout: "Attach event-specific metadata; no canonical lyric edit required.",
+    crowd_response: "Add as an audience-response caption or live-performance annotation.",
     adlib: "Mark as live ad-lib after human review.",
     timing_drift: "Review RichSync timing against the performance tempo.",
     uncertain: "Keep in the review queue and avoid automated edits."
@@ -313,7 +323,7 @@ function recommendedAction(type: VariantType): string {
 
 function translationRisk(type: VariantType): VariantCandidate["translationRisk"] {
   if (type === "substitution" || type === "skipped_line") return "high";
-  if (type === "city_shoutout" || type === "extension" || type === "adlib") return "medium";
+  if (type === "city_shoutout" || type === "crowd_response" || type === "extension" || type === "adlib") return "medium";
   return "low";
 }
 
@@ -352,6 +362,7 @@ function structureLabel(type: VariantType): string {
     repeated_hook: "Hook repeat",
     extension: "Extended phrase",
     city_shoutout: "City shoutout",
+    crowd_response: "Crowd response",
     adlib: "Ad-lib",
     timing_drift: "Tempo drift",
     uncertain: "Uncertain section"
@@ -360,15 +371,21 @@ function structureLabel(type: VariantType): string {
 }
 
 function summarizePassport(variants: VariantCandidate[], overall: number): string {
-  const prominent = variants
+  const prominent = summarizeVariantTypes(variants
     .filter((variant) => variant.confidence >= 0.58)
-    .slice(0, 3)
-    .map((variant) => variant.type.replace("_", " "))
-    .join(", ");
+    .slice(0, 6));
   if (!prominent) {
     return `No strong live lyric variants detected. Overall confidence ${Math.round(overall * 100)}%.`;
   }
   return `Detected ${variants.length} live variant candidates, led by ${prominent}. Overall confidence ${Math.round(overall * 100)}%.`;
+}
+
+function summarizeVariantTypes(variants: VariantCandidate[]): string {
+  const counts = new Map<VariantType, number>();
+  variants.forEach((variant) => counts.set(variant.type, (counts.get(variant.type) ?? 0) + 1));
+  return [...counts.entries()]
+    .map(([type, count]) => count === 1 ? type.replace("_", " ") : `${count} ${type.replace("_", " ")} candidates`)
+    .join(", ");
 }
 
 function containsRepeatedPhrase(tokens: string[]): boolean {

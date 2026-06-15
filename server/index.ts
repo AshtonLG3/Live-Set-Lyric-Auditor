@@ -176,7 +176,7 @@ app.post("/api/analyze/:jobId/reanchor", async (req, res, next) => {
 
 app.post("/api/narrate/:jobId", async (req, res, next) => {
   try {
-    res.json(await createNarration(req.params.jobId));
+    res.json(await createNarration(req.params.jobId, Array.isArray(req.body?.manualVariants) ? req.body.manualVariants : []));
   } catch (error) {
     next(error);
   }
@@ -198,7 +198,7 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 if (isProduction) {
   const clientDist = path.resolve(process.cwd(), "dist/client");
   app.use(express.static(clientDist));
-  app.get("*", (_req, res) => {
+  app.get(/.*/, (_req, res) => {
     res.sendFile(path.join(clientDist, "index.html"));
   });
 } else {

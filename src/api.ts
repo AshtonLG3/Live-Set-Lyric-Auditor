@@ -1,4 +1,4 @@
-import type { AnalysisJob, ClipSource, EventCandidate, HealthResponse, NarrationResponse, RecallRescueResponse, TrackCandidate } from "../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, HealthResponse, NarrationResponse, RecallRescueResponse, TrackCandidate, VariantCandidate } from "../shared/types";
 
 export async function getHealth(): Promise<HealthResponse> {
   return fetchJson("/api/health");
@@ -72,8 +72,12 @@ export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Pr
   });
 }
 
-export async function createNarration(jobId: string): Promise<NarrationResponse> {
-  return fetchJson(`/api/narrate/${jobId}`, { method: "POST" });
+export async function createNarration(jobId: string, manualVariants: VariantCandidate[] = []): Promise<NarrationResponse> {
+  return fetchJson(`/api/narrate/${jobId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ manualVariants })
+  });
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

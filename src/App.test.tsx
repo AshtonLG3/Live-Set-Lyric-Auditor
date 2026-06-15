@@ -132,11 +132,13 @@ const completeJob: AnalysisJob = {
         end: 8,
         liveText: "Cape Town carry this chorus",
         canonicalAlignmentReference: "L2",
+        canonicalExcerpt: "Carry this chorus through the avenue",
         confidence: 0.84,
         impactNote: "Reviewable",
         recommendedAction: "Attach event-specific metadata.",
         translationRisk: "medium",
-        severity: "high"
+        severity: "high",
+        evidenceSource: "asr_alignment"
       }
     ],
     complianceNotes: ["Derived metadata only."]
@@ -296,7 +298,7 @@ it("runs the seeded demo and renders a passport", async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
-  expect(screen.getByRole("heading", { name: "Variant Candidates" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument();
   const variantsSectionLink = screen.getByRole("button", { name: "Variants" });
   fireEvent.click(variantsSectionLink);
   expect(variantsSectionLink).toHaveAttribute("aria-current", "location");
@@ -331,6 +333,22 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(screen.getByText(/1 approved, 0 rejected, and 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
+}, 40000);
+
+it("adds a missed live moment manually from playback review", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("button", { name: /Add missed moment/i })).toBeEnabled());
+
+  fireEvent.click(screen.getByRole("button", { name: /Add missed moment/i }));
+  fireEvent.change(screen.getByLabelText("Manual live content"), { target: { value: "fan shouts: better!" } });
+  fireEvent.change(screen.getByLabelText("Reference excerpt or anchor"), { target: { value: "near: How you broke my heart" } });
+  fireEvent.click(screen.getByRole("button", { name: /Add live moment/i }));
+
+  expect((await screen.findAllByText("fan shouts: better!")).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("near: How you broke my heart").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
 }, 40000);
 
 it("surfaces a polling failure instead of leaving analysis busy", async () => {
