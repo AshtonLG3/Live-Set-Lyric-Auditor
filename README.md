@@ -4,11 +4,11 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
-Version `0.7.0` adds mobile live capture and clearer media-permission recovery. **Upload clip** now pairs file import with a rear-camera **Record live** action for short stage-performance videos, while Recall Rescue explains when mobile microphone recording requires HTTPS and keeps typed recall available. **Analysis** retains the DAW-inspired review workspace, live-arrangement profiling, compliance-safe diff view, JamBase Live Context, Cyanite Performance Context, review controls, narration, and reviewed Passport export.
+Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch credentials activate the live catalog adapter without exposing secrets in source control. Mobile live capture, secure media-permission guidance, and the existing analysis workflow remain unchanged.
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.7.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.8.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable.
 4. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
@@ -84,6 +84,8 @@ ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 ASR_API_URL=
 ASR_API_KEY=
 ```
+
+Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
 
 ## Replit
 

@@ -1,12 +1,12 @@
 {
   "name": "live-set-lyric-auditor",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server/index.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "build": "vite build && tsc -p tsconfig.server.json --noEmit",
-    "start": "cross-env NODE_ENV=production tsx server/index.ts",
+    "start": "cross-env NODE_ENV=production node --env-file-if-exists=.env --import tsx server/index.ts",
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"

@@ -1,4 +1,4 @@
-# Design QA: Live-Set Lyric Auditor v0.7.0
+# Design QA: Live-Set Lyric Auditor v0.8.0
 
 ## Evidence
 
@@ -20,22 +20,23 @@
 
 - [P1] Current mobile visual comparison is blocked.
   Location: Clip Intake on the mobile Dashboard.
-  Evidence: the source screenshot is available, but there is no rendered v0.7.0 screenshot for a combined comparison.
+  Evidence: the source screenshot is available, but there is no rendered v0.8.0 screenshot for a combined comparison.
   Impact: camera-button wrapping, warning density, and small-screen spacing cannot be visually approved.
   Fix: capture the app at the source viewport, compare both states together, and resolve any P0-P2 drift.
 
 ## Verified Outside Visual QA
 
 - Typecheck, lint, 22 automated tests, and the production build pass.
-- Tests verify the visible v0.7.0 menu version, dark/light theme toggle, rear-camera `capture="environment"` input, camera-video import, and HTTPS-required microphone state.
+- Tests verify the visible v0.8.0 menu version, dark/light theme toggle, rear-camera `capture="environment"` input, camera-video import, and HTTPS-required microphone state.
 - The camera action reuses the existing file inspection and analysis path, including duration, size, type, replace, and remove behavior.
 
-## Patches Made Since v0.6.0
+## Patches Made Since v0.7.0
 
 - Added Browse files and Record live as complementary Upload clip actions.
 - Added rear-camera capture for short stage-performance video on supported phones.
 - Added secure-context microphone diagnostics and permission-specific recovery messages.
 - Added responsive wrapping for camera and replacement controls.
-- Bumped visible and package version metadata to v0.7.0.
+- Added automatic ignored `.env` loading for development and production startup.
+- Bumped visible and package version metadata to v0.8.0.
 
 final result: blocked
