@@ -74,7 +74,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     );
 
     setStep(jobId, "transcribe", "running");
-    const transcription = await transcribeLiveVocal(input.file);
+    const transcription = await transcribeLiveVocal(input.file, vocal.vocalUrl);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
 
     setStep(jobId, "anchor", "running");

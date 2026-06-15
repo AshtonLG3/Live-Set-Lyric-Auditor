@@ -19,11 +19,11 @@ Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch c
 ## API Surfaces
 
 - **Musixmatch:** `track.search`, lyrics-rescue search, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
-- **LALAL.AI:** `/upload/` and `/split/` using the `X-License-Key` header.
+- **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. Purchased minutes are the API processing balance.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
-- **ASR:** configurable Whisper-style endpoint via `ASR_API_URL`.
+- **ASR:** configurable Whisper-style endpoint via `ASR_API_URL`; when LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, or recorded sources.
@@ -79,6 +79,9 @@ JAMBASE_API_BASE_URL=https://api.data.jambase.com/v3
 CYANITE_API_TOKEN=
 CYANITE_API_BASE_URL=https://api.cyanite.ai/graphql
 LALAL_LICENSE_KEY=
+LALAL_API_BASE_URL=https://www.lalal.ai/api/v1
+LALAL_POLL_INTERVAL_MS=3000
+LALAL_POLL_TIMEOUT_MS=180000
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 ASR_API_URL=

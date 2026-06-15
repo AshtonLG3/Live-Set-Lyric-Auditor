@@ -16,22 +16,35 @@ type ExternalSegment = {
   avg_logprob?: number;
 };
 
-export async function transcribeLiveVocal(file?: Express.Multer.File): Promise<TranscriptionResult> {
-  return transcribe(file, fixtureTranscript);
+export async function transcribeLiveVocal(file?: Express.Multer.File, vocalUrl?: string): Promise<TranscriptionResult> {
+  return transcribe(file, fixtureTranscript, vocalUrl);
 }
 
 export async function transcribeRecallFragment(file?: Express.Multer.File): Promise<TranscriptionResult> {
   return transcribe(file, fixtureRecallTranscript);
 }
 
-async function transcribe(file: Express.Multer.File | undefined, fixtureSegments: TranscriptSegment[]): Promise<TranscriptionResult> {
-  if (!env.asrApiUrl || !file) {
+async function transcribe(
+  file: Express.Multer.File | undefined,
+  fixtureSegments: TranscriptSegment[],
+  vocalUrl?: string
+): Promise<TranscriptionResult> {
+  if (!env.asrApiUrl || (!file && !vocalUrl)) {
     return { source: "fixture", segments: fixtureSegments };
   }
 
   try {
     const formData = new FormData();
-    formData.append("file", new Blob([toBlobPart(file.buffer)], { type: file.mimetype || "audio/mpeg" }), file.originalname);
+    if (vocalUrl) {
+      const vocalResponse = await fetch(vocalUrl);
+      if (!vocalResponse.ok) {
+        throw new Error(`Separated vocal download failed with ${vocalResponse.status}`);
+      }
+      const vocalBlob = await vocalResponse.blob();
+      formData.append("file", vocalBlob, "lalal-vocals.mp3");
+    } else if (file) {
+      formData.append("file", new Blob([toBlobPart(file.buffer)], { type: file.mimetype || "audio/mpeg" }), file.originalname);
+    }
     const response = await fetch(env.asrApiUrl, {
       method: "POST",
       headers: env.asrApiKey ? { Authorization: `Bearer ${env.asrApiKey}` } : undefined,

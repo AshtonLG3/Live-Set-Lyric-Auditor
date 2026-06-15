@@ -15,6 +15,8 @@ export const env = {
   cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
   lalalKey: process.env.LALAL_LICENSE_KEY,
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
+  lalalPollIntervalMs: Math.max(2_000, Number(process.env.LALAL_POLL_INTERVAL_MS ?? 3_000)),
+  lalalPollTimeoutMs: Math.max(10_000, Number(process.env.LALAL_POLL_TIMEOUT_MS ?? 180_000)),
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
   elevenlabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
   asrApiUrl: process.env.ASR_API_URL,
@@ -36,7 +38,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configured("LALAL_LICENSE_KEY"),
       mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
       detail: configured("LALAL_LICENSE_KEY")
-        ? "Vocal isolation adapter will attempt live splitting."
+        ? "Activation key configured; upload, vocal splitting, and result polling enabled."
         : "Using fixture vocal isolation result."
     },
     {
