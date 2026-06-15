@@ -30,22 +30,24 @@ async function transcribe(
   fixtureSegments: TranscriptSegment[],
   vocalUrl?: string
 ): Promise<TranscriptionResult> {
-  if ((!env.replicateToken && !env.asrApiUrl) || (!file && !vocalUrl)) {
+  if (!file && !vocalUrl) {
     return { source: "fixture", segments: fixtureSegments };
   }
 
+  if (!env.replicateToken && !env.asrApiUrl) {
+    throw new Error("No live speech-to-text provider is configured for this clip.");
+  }
+
+  const errors: string[] = [];
   if (env.replicateToken) {
-    const replicated = await transcribeWithReplicate(file, vocalUrl);
-    if (replicated.length > 0) {
-      return { source: "replicate", segments: replicated };
+    try {
+      return { source: "replicate", segments: await transcribeWithReplicate(file, vocalUrl) };
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "Replicate transcription failed");
     }
   }
 
-  if (!env.asrApiUrl) {
-    return { source: "fixture", segments: fixtureSegments };
-  }
-
-  try {
+  if (env.asrApiUrl) try {
     const formData = new FormData();
     if (vocalUrl) {
       const vocalResponse = await fetch(vocalUrl);
@@ -81,10 +83,15 @@ async function transcribe(
         };
       })
       .filter((segment): segment is TranscriptSegment => segment !== null);
-    return segments.length > 0 ? { source: "external", segments } : { source: "fixture", segments: fixtureSegments };
-  } catch {
-    return { source: "fixture", segments: fixtureSegments };
+    if (segments.length === 0) {
+      throw new Error("External ASR returned no transcript segments");
+    }
+    return { source: "external", segments };
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "External ASR transcription failed");
   }
+
+  throw new Error(`Live transcription failed: ${errors.join("; ")}`);
 }
 
 async function transcribeWithReplicate(
@@ -101,6 +108,7 @@ async function transcribeWithReplicate(
     .map((version) => version.trim())
     .filter((version, index, values) => version && values.indexOf(version) === index);
 
+  const errors: string[] = [];
   for (const version of versions) {
     try {
       const output = await replicate.run(version as `${string}/${string}:${string}`, {
@@ -110,12 +118,13 @@ async function transcribeWithReplicate(
       if (segments.length > 0) {
         return segments;
       }
-    } catch {
-      // Try the pinned fallback before returning to the fixture-safe path.
+      errors.push(`${version} returned no transcript`);
+    } catch (error) {
+      errors.push(`${version}: ${error instanceof Error ? error.message : "request failed"}`);
     }
   }
 
-  return [];
+  throw new Error(`Replicate Whisper failed: ${errors.join("; ")}`);
 }
 
 function replicateInput(version: string, audio: string | Buffer): Record<string, unknown> {

@@ -74,6 +74,15 @@ describe("ASR adapter", () => {
     });
   });
 
+  it("fails real media instead of substituting the fixture transcript", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    runMock.mockRejectedValue(new Error("provider unavailable"));
+
+    const { transcribeLiveVocal } = await import("./asr");
+
+    await expect(transcribeLiveVocal(audioFile())).rejects.toThrow("Live transcription failed");
+  });
+
   it("sends the separated LALAL vocal stem to external ASR", async () => {
     vi.stubEnv("ASR_API_URL", "https://asr.example/transcribe");
     const fetchMock = vi.fn()

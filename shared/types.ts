@@ -111,7 +111,7 @@ export type SourceProvider = "youtube" | "vimeo" | "soundcloud" | "direct_media"
 
 export type ClipSource = {
   kind: "upload" | "live_link" | "recall_recording" | "fixture";
-  processingMode: "uploaded_media" | "authorized_excerpt" | "reference_fixture" | "recall_recording" | "fixture";
+  processingMode: "uploaded_media" | "authorized_excerpt" | "provider_excerpt" | "reference_fixture" | "recall_recording" | "fixture";
   provider?: SourceProvider;
   url?: string;
   startSeconds?: number;

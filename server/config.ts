@@ -24,6 +24,8 @@ export const env = {
     ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
   replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
     ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
+  pythonCommand: process.env.PYTHON_COMMAND?.trim() || "python",
+  youtubeExtractTimeoutMs: Math.max(30_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 120_000)),
   asrApiUrl: process.env.ASR_API_URL,
   asrApiKey: process.env.ASR_API_KEY
 };

@@ -110,7 +110,7 @@ export default function App() {
         useFixture,
         source: useFixture ? { kind: "fixture", processingMode: "fixture" } : input?.source,
         track: input?.autoMatch === false ? selectedTrack : undefined,
-        event: selectedEvent ?? null,
+        event: input?.autoMatch === false ? selectedEvent ?? null : null,
         trackQuery,
         eventCity,
         eventDate

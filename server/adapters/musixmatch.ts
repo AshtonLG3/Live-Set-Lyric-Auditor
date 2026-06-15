@@ -49,7 +49,37 @@ export async function searchTracks(query: string): Promise<TrackCandidate[]> {
 }
 
 export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate | undefined> {
-  return (await searchTracksByLyrics(segments))[0];
+  if (!env.musixmatchKey) {
+    return undefined;
+  }
+
+  const phrases = buildIdentificationPhrases(segments);
+  const resultSets = await Promise.all(phrases.map((phrase) =>
+    searchMusixmatch(new URLSearchParams({ q_lyrics: phrase, f_has_lyrics: "1" }))
+  ));
+  const populatedSets = resultSets.filter((tracks) => tracks.length > 0);
+  const scores = new Map<string, { track: TrackCandidate; occurrences: number; score: number }>();
+
+  for (const tracks of populatedSets) {
+    tracks.forEach((track, index) => {
+      const current = scores.get(track.id) ?? { track, occurrences: 0, score: 0 };
+      current.occurrences += 1;
+      current.score += Math.max(1, 6 - index);
+      scores.set(track.id, current);
+    });
+  }
+
+  const ranked = [...scores.values()].sort((left, right) =>
+    right.occurrences - left.occurrences || right.score - left.score || (right.track.rating ?? 0) - (left.track.rating ?? 0)
+  );
+  const best = ranked[0];
+  if (!best) {
+    return undefined;
+  }
+  if (populatedSets.length > 1 && best.occurrences < 2) {
+    return undefined;
+  }
+  return best.track;
 }
 
 export async function searchTracksByLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate[]> {
@@ -122,12 +152,12 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
     };
   } catch {
     return {
-      lines: fixtureCanonicalLines,
-      source: "fixture",
-      sourceCoverage: 0.42,
-      restricted: false,
+      lines: [],
+      source: "metadata-only",
+      sourceCoverage: 0.22,
+      restricted: true,
       language: track.language,
-      copyright: "Live Musixmatch reference unavailable; fixture reference used."
+      copyright: "Live Musixmatch lyric reference unavailable; no demo lyrics were substituted."
     };
   }
 }
@@ -148,8 +178,24 @@ async function searchMusixmatch(query: URLSearchParams): Promise<TrackCandidate[
       .map((item) => mapTrack(item.track))
       .filter((track): track is TrackCandidate => track !== null);
   } catch {
-    return fixtureTracks;
+    return [];
   }
+}
+
+function buildIdentificationPhrases(segments: TranscriptSegment[]): string[] {
+  const strongSegments = [...segments]
+    .filter((segment) => segment.text.trim().split(/\s+/).length >= 4)
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, 3)
+    .map((segment) => segment.text.trim().split(/\s+/).slice(0, 14).join(" "));
+  const combined = segments
+    .map((segment) => segment.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .slice(0, 18)
+    .join(" ");
+  return [...new Set([combined, ...strongSegments].filter(Boolean))].slice(0, 3);
 }
 
 function mapTrack(track?: RawTrack): TrackCandidate | null {

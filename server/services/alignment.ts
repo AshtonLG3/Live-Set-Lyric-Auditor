@@ -219,6 +219,8 @@ export function buildPassport(input: {
       "Uploaded clip buffers are processed in memory for this MVP and are not written to persistent storage.",
       input.source.processingMode === "reference_fixture"
         ? "The linked performance is preserved as evidence and previewed through its provider; provider audio is not downloaded."
+        : input.source.processingMode === "provider_excerpt"
+          ? "Only the selected provider time range was temporarily extracted for analysis and deleted immediately after loading into memory."
         : "Source media was supplied directly by the user for this analysis.",
       input.performanceContext?.source === "cyanite"
         ? "Configured Cyanite analysis contributes derived energy, mood, BPM, and arrangement metadata."

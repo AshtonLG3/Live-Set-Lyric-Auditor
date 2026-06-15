@@ -5,7 +5,8 @@ import { analyzePerformance } from "../adapters/cyanite";
 import { narratePassport } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
-import { getCanonicalReference, identifyTrackFromLyrics, searchTracks, searchTracksByLyrics } from "../adapters/musixmatch";
+import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
+import { extractYouTubeExcerpt } from "../adapters/youtube";
 import { jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 
@@ -49,23 +50,27 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     updateJob(jobId, (job) => ({ ...job, status: "running" }));
 
     setStep(jobId, "ingest", "running");
+    const analysisFile = await resolveAnalysisFile(input);
+    const effectiveSource = analysisFile && !input.file && input.source?.kind === "live_link"
+      ? { ...input.source, processingMode: "provider_excerpt" as const }
+      : input.source;
     setStep(
       jobId,
       "ingest",
       "complete",
-      input.file
-        ? `${input.file.originalname} · ${formatBytes(input.file.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
+      analysisFile
+        ? `${analysisFile.originalname} · ${formatBytes(analysisFile.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
         : input.source?.kind === "live_link"
-          ? `${providerLabel(input.source)} reference · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s · fixture audio fallback`
+          ? `${providerLabel(input.source)} reference · no processable excerpt`
           : "Seeded fixture clip loaded."
     );
 
     setStep(jobId, "isolate", "running");
-    const vocal = await isolateVocals(input.file);
+    const vocal = await isolateVocals(analysisFile);
     setStep(jobId, "isolate", "complete", vocal.detail);
 
     setStep(jobId, "profile", "running");
-    const performanceContext = await analyzePerformance({ file: input.file, source: input.source });
+    const performanceContext = await analyzePerformance({ file: analysisFile, source: effectiveSource });
     setStep(
       jobId,
       "profile",
@@ -74,7 +79,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     );
 
     setStep(jobId, "transcribe", "running");
-    const transcription = await transcribeLiveVocal(input.file, vocal.vocalUrl);
+    const transcription = await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
 
     setStep(jobId, "anchor", "running");
@@ -105,7 +110,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       id: jobId,
       track,
       event,
-      filename: input.file?.originalname ?? sourceFilename(input.source),
+      filename: analysisFile?.originalname ?? sourceFilename(input.source),
       durationSeconds: input.durationSeconds ?? fixtureClipDuration,
       canonicalLines: canonical.lines,
       transcript: transcription.segments,
@@ -119,9 +124,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       vocalIsolationSource: vocal.source,
       vocalIsolationConfidence: vocal.confidence,
       asrSource: transcription.source,
-      source: input.source ?? {
-        kind: input.file ? "upload" : "fixture",
-        processingMode: input.file ? "uploaded_media" : "fixture"
+      source: effectiveSource ?? {
+        kind: analysisFile ? "upload" : "fixture",
+        processingMode: analysisFile ? "uploaded_media" : "fixture"
       },
       liveContext,
       performanceContext
@@ -161,6 +166,9 @@ async function resolveTrack(
   track: TrackCandidate;
   matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
 }> {
+  if (input.useFixture) {
+    return { track: fixtureTracks[0], matchMethod: "fixture_rescue" };
+  }
   if (input.track && !input.autoMatch) {
     return { track: input.track, matchMethod: "selected_track" };
   }
@@ -176,9 +184,25 @@ async function resolveTrack(
             : "lyrics_rescue"
       };
     }
+    throw new Error("The live transcript did not produce a confident Musixmatch track match. Select the track manually or use a clearer vocal excerpt.");
   }
-  const tracks = await searchTracks(input.trackQuery ?? fixtureTracks[0].title);
-  return { track: tracks[0] ?? fixtureTracks[0], matchMethod: "selected_track" };
+  throw new Error("Choose a catalog track before running Selected track mode.");
+}
+
+async function resolveAnalysisFile(input: AnalyzeInput): Promise<Express.Multer.File | undefined> {
+  if (input.file) {
+    return input.file;
+  }
+  if (input.useFixture || input.source?.kind === "fixture") {
+    return undefined;
+  }
+  if (input.source?.kind === "live_link" && input.source.provider === "youtube") {
+    return extractYouTubeExcerpt(input.source);
+  }
+  if (input.source?.kind === "live_link") {
+    throw new Error("Attach an authorized excerpt for this provider so the app can run real vocal analysis.");
+  }
+  return undefined;
 }
 
 function providerLabel(source: ClipSource): string {

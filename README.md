@@ -4,6 +4,8 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
+Real uploads and provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
+
 Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch credentials activate the live catalog adapter without exposing secrets in source control. Mobile live capture, secure media-permission guidance, and the existing analysis workflow remain unchanged.
 
 ## Demo Flow
@@ -24,6 +26,7 @@ Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch c
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip.
+- **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, or recorded sources.
@@ -61,6 +64,7 @@ Songstats remains intentionally deferred because trend intelligence is useful pi
 
 ```bash
 npm install
+python -m pip install --user yt-dlp
 npm run dev
 ```
 
@@ -89,6 +93,8 @@ ASR_API_KEY=
 REPLICATE_API_TOKEN=
 REPLICATE_WHISPER_VERSION=vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c
 REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7
+PYTHON_COMMAND=python
+YOUTUBE_EXTRACT_TIMEOUT_MS=120000
 ```
 
 Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
