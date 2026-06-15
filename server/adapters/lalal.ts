@@ -27,7 +27,7 @@ type LalalCheckResponse = {
 };
 
 export type VocalIsolationResult = {
-  source: "lalalai" | "fixture";
+  source: "lalalai" | "original" | "fixture";
   confidence: number;
   detail: string;
   vocalUrl?: string;
@@ -55,11 +55,18 @@ export async function getLalalMinutesLeft(): Promise<number | null> {
 }
 
 export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIsolationResult> {
-  if (!env.lalalKey || !file) {
+  if (!file) {
     return {
       source: "fixture",
       confidence: 0.74,
       detail: "Fixture vocal isolation used for stable demo playback."
+    };
+  }
+  if (!env.lalalKey) {
+    return {
+      source: "original",
+      confidence: 0.5,
+      detail: "LALAL.AI is not configured; transcription uses the original supplied audio."
     };
   }
 
@@ -119,12 +126,9 @@ export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIs
       detail: "Live LALAL.AI vocal isolation completed.",
       vocalUrl: vocalTrack.url
     };
-  } catch {
-    return {
-      source: "fixture",
-      confidence: 0.64,
-      detail: "LALAL.AI request failed; fixture vocal isolation kept the demo running."
-    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown LALAL.AI error";
+    throw new Error(`Live vocal isolation failed: ${detail}`);
   }
 }
 

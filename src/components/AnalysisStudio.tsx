@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AudioLines,
@@ -14,6 +14,11 @@ import {
   Gauge,
   Link2,
   ListMusic,
+  Pause,
+  Pencil,
+  Play,
+  RotateCcw,
+  Search,
   ShieldCheck,
   Sparkles,
   X
@@ -28,6 +33,7 @@ import type {
   VariantCandidate,
   VariantType
 } from "../../shared/types";
+import { searchTracks } from "../api";
 import { WaveformCanvas } from "./WaveformCanvas";
 
 type FilterMode = "all" | "performance" | "risk";
@@ -44,14 +50,26 @@ type Props = {
   decisions: ReviewDecisions;
   onDecision: (id: string, decision: ReviewDecision) => void;
   onNarrate: () => Promise<void> | void;
+  onCorrectTrack: (track: TrackCandidate) => Promise<void> | void;
 };
 
 export function AnalysisStudio(props: Props) {
   const [filter, setFilter] = useState<FilterMode>("all");
+  const mediaRef = useRef<HTMLAudioElement>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionTitle, setCorrectionTitle] = useState("");
+  const [correctionArtist, setCorrectionArtist] = useState("");
+  const [correctionResults, setCorrectionResults] = useState<TrackCandidate[]>([]);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [correctionError, setCorrectionError] = useState("");
   const passport = props.job?.passport;
-  const track = passport?.track ?? props.selectedTrack;
+  const recovery = props.job?.recovery;
+  const track = passport?.track ?? (recovery ? undefined : props.selectedTrack);
   const event = passport?.event ?? props.selectedEvent ?? null;
-  const variants = passport?.variants ?? previewVariants;
+  const variants = passport?.variants ?? (props.job ? [] : previewVariants);
   const steps = props.job?.progress ?? defaultSteps;
   const completeSteps = steps.filter((step) => step.status === "complete").length;
   const progress = Math.round((completeSteps / Math.max(1, steps.length)) * 100);
@@ -72,27 +90,112 @@ export function AnalysisStudio(props: Props) {
   const performanceContext = passport?.performanceContext;
   const energyLevel = Math.round((performanceContext?.energyLevel ?? 0.86) * 100);
   const riskCount = filterCounts.risk;
+  const transcript = passport?.clip.transcript ?? recovery?.transcript ?? [];
+  const mediaUrl = props.job?.id ? `/api/analyze/${props.job.id}/media` : "";
+  const displayDuration = mediaDuration || passport?.clip.durationSeconds || recovery?.durationSeconds || 0;
+  const playbackProgress = displayDuration > 0 ? Math.min(100, currentTime / displayDuration * 100) : 0;
+  const engineProgress = active ? Math.max(8, progress) : playbackProgress;
+  const activeTranscriptId = transcript.find((segment) => currentTime >= segment.start && currentTime < segment.end)?.id;
+
+  useEffect(() => {
+    setCurrentTime(0);
+    setMediaDuration(0);
+    setIsPlaying(false);
+  }, [props.job?.id]);
+
+  useEffect(() => {
+    setCorrectionTitle(track?.title ?? "");
+    setCorrectionArtist(track?.artist ?? "");
+    setCorrectionResults([]);
+    setCorrectionError("");
+  }, [track?.id, track?.title, track?.artist]);
+
+  function seekTo(seconds: number, play = false) {
+    const media = mediaRef.current;
+    if (!media) return;
+    media.currentTime = Math.max(0, Math.min(seconds, media.duration || displayDuration || seconds));
+    setCurrentTime(media.currentTime);
+    if (play) void media.play().catch(() => setIsPlaying(false));
+  }
+
+  function togglePlayback() {
+    const media = mediaRef.current;
+    if (!media) return;
+    if (media.paused) void media.play().catch(() => setIsPlaying(false));
+    else media.pause();
+  }
+
+  async function findCorrectionMatches() {
+    const query = `${correctionTitle} ${correctionArtist}`.trim();
+    if (!query) return;
+    setCorrectionBusy(true);
+    setCorrectionError("");
+    try {
+      const matches = await searchTracks(query);
+      setCorrectionResults(matches);
+      if (matches.length === 0) setCorrectionError("No Musixmatch catalog matches found. You can still use the manual labels.");
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : "Could not search the catalog.");
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  async function applyCorrection(correctedTrack: TrackCandidate) {
+    setCorrectionBusy(true);
+    setCorrectionError("");
+    try {
+      await props.onCorrectTrack(correctedTrack);
+      setCorrectionOpen(false);
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : "Could not correct the track anchor.");
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  function applyManualCorrection() {
+    const title = correctionTitle.trim();
+    const artist = correctionArtist.trim();
+    if (!title || !artist) {
+      setCorrectionError("Enter both the correct track title and artist.");
+      return;
+    }
+    void applyCorrection({
+      id: `manual-${slugify(artist)}-${slugify(title)}`,
+      title,
+      artist,
+      hasLyrics: false,
+      hasSubtitles: false,
+      source: "manual"
+    });
+  }
 
   return (
     <main className="studio-shell studio-analysis-page">
       <section className="studio-wavebar" aria-label="Live analysis waveform">
+        {mediaUrl && <audio ref={mediaRef} preload="metadata" src={mediaUrl} onLoadedMetadata={(event) => setMediaDuration(event.currentTarget.duration)} onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} />}
         <div className="studio-wave-meta">
           <span className="studio-label">Live Engine Input</span>
           <div className="mt-2 flex items-center gap-3">
-            <span className={`studio-transport ${active ? "studio-transport-active" : ""}`}><AudioLines size={20} /></span>
+            <div className="studio-transport-group">
+              <button type="button" className="studio-transport" disabled={active || !mediaUrl} onClick={() => seekTo(currentTime - 5)} aria-label="Rewind 5 seconds" title="Rewind 5 seconds"><RotateCcw size={17} /></button>
+              <button type="button" className={`studio-transport ${isPlaying ? "studio-transport-active" : ""}`} disabled={active || !mediaUrl} onClick={togglePlayback} aria-label={isPlaying ? "Pause analyzed clip" : "Play analyzed clip"} title={isPlaying ? "Pause" : "Play"}>{isPlaying ? <Pause size={18} /> : <Play size={18} />}</button>
+            </div>
             <div>
-              <p className="studio-time">{formatOffset(focusVariant?.start ?? progress / 4)}</p>
-              <p className="studio-subtle">{active ? "Analyzing source" : "Review session"} · {progress}%</p>
+              <p className="studio-time">{formatOffset(active ? focusVariant?.start ?? progress / 4 : currentTime)}</p>
+              <p className="studio-subtle">{active ? "Analyzing source" : `${formatTime(currentTime)} / ${formatTime(displayDuration)}`} · {active ? progress : Math.round(playbackProgress)}%</p>
             </div>
           </div>
         </div>
         <div className="studio-waveform">
-          <WaveformCanvas progress={Math.max(8, progress)} active={active} />
-          <span className="studio-wave-badge">{active ? "ANALYZING" : "PASSPORT READY"}</span>
+          <WaveformCanvas progress={engineProgress} active={active || isPlaying} />
+          {!active && mediaUrl && <input className="studio-wave-seek" type="range" min="0" max={Math.max(0.1, displayDuration)} step="0.1" value={Math.min(currentTime, displayDuration)} onChange={(event) => seekTo(Number(event.target.value))} aria-label="Seek analyzed clip" />}
+          <span className="studio-wave-badge">{active ? "ANALYZING" : isPlaying ? "PLAYING" : "PASSPORT READY"}</span>
         </div>
         <div className="studio-sync">
           <span className="studio-label">Capture Status</span>
-          <span className="studio-sync-badge"><span className={`studio-status-dot ${active ? "studio-status-dot-active" : ""}`} /> {active ? "ACTIVE SYNC" : "VALIDATED"}</span>
+          <span className="studio-sync-badge"><span className={`studio-status-dot ${active || isPlaying ? "studio-status-dot-active" : ""}`} /> {active ? "ACTIVE SYNC" : isPlaying ? "PLAYING" : "VALIDATED"}</span>
         </div>
       </section>
 
@@ -101,20 +204,38 @@ export function AnalysisStudio(props: Props) {
           <ContextCard icon={<Fingerprint size={17} />} label="Track Anchor" status="Musixmatch">
             <strong>{track?.title ?? "Track match pending"}</strong>
             <span>{track?.artist ?? "Catalog search"}{track?.album ? ` · ${track.album}` : ""}</span>
+            {(passport || recovery) && <button type="button" className="studio-correction-toggle" onClick={() => setCorrectionOpen((open) => !open)}><Pencil size={13} /> {passport ? "Correct match" : "Choose track"}</button>}
           </ContextCard>
           <ContextCard icon={<CalendarDays size={17} />} label="Event Anchor" status={event ? "JamBase" : "Optional"}>
             <strong>{event?.venue ?? "No event selected"}</strong>
             <span>{event ? `${event.city} · ${formatEventDate(event.date)}` : "Add city and date for event context"}</span>
           </ContextCard>
-          <ContextCard icon={<Link2 size={17} />} label="Source Evidence" status={formatSourceMode(passport?.clip.source.processingMode ?? props.health?.runtimeMode ?? "fixture")}>
-            <strong>{formatSourceMode(passport?.clip.source.kind ?? "fixture")}</strong>
-            <span>{passport?.clip.durationSeconds ?? 24}s analyzed · source preserved</span>
+          <ContextCard icon={<Link2 size={17} />} label="Source Evidence" status={formatSourceMode(passport?.clip.source.processingMode ?? recovery?.source.processingMode ?? props.health?.runtimeMode ?? "fixture")}>
+            <strong>{formatSourceMode(passport?.clip.source.kind ?? recovery?.source.kind ?? "fixture")}</strong>
+            <span>{Math.round(passport?.clip.durationSeconds ?? recovery?.durationSeconds ?? 24)}s analyzed · source preserved</span>
           </ContextCard>
           <ContextCard icon={<ShieldCheck size={17} />} label="Review Signal" status={riskCount ? `${riskCount} Risk` : "Clear"} tone={riskCount ? "risk" : "active"}>
             <strong>{riskCount ? "Focused review needed" : "No high-risk variants"}</strong>
             <span>{riskMessage(variants)}</span>
           </ContextCard>
         </div>
+
+        {correctionOpen && (
+          <section className="studio-rack-panel studio-correction-panel" aria-label="Correct track match">
+            <header><span><Pencil size={17} /> Correct Track Anchor</span><small><i /> No audio reprocessing</small></header>
+            <div className="studio-rack-body">
+              <p className="studio-panel-intro">Search for the correct Musixmatch recording, or preserve your own title and artist labels when the catalog match is wrong.</p>
+              <div className="studio-correction-fields">
+                <label><span>Track title</span><input className="field" value={correctionTitle} onChange={(event) => setCorrectionTitle(event.target.value)} aria-label="Correct track title" /></label>
+                <label><span>Artist</span><input className="field" value={correctionArtist} onChange={(event) => setCorrectionArtist(event.target.value)} aria-label="Correct track artist" /></label>
+                <button type="button" className="studio-secondary-button" disabled={correctionBusy} onClick={() => void findCorrectionMatches()}><Search size={15} /> {correctionBusy ? "Searching" : "Search catalog"}</button>
+                <button type="button" className="studio-secondary-button" disabled={correctionBusy} onClick={applyManualCorrection}><Pencil size={15} /> Use manual labels</button>
+              </div>
+              {correctionError && <p className="studio-inline-error"><CircleAlert size={15} /> {correctionError}</p>}
+              {correctionResults.length > 0 && <div className="studio-correction-results">{correctionResults.map((result) => <button key={result.id} type="button" onClick={() => void applyCorrection(result)}><strong>{result.title}</strong><span>{result.artist}{result.album ? ` · ${result.album}` : ""}</span></button>)}</div>}
+            </div>
+          </section>
+        )}
 
         <section id="analysis-timeline" className="studio-rack-panel studio-analysis-rack">
           <header><span><Activity size={18} /> Analysis Timeline</span><small><i /> {active ? "Processing" : "Complete"}</small></header>
@@ -126,7 +247,17 @@ export function AnalysisStudio(props: Props) {
           </div>
         </section>
 
-        {props.error && <p className="studio-error">{props.error}</p>}
+        {(props.error || props.job?.error) && <p className="studio-error">{props.error || props.job?.error}</p>}
+
+        {transcript.length > 0 && (
+          <section id="transcript-review" className="studio-rack-panel studio-transcript-panel">
+            <header><span><AudioLines size={18} /> Transcription Review</span><small><i /> {transcript.length} segments</small></header>
+            <div className="studio-rack-body">
+              <p className="studio-panel-intro">Play the analyzed clip and select any line to seek directly to that moment.</p>
+              <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => seekTo(segment.start, true)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
+            </div>
+          </section>
+        )}
 
         <section id="studio-passport" className="studio-rack-panel studio-diff-panel">
           <header><span><FileCheck2 size={18} /> Passport Preview / Diff View</span><small><i /> Derived metadata only</small></header>
@@ -309,6 +440,7 @@ function formatTime(value: number) { const minutes = Math.floor(value / 60); con
 function formatOffset(value: number) { return `00:${formatTime(value)}`; }
 function formatEventDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); }
 function formatSetlistPosition(position?: number, songCount?: number) { return position ? `${position}${songCount ? ` of ${songCount}` : ""}` : "Not confirmed"; }
+function slugify(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "track"; }
 
 const defaultSteps: AnalysisStep[] = [
   { id: "ingest", label: "Validate source", status: "complete" },

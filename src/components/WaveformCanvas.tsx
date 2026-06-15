@@ -52,14 +52,22 @@ export function WaveformCanvas({ progress, active }: { progress: number; active:
     };
 
     render();
+    const themeObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(render);
+    themeObserver?.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", render);
-      return () => window.removeEventListener("resize", render);
+      return () => {
+        window.removeEventListener("resize", render);
+        themeObserver?.disconnect();
+      };
     }
 
     const observer = new ResizeObserver(render);
     observer.observe(canvas);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      themeObserver?.disconnect();
+    };
   }, [active, progress]);
 
   return <canvas ref={canvasRef} className="h-full w-full" aria-label="Live vocal waveform and analysis playhead" />;

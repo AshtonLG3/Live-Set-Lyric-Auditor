@@ -12,7 +12,7 @@ import {
   Search,
   Sun,
 } from "lucide-react";
-import { createNarration, getAnalysis, getHealth, searchEvents, searchTracks, startAnalysis } from "./api";
+import { createNarration, getAnalysis, getHealth, reanchorAnalysis, searchEvents, searchTracks, startAnalysis } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
@@ -68,17 +68,37 @@ export default function App() {
   }, [selectedTrack, eventCity, eventDate]);
 
   useEffect(() => {
-    if (!job || job.status === "complete" || job.status === "failed") return;
-    const interval = window.setInterval(async () => {
-      const updated = await getAnalysis(job.id);
-      setJob(updated);
-      if (updated.status === "complete" || updated.status === "failed") {
+    const jobId = job?.id;
+    if (!jobId || job.status === "complete" || job.status === "failed") return;
+    let cancelled = false;
+    let timer = 0;
+
+    const poll = async () => {
+      try {
+        const updated = await getAnalysis(jobId);
+        if (cancelled) return;
+        setJob(updated);
+        if (updated.status === "complete" || updated.status === "failed") {
+          setBusy(false);
+          if (updated.status === "failed") {
+            setError(updated.error ?? "Analysis stopped before completion.");
+          }
+          return;
+        }
+        timer = window.setTimeout(poll, 650);
+      } catch (pollError) {
+        if (cancelled) return;
         setBusy(false);
-        window.clearInterval(interval);
+        setError(pollError instanceof Error ? pollError.message : "Analysis status could not be refreshed.");
       }
-    }, 650);
-    return () => window.clearInterval(interval);
-  }, [job]);
+    };
+
+    timer = window.setTimeout(poll, 650);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [job?.id]);
 
   async function handleTrackSearch() {
     setError("");
@@ -126,6 +146,18 @@ export default function App() {
     if (!job?.id || !job.passport) return;
     setError("");
     setNarration(await createNarration(job.id));
+  }
+
+  async function handleCorrectTrack(track: TrackCandidate) {
+    if (!job?.id) return;
+    setError("");
+    try {
+      const updated = await reanchorAnalysis(job.id, track);
+      setJob(updated);
+      setSelectedTrack(track);
+    } catch (correctionError) {
+      setError(correctionError instanceof Error ? correctionError.message : "Could not correct the track anchor.");
+    }
   }
 
   function handleRecallTrack(track: TrackCandidate) {
@@ -270,6 +302,7 @@ export default function App() {
               decisions={reviewDecisions}
               onDecision={decideVariant}
               onNarrate={handleNarration}
+              onCorrectTrack={handleCorrectTrack}
             />
           )}
         </div>
@@ -292,7 +325,7 @@ function SideNavButton({ label, icon, active, disabled, onClick }: { label: stri
 }
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {
-  if (mode === "live") return { label: "Live APIs", detail: "All configured integrations are using live API responses." };
-  if (mode === "mixed") return { label: "Mixed sources", detail: "Available APIs are live; unavailable integrations use reliable demo data." };
+  if (mode === "live") return { label: "API mode", detail: "All partner credentials are present. Each analysis step reports whether its live request completed or fell back." };
+  if (mode === "mixed") return { label: "Mixed sources", detail: "Configured partners are requested live; unavailable or failed optional context is clearly labeled as demo data." };
   return { label: "Demo data", detail: "External API keys are unavailable, so seeded contest data keeps the full demo working." };
 }

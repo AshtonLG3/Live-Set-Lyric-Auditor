@@ -64,6 +64,14 @@ export async function getAnalysis(jobId: string): Promise<AnalysisJob> {
   return fetchJson(`/api/analyze/${jobId}`);
 }
 
+export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Promise<AnalysisJob> {
+  return fetchJson(`/api/analyze/${jobId}/reanchor`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ track })
+  });
+}
+
 export async function createNarration(jobId: string): Promise<NarrationResponse> {
   return fetchJson(`/api/narrate/${jobId}`, { method: "POST" });
 }

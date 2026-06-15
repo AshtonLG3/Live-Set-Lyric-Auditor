@@ -2,41 +2,50 @@
 
 ## Evidence
 
-- Source visual truth: `C:\Users\mangezi\OneDrive\Documents\Live-Set Lyric Auditor\.codex-remote-attachments\019ec62c-d9c8-7ca3-9696-b57cb9c42c75\e065ee45-3422-43d6-8479-4da70bf18ab8\1-Photo-1.jpg`
-- Implementation screenshot: unavailable because the in-app Browser is not callable in this session and standalone Playwright requires separate user approval.
-- Viewport target: 576 x 1280 mobile, dark theme, Recall lyric fragment state; Upload clip is the new camera-capture comparison state.
+- Source visual truth: `C:\Users\mangezi\AppData\Local\Temp\codex-clipboard-0d5403ff-9edc-495f-975f-63c854017f74.png`
+- Implementation target: `http://127.0.0.1:4242`
+- Implementation screenshot: unavailable; the in-app Browser failed to attach and the Chrome-backed preview timed out loading the local page.
+- Target state: dark-theme Analysis screen after a completed upload, with transport controls, Track Anchor correction, and timestamped transcript review.
+- Target viewport: desktop screenshot state plus compact mobile behavior matching the existing product language.
 
 ## Full-View Comparison Evidence
 
-- The source shows the existing mobile header, three intake modes, Recall Rescue card, warning copy, track anchor, and fixed bottom navigation.
-- No current rendered screenshot could be captured, so typography, spacing, colors, and responsive layout cannot be signed off from visual evidence.
+- The source establishes the existing dark studio rack, compact uppercase labels, cyan waveform, orange-red state accents, and bordered status badge.
+- The implementation preserves those components and tokens in code, but no rendered screenshot was available for a combined visual comparison.
+- Typography, spacing rhythm, colors, responsive wrapping, and copy are covered by component/CSS inspection and automated UI assertions only, not visual sign-off.
 
 ## Focused Region Comparison Evidence
 
-- Target region: Clip Intake mode selector, Upload clip action area, Recall Rescue warning, and top-bar version/theme controls.
-- Focused comparison is blocked by the same missing implementation capture.
+- Target region: Live Engine Input waveform and Capture Status from the supplied screenshot.
+- Intended extension: rewind, play/pause, timestamp, and seek controls inside the existing left and center zones without replacing the waveform or status treatment.
+- A focused image comparison was not possible because the implementation capture was unavailable.
 
 ## Findings
 
-- [P1] Current mobile visual comparison is blocked.
-  Location: Clip Intake on the mobile Dashboard.
-  Evidence: the source screenshot is available, but there is no rendered v0.8.0 screenshot for a combined comparison.
-  Impact: camera-button wrapping, warning density, and small-screen spacing cannot be visually approved.
-  Fix: capture the app at the source viewport, compare both states together, and resolve any P0-P2 drift.
+- [P1] Rendered visual comparison is blocked.
+  Location: Analysis screen transport, Track Anchor correction panel, and Transcription Review.
+  Evidence: the source screenshot is available, but neither configured browser surface returned an implementation screenshot.
+  Impact: small-screen wrapping, vertical density, exact type weights, and control alignment cannot be visually approved.
+  Fix: capture the completed Analysis state at desktop and mobile widths, combine each capture with the source, and resolve any P0-P2 drift.
 
 ## Verified Outside Visual QA
 
-- Typecheck, lint, 22 automated tests, and the production build pass.
-- Tests verify the visible v0.8.0 menu version, dark/light theme toggle, rear-camera `capture="environment"` input, camera-video import, and HTTPS-required microphone state.
-- The camera action reuses the existing file inspection and analysis path, including duration, size, type, replace, and remove behavior.
+- The supplied MP4 completed real LALAL.AI isolation and Replicate transcription with three correct transcript segments.
+- Musixmatch lyric fingerprint plus rated catalog resolution maps the transcript to Rod Stewart instead of a low-authority cover entry.
+- Manual correction re-anchors the existing transcript without rerunning isolation or ASR.
+- The media endpoint returns `206 Partial Content` for browser seeking.
+- Automated UI coverage asserts play, rewind, seek, timestamped transcript, Recall Rescue continuation, and manual correction controls.
+- Mobile capture actions now stack at 767px and imported camera video receives an inline playable preview.
 
-## Patches Made Since v0.7.0
+## Patches Made
 
-- Added Browse files and Record live as complementary Upload clip actions.
-- Added rear-camera capture for short stage-performance video on supported phones.
-- Added secure-context microphone diagnostics and permission-specific recovery messages.
-- Added responsive wrapping for camera and replacement controls.
-- Added automatic ignored `.env` loading for development and production startup.
-- Bumped visible and package version metadata to v0.8.0.
+- Added real analyzed-media playback with play/pause, five-second rewind, waveform seeking, and timestamped transcript navigation.
+- Added catalog and manual Track Anchor correction without retranscription.
+- Added explicit Recall Rescue continuation actions for upload and live-link analysis.
+- Surfaced background analysis failures instead of leaving the interface stalled midway.
+- Added Musixmatch lyric-fingerprint ranking with catalog-authority resolution and compatibility fallback.
+- Removed premature Songstats exposure; it remains deferred until it contributes to the Passport.
+- Added server-owned duration validation, YouTube host allowlisting, ffmpeg preflight, and explicit live-partner failure handling.
+- Added failed auto-match recovery so a track can be selected without repeating isolation or transcription.
 
 final result: blocked

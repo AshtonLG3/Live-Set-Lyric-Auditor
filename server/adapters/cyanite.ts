@@ -33,7 +33,9 @@ export async function analyzePerformance(input: {
 
     const result = await pollAnalysis(trackId);
     return result ? mapPerformanceContext(result) : fixturePerformanceContext;
-  } catch {
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown Cyanite error";
+    console.warn(`Cyanite analysis unavailable; using the labeled demo profile. ${detail}`);
     return fixturePerformanceContext;
   }
 }
@@ -43,13 +45,13 @@ async function enqueueYoutubeTrack(source: ClipSource): Promise<string | null> {
   if (!youtubeId) return null;
 
   const response = await graphql<{
-    libraryTrackEnqueue?: {
+    youTubeTrackEnqueue?: {
       __typename?: string;
       enqueuedLibraryTrack?: { id?: string };
     };
   }>(`
     mutation EnqueueYoutubeTrack($input: YouTubeTrackEnqueueInput!) {
-      libraryTrackEnqueue(input: $input) {
+      youTubeTrackEnqueue(input: $input) {
         __typename
         ... on YouTubeTrackEnqueueSuccess {
           enqueuedLibraryTrack { id }
@@ -63,17 +65,17 @@ async function enqueueYoutubeTrack(source: ClipSource): Promise<string | null> {
     }
   });
 
-  return response.libraryTrackEnqueue?.enqueuedLibraryTrack?.id ?? null;
+  return response.youTubeTrackEnqueue?.enqueuedLibraryTrack?.id ?? null;
 }
 
 async function uploadLibraryTrack(file: Express.Multer.File): Promise<string | null> {
   const uploadRequest = await graphql<{
     fileUploadRequest?: { id?: string; uploadUrl?: string };
   }>(`
-    mutation RequestFileUpload($fileName: String!) {
-      fileUploadRequest(fileName: $fileName) { id uploadUrl }
+    mutation RequestFileUpload {
+      fileUploadRequest { id uploadUrl }
     }
-  `, { fileName: file.originalname });
+  `, {});
   const upload = uploadRequest.fileUploadRequest;
   if (!upload?.id || !upload.uploadUrl) return null;
 
@@ -109,7 +111,8 @@ async function uploadLibraryTrack(file: Express.Multer.File): Promise<string | n
 }
 
 async function pollAnalysis(trackId: string): Promise<CyaniteAnalysisResult | null> {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  const deadline = Date.now() + env.cyanitePollTimeoutMs;
+  while (Date.now() < deadline) {
     const response = await graphql<{
       libraryTrack?: {
         __typename?: string;
@@ -144,7 +147,7 @@ async function pollAnalysis(trackId: string): Promise<CyaniteAnalysisResult | nu
     const analysis = response.libraryTrack?.audioAnalysisV7;
     if (analysis?.result) return analysis.result;
     if (analysis?.__typename?.toLowerCase().includes("failed")) return null;
-    await delay(650);
+    await delay(env.cyanitePollIntervalMs);
   }
   return null;
 }
@@ -213,7 +216,8 @@ function extractYoutubeId(value?: string): string | null {
   try {
     const url = new URL(value);
     if (url.hostname === "youtu.be") return url.pathname.split("/").filter(Boolean)[0] ?? null;
-    if (url.hostname.includes("youtube.com")) {
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (hostname === "youtube.com" || hostname.endsWith(".youtube.com")) {
       return url.searchParams.get("v") ?? url.pathname.match(/\/(?:live|shorts|embed)\/([^/?]+)/)?.[1] ?? null;
     }
   } catch {

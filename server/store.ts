@@ -1,6 +1,7 @@
 import type { AnalysisJob } from "../shared/types";
 
 export const jobs = new Map<string, AnalysisJob>();
+export const jobMedia = new Map<string, { buffer: Buffer; mimetype: string; filename: string }>();
 
 export function createJob(): AnalysisJob {
   const now = new Date().toISOString();

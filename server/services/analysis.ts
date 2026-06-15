@@ -1,4 +1,4 @@
-import type { ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
@@ -7,7 +7,7 @@ import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
-import { jobs, setStep, updateJob } from "../store";
+import { jobMedia, jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 
 export type AnalyzeInput = {
@@ -54,6 +54,13 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const effectiveSource = analysisFile && !input.file && input.source?.kind === "live_link"
       ? { ...input.source, processingMode: "provider_excerpt" as const }
       : input.source;
+    if (analysisFile) {
+      jobMedia.set(jobId, {
+        buffer: analysisFile.buffer,
+        mimetype: analysisFile.mimetype || "application/octet-stream",
+        filename: analysisFile.originalname
+      });
+    }
     setStep(
       jobId,
       "ingest",
@@ -81,6 +88,24 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     setStep(jobId, "transcribe", "running");
     const transcription = await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
+
+    updateJob(jobId, (job) => ({
+      ...job,
+      recovery: {
+        filename: analysisFile?.originalname ?? sourceFilename(input.source),
+        durationSeconds: input.durationSeconds ?? fixtureClipDuration,
+        vocalIsolationSource: vocal.source,
+        vocalIsolationConfidence: vocal.confidence,
+        asrSource: transcription.source,
+        transcript: transcription.segments,
+        source: effectiveSource ?? {
+          kind: analysisFile ? "upload" : "fixture",
+          processingMode: analysisFile ? "uploaded_media" : "fixture"
+        },
+        performanceContext,
+        event: input.event ?? null
+      }
+    }));
 
     setStep(jobId, "anchor", "running");
     const resolved = await resolveTrack(input, transcription.segments);
@@ -135,7 +160,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     updateJob(jobId, (job) => ({
       ...job,
       status: "complete",
-      passport
+      passport,
+      recovery: undefined,
+      error: undefined
     }));
     setStep(jobId, "passport", "complete", `${passport.variants.length} variant candidates flagged.`);
   } catch (error) {
@@ -149,6 +176,70 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       )
     }));
   }
+}
+
+export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Promise<AnalysisJob> {
+  const job = jobs.get(jobId);
+  const passport = job?.passport;
+  const recovery = job?.recovery;
+  if (!job || (!passport && !recovery)) {
+    throw new Error("Transcription must complete before correcting the track anchor.");
+  }
+
+  const canonical = await getCanonicalReference(track);
+  const event = passport?.event ?? recovery?.event ?? null;
+  const liveContext = buildLiveContext(event, track);
+  const corrected = buildPassport({
+    id: jobId,
+    track,
+    event,
+    filename: passport?.clip.filename ?? recovery!.filename,
+    durationSeconds: passport?.clip.durationSeconds ?? recovery!.durationSeconds,
+    canonicalLines: canonical.lines,
+    transcript: passport?.clip.transcript ?? recovery!.transcript,
+    sourceCoverage: canonical.sourceCoverage,
+    canonicalSource: canonical.source,
+    restricted: canonical.restricted,
+    language: canonical.language,
+    copyright: canonical.copyright,
+    trackingUrl: canonical.trackingUrl,
+    matchMethod: "selected_track",
+    vocalIsolationSource: passport?.clip.vocalIsolationSource ?? recovery!.vocalIsolationSource,
+    vocalIsolationConfidence: passport?.clip.vocalIsolationConfidence ?? recovery!.vocalIsolationConfidence,
+    asrSource: passport?.clip.asrSource ?? recovery!.asrSource,
+    source: passport?.clip.source ?? recovery!.source,
+    liveContext,
+    performanceContext: passport?.performanceContext ?? recovery!.performanceContext
+  });
+  const updated = updateJob(jobId, (current) => ({
+    ...current,
+    status: "complete",
+    passport: corrected,
+    recovery: undefined,
+    error: undefined,
+    progress: current.progress.map((step) => {
+      if (step.id === "anchor") {
+        return { ...step, status: "complete", detail: `${track.title} by ${track.artist} · corrected track anchor` };
+      }
+      if (step.id === "compare") {
+        return {
+          ...step,
+          status: "complete",
+          detail: canonical.restricted
+            ? "Lyrics restricted; passport switched to metadata-only comparison."
+            : `${canonical.lines.length} reference lines from ${canonical.source}.`
+        };
+      }
+      if (step.id === "passport") {
+        return { ...step, status: "complete", detail: `${corrected.variants.length} variant candidates re-anchored without retranscription.` };
+      }
+      return step;
+    })
+  }));
+  if (!updated) {
+    throw new Error("Analysis job no longer exists.");
+  }
+  return updated;
 }
 
 export async function createNarration(jobId: string) {

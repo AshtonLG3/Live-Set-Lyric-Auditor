@@ -4,9 +4,11 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
+Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requires `yt-dlp`, `ffmpeg`, and `ffprobe`.
+
 Real uploads and provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
-Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch credentials activate the live catalog adapter without exposing secrets in source control. Mobile live capture, secure media-permission guidance, and the existing analysis workflow remain unchanged.
+Version `0.8.0` includes live playback and transcript review, manual track correction and failed-match recovery, mobile capture, hardened media processing, and automatic loading of the ignored local `.env` file.
 
 ## Demo Flow
 
@@ -20,10 +22,10 @@ Version `0.8.0` adds automatic local `.env` loading so newly issued Musixmatch c
 
 ## API Surfaces
 
-- **Musixmatch:** `track.search`, lyrics-rescue search, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
+- **Musixmatch:** `track.search`, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
 - **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. Purchased minutes are the API processing balance.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
-- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata.
+- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Cyanite asynchronously posts completion events to the integration webhook, currently `https://bridgeangelscakes.co.za/mxm/cyanite-webhook.php`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip.
 - **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing.
@@ -58,13 +60,14 @@ The contest build deliberately prioritizes Musixmatch-native value:
 - Cyanite performance energy, BPM, emotion, instrument, and arrangement context
 - a desktop QA workbench and compact mobile review flow for decisions in the field
 
-Songstats remains intentionally deferred because trend intelligence is useful pitch context but not required for the core evidence pipeline. n8n remains optional orchestration rather than an application dependency. Lyrics translations and direct Musixmatch audio/fingerprint endpoint wiring remain deferred until the contest Pro key confirms their exact request and response contracts.
+Songstats and n8n remain deferred because they do not strengthen the core evidence pipeline yet. Lyrics translations and Musixmatch audio fingerprinting remain deferred; lyric fingerprint matching is enabled with a catalog-search fallback when the account plan does not expose that endpoint.
 
 ## Local Setup
 
 ```bash
 npm install
 python -m pip install --user yt-dlp
+# Install ffmpeg and ffprobe, then verify: ffmpeg -version && ffprobe -version
 npm run dev
 ```
 
@@ -82,6 +85,7 @@ JAMBASE_API_KEY=
 JAMBASE_API_BASE_URL=https://api.data.jambase.com/v3
 CYANITE_API_TOKEN=
 CYANITE_API_BASE_URL=https://api.cyanite.ai/graphql
+CYANITE_WEBHOOK_URL=https://bridgeangelscakes.co.za/mxm/cyanite-webhook.php
 LALAL_LICENSE_KEY=
 LALAL_API_BASE_URL=https://www.lalal.ai/api/v1
 LALAL_POLL_INTERVAL_MS=3000
@@ -94,7 +98,10 @@ REPLICATE_API_TOKEN=
 REPLICATE_WHISPER_VERSION=vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c
 REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7
 PYTHON_COMMAND=python
+FFMPEG_LOCATION=
 YOUTUBE_EXTRACT_TIMEOUT_MS=120000
+CYANITE_POLL_INTERVAL_MS=2500
+CYANITE_POLL_TIMEOUT_MS=180000
 ```
 
 Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
@@ -107,13 +114,13 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 | --- | --- | --- |
 | Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL` |
 | JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
-| Cyanite | `CYANITE_API_TOKEN` or `CYANITE_API_KEY` | `CYANITE_API_BASE_URL` |
+| Cyanite | `CYANITE_API_TOKEN` or `CYANITE_API_KEY` | `CYANITE_API_BASE_URL`, `CYANITE_WEBHOOK_URL` |
 | LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL` |
 | ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID` |
 | Replicate ASR | `REPLICATE_API_TOKEN` | `REPLICATE_WHISPER_VERSION`, `REPLICATE_WHISPER_FALLBACK_VERSION` |
 | External ASR | `ASR_API_URL` | `ASR_API_KEY` |
 
-Restart the server after adding a key. The Dashboard partner strip and `/api/health` show whether each integration is using live or demo data. Songstats and n8n remain intentionally deferred and do not yet have active adapters.
+Restart the server after adding a key. The Dashboard partner strip and `/api/health` show whether each integration is using live or demo data. Songstats and n8n remain intentionally deferred.
 
 ## Replit
 

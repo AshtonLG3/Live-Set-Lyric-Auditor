@@ -19,6 +19,11 @@ describe("alignment pipeline", () => {
     expect(variants.map((variant) => variant.type)).toContain("skipped_line");
   });
 
+  it("reports every canonical line omitted from the performance", () => {
+    const variants = classifyVariants([], fixtureCanonicalLines, 1);
+    expect(variants.filter((variant) => variant.type === "skipped_line")).toHaveLength(fixtureCanonicalLines.length);
+  });
+
   it("builds a passport without exposing canonical line text", () => {
     const passport = buildPassport({
       id: "job-1",

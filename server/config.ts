@@ -13,6 +13,7 @@ export const env = {
   jambaseBaseUrl: process.env.JAMBASE_API_BASE_URL ?? "https://api.data.jambase.com/v3",
   cyaniteToken: process.env.CYANITE_API_TOKEN ?? process.env.CYANITE_API_KEY,
   cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
+  cyaniteWebhookUrl: process.env.CYANITE_WEBHOOK_URL,
   lalalKey: process.env.LALAL_LICENSE_KEY,
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
   lalalPollIntervalMs: Math.max(2_000, Number(process.env.LALAL_POLL_INTERVAL_MS ?? 3_000)),
@@ -25,7 +26,10 @@ export const env = {
   replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
     ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
   pythonCommand: process.env.PYTHON_COMMAND?.trim() || "python",
+  ffmpegLocation: process.env.FFMPEG_LOCATION?.trim(),
   youtubeExtractTimeoutMs: Math.max(30_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 120_000)),
+  cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
+  cyanitePollTimeoutMs: Math.max(30_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 180_000)),
   asrApiUrl: process.env.ASR_API_URL,
   asrApiKey: process.env.ASR_API_KEY
 };
@@ -46,7 +50,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
       detail: configured("LALAL_LICENSE_KEY")
         ? "Activation key configured; upload, vocal splitting, and result polling enabled."
-        : "Using fixture vocal isolation result."
+        : "Real uploads use original audio; seeded demos use fixture isolation."
     },
     {
       name: "JamBase",
@@ -61,7 +65,9 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY"),
       mode: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY") ? "live" : "fixture",
       detail: configuredAny("CYANITE_API_TOKEN", "CYANITE_API_KEY")
-        ? "Energy, mood, BPM, instrument, and arrangement profiling enabled."
+        ? configured("CYANITE_WEBHOOK_URL")
+          ? "Credential present; analysis requests are enabled and Cyanite completion events route to the configured webhook."
+          : "Credential present; analysis requests are enabled and fallbacks are labeled per job."
         : "Using a seeded live-performance profile."
     },
     {

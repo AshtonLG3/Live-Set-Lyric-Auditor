@@ -72,7 +72,9 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   );
   const rangeDuration = endSeconds - startSeconds;
   const validRange = rangeDuration > 0 && rangeDuration <= MAX_CLIP_SECONDS;
+  const liveSourceReady = Boolean(parsedSource && (parsedSource.provider === "youtube" || linkClip));
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
+  const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
 
   useEffect(() => () => {
     stopMediaStream();
@@ -344,7 +346,12 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
           </div>
 
           {!linkClip && parsedSource && (
-            <InlineNotice tone="neutral" text="The provider player stays embedded. Without an attached excerpt, analysis uses a clearly labeled demo-safe reference and never downloads the provider stream." />
+            <InlineNotice
+              tone={parsedSource.provider === "youtube" ? "neutral" : "warning"}
+              text={parsedSource.provider === "youtube"
+                ? "Only the selected YouTube time range is temporarily extracted for analysis. Install yt-dlp plus ffmpeg on the server."
+                : "Attach an authorized audio or video excerpt to analyze this provider."}
+            />
           )}
         </div>
       )}
@@ -403,10 +410,15 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
                   {matchedTrackId === track.id ? <CheckCircle2 className="shrink-0 text-lagoon" size={18} /> : <Search className="shrink-0 text-slate-400" size={17} />}
                 </button>
               ))}
-              {matchedTrackId && (
-                <button type="button" className="button-secondary w-full" onClick={() => setMode("live_link")}>
-                  <Link2 size={16} /> Continue with a live link
-                </button>
+              {matchedTrack && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button type="button" className="button-secondary w-full" onClick={() => setMode("upload")}>
+                    <Upload size={16} /> Upload performance clip
+                  </button>
+                  <button type="button" className="button-secondary w-full" onClick={() => setMode("live_link")}>
+                    <Link2 size={16} /> Use YouTube / live link
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -449,14 +461,14 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
           <button
             type="button"
             className="button-primary w-full"
-            disabled={busy || fileProcessing || !parsedSource || !validRange || Boolean(fileError)}
+            disabled={busy || fileProcessing || !liveSourceReady || !validRange || Boolean(fileError)}
             onClick={() => parsedSource && void onAnalyze({
               file: linkClip?.file,
               durationSeconds: linkClip?.durationSeconds ?? rangeDuration,
               autoMatch,
               source: {
                 kind: "live_link",
-                processingMode: linkClip ? "authorized_excerpt" : "reference_fixture",
+                processingMode: linkClip ? "authorized_excerpt" : "provider_excerpt",
                 provider: parsedSource.provider,
                 url: parsedSource.normalizedUrl,
                 startSeconds,
@@ -475,11 +487,11 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             onClick={() => void onAnalyze({
               file: recordingFile,
               durationSeconds: recordingSeconds || undefined,
-              autoMatch: true,
+              autoMatch: !matchedTrackId,
               source: { kind: "recall_recording", processingMode: "recall_recording" }
             })}
           >
-            <Play size={17} /> Audit this rendition
+            <Play size={17} /> {matchedTrack ? `Analyze as ${matchedTrack.title}` : "Audit this rendition"}
           </button>
         )}
       </div>
@@ -503,8 +515,21 @@ function ModeButton(props: { active: boolean; onClick: () => void; icon: React.R
 }
 
 function ClipSummary({ clip, onReplace, onCapture, onRemove, compact = false }: { clip: ClipSelection; onReplace: () => void; onCapture?: () => void; onRemove: () => void; compact?: boolean }) {
+  const [previewUrl, setPreviewUrl] = useState("");
+
+  useEffect(() => {
+    if (compact || clip.kind !== "video" || typeof URL.createObjectURL !== "function") {
+      setPreviewUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(clip.file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [clip.file, clip.kind, compact]);
+
   return (
     <div className={`flex w-full ${compact ? "items-center justify-between gap-3 text-left" : "flex-col items-center text-center"}`}>
+      {previewUrl && <video className="studio-clip-preview" src={previewUrl} controls playsInline preload="metadata" aria-label="Imported live performance preview" />}
       <div className={compact ? "flex min-w-0 items-center gap-3" : "contents"}>
         {clip.kind === "video" ? <FileVideo className={compact ? "shrink-0 text-lagoon" : "mb-3 text-lagoon"} size={compact ? 24 : 30} /> : <FileCheck2 className={compact ? "shrink-0 text-lagoon" : "mb-3 text-lagoon"} size={compact ? 24 : 30} />}
         <div className="min-w-0">

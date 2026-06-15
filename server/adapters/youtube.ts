@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ClipSource } from "../../shared/types";
 import { env } from "../config";
+import { assertYouTubeTooling } from "../services/media";
+import { isYouTubeUrl } from "../source-validation";
 
 const execFileAsync = promisify(execFile);
 
 export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express.Multer.File> {
-  if (source.kind !== "live_link" || source.provider !== "youtube" || !source.url) {
+  if (source.kind !== "live_link" || source.provider !== "youtube" || !source.url || !isYouTubeUrl(source.url)) {
     throw new Error("A valid YouTube source is required for provider extraction.");
   }
 
@@ -22,6 +24,7 @@ export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express
   const directory = await mkdtemp(join(tmpdir(), "lsla-youtube-"));
   const outputPath = join(directory, "excerpt.mp3");
   try {
+    await assertYouTubeTooling();
     await execFileAsync(env.pythonCommand, buildYouTubeExtractArgs(source.url, start, end, outputPath), {
       timeout: env.youtubeExtractTimeoutMs,
       maxBuffer: 2 * 1024 * 1024,
@@ -52,7 +55,7 @@ export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express
 }
 
 export function buildYouTubeExtractArgs(url: string, start: number, end: number, outputPath: string): string[] {
-  return [
+  const args = [
     "-m",
     "yt_dlp",
     "--no-playlist",
@@ -64,9 +67,15 @@ export function buildYouTubeExtractArgs(url: string, start: number, end: number,
     "--audio-format",
     "mp3",
     "--audio-quality",
-    "5",
+    "5"
+  ];
+  if (env.ffmpegLocation) {
+    args.push("--ffmpeg-location", env.ffmpegLocation);
+  }
+  args.push(
     "-o",
     outputPath,
     url
-  ];
+  );
+  return args;
 }

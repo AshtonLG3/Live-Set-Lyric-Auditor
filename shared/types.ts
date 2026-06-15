@@ -41,7 +41,8 @@ export type TrackCandidate = {
   genre?: string;
   releaseType?: string;
   rating?: number;
-  source: "musixmatch" | "fixture";
+  lyricSimilarity?: number;
+  source: "musixmatch" | "fixture" | "manual";
 };
 
 export type EventCandidate = {
@@ -97,6 +98,18 @@ export type PerformanceContext = {
   arrangement: "full_band" | "stripped_back" | "high_intensity" | "crowd_forward" | "uncertain";
   summary: string;
   confidence: number;
+};
+
+export type AnalysisRecovery = {
+  filename: string;
+  durationSeconds: number;
+  vocalIsolationSource: "lalalai" | "original" | "fixture";
+  vocalIsolationConfidence: number;
+  asrSource: "replicate" | "external" | "fixture";
+  transcript: TranscriptSegment[];
+  source: ClipSource;
+  performanceContext: PerformanceContext;
+  event: EventCandidate | null;
 };
 
 export type TranscriptSegment = {
@@ -183,8 +196,10 @@ export type LiveVariantPassport = {
   clip: {
     filename: string;
     durationSeconds: number;
-    vocalIsolationSource: "lalalai" | "fixture";
+    vocalIsolationSource: "lalalai" | "original" | "fixture";
+    vocalIsolationConfidence: number;
     asrSource: "replicate" | "external" | "fixture";
+    transcript: TranscriptSegment[];
     source: ClipSource;
   };
   summary: string;
@@ -216,6 +231,7 @@ export type AnalysisJob = {
   createdAt: string;
   updatedAt: string;
   passport?: LiveVariantPassport;
+  recovery?: AnalysisRecovery;
 };
 
 export type NarrationResponse = {

@@ -74,6 +74,23 @@ describe("LALAL.AI adapter", () => {
     });
     expect(fetchMock.mock.calls[2]?.[0]).toBe("https://www.lalal.ai/api/v1/check/");
   });
+
+  it("uses original audio transparently when no activation key is configured", async () => {
+    vi.stubEnv("LALAL_LICENSE_KEY", "");
+    const { isolateVocals } = await import("./lalal");
+
+    const result = await isolateVocals(audioFile());
+    expect(result.source).toBe("original");
+    expect(result.vocalUrl).toBeUndefined();
+  });
+
+  it("fails a real run when configured isolation fails", async () => {
+    vi.stubEnv("LALAL_LICENSE_KEY", "lalal-test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
+    const { isolateVocals } = await import("./lalal");
+
+    await expect(isolateVocals(audioFile())).rejects.toThrow("Live vocal isolation failed: LALAL upload failed with 401");
+  });
 });
 
 function jsonResponse(body: unknown): Response {

@@ -12,7 +12,7 @@ describe("Cyanite adapter", () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
         data: {
-          libraryTrackEnqueue: {
+          youTubeTrackEnqueue: {
             __typename: "YouTubeTrackEnqueueSuccess",
             enqueuedLibraryTrack: { id: "cyanite-track-1" }
           }
@@ -58,6 +58,35 @@ describe("Cyanite adapter", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer cyanite-test-token" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).query).toContain("youTubeTrackEnqueue");
+  });
+
+  it("uses the current upload request contract before polling analysis", async () => {
+    vi.stubEnv("CYANITE_API_TOKEN", "cyanite-test-token");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: { fileUploadRequest: { id: "upload-1", uploadUrl: "https://upload.example/file" } } }))
+      .mockResolvedValueOnce(new Response("", { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ data: { libraryTrackCreate: { __typename: "LibraryTrackCreateSuccess", createdLibraryTrack: { id: "track-1" } } } }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          libraryTrack: {
+            __typename: "LibraryTrack",
+            audioAnalysisV7: {
+              __typename: "AudioAnalysisV7Finished",
+              result: { energyLevel: "MEDIUM", moodTags: [], advancedInstrumentTags: [] }
+            }
+          }
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { analyzePerformance } = await import("./cyanite");
+    const result = await analyzePerformance({ file: audioFile() });
+
+    expect(result.source).toBe("cyanite");
+    const uploadRequest = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(uploadRequest.query).toContain("fileUploadRequest { id uploadUrl }");
+    expect(uploadRequest.variables).toEqual({});
   });
 });
 
@@ -66,4 +95,19 @@ function jsonResponse(body: unknown): Response {
     status: 200,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function audioFile(): Express.Multer.File {
+  return {
+    fieldname: "clip",
+    originalname: "stage-clip.mp3",
+    encoding: "7bit",
+    mimetype: "audio/mpeg",
+    size: 4,
+    buffer: Buffer.from([1, 2, 3, 4]),
+    stream: undefined as never,
+    destination: "",
+    filename: "",
+    path: ""
+  };
 }

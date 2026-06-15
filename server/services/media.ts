@@ -1,0 +1,95 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, extname, join } from "node:path";
+import { promisify } from "node:util";
+import type { ClipSource } from "../../shared/types";
+import { env } from "../config";
+
+const execFileAsync = promisify(execFile);
+
+export class MediaProbeError extends Error {
+  constructor(message: string, readonly kind: "unavailable" | "invalid") {
+    super(message);
+  }
+}
+
+export async function probeMediaDuration(file: Express.Multer.File): Promise<number> {
+  const directory = await mkdtemp(join(tmpdir(), "lsla-probe-"));
+  const extension = extname(file.originalname).replace(/[^.a-z0-9]/gi, "") || ".media";
+  const inputPath = join(directory, `clip${extension}`);
+  try {
+    await writeFile(inputPath, file.buffer);
+    const { stdout } = await execFileAsync(resolveFfmpegTool("ffprobe"), buildFfprobeArgs(inputPath), {
+      timeout: 30_000,
+      maxBuffer: 256 * 1024,
+      windowsHide: true
+    });
+    const duration = Number(String(stdout).trim());
+    if (!Number.isFinite(duration) || duration <= 0) {
+      throw new MediaProbeError("Could not read the clip duration. Use a playable audio or video file.", "invalid");
+    }
+    return duration;
+  } catch (error) {
+    if (error instanceof MediaProbeError) throw error;
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (code === "ENOENT") {
+      throw new MediaProbeError("Server media validation needs ffprobe. Install ffmpeg or configure FFMPEG_LOCATION.", "unavailable");
+    }
+    throw new MediaProbeError("Could not read the clip duration. Use a playable audio or video file.", "invalid");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+export async function assertYouTubeTooling(): Promise<void> {
+  try {
+    await execFileAsync(env.pythonCommand, ["-m", "yt_dlp", "--version"], {
+      timeout: 15_000,
+      maxBuffer: 256 * 1024,
+      windowsHide: true
+    });
+    await Promise.all((["ffmpeg", "ffprobe"] as const).map((tool) => execFileAsync(resolveFfmpegTool(tool), ["-version"], {
+      timeout: 15_000,
+      maxBuffer: 256 * 1024,
+      windowsHide: true
+    })));
+  } catch {
+    throw new Error("YouTube range extraction needs yt-dlp, ffmpeg, and ffprobe. Install them or attach an authorized excerpt instead.");
+  }
+}
+
+export function resolveAnalysisDuration(input: {
+  fileDuration?: number;
+  source?: ClipSource;
+  requestedDuration?: number;
+}): number | undefined {
+  if (input.fileDuration && Number.isFinite(input.fileDuration)) return input.fileDuration;
+  if (input.source?.kind === "live_link" && input.source.startSeconds !== undefined && input.source.endSeconds !== undefined) {
+    return input.source.endSeconds - input.source.startSeconds;
+  }
+  return input.requestedDuration && Number.isFinite(input.requestedDuration) ? input.requestedDuration : undefined;
+}
+
+export function buildFfprobeArgs(inputPath: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "default=noprint_wrappers=1:nokey=1",
+    inputPath
+  ];
+}
+
+export function resolveFfmpegTool(tool: "ffmpeg" | "ffprobe"): string {
+  const location = env.ffmpegLocation;
+  if (!location) return tool;
+  const name = basename(location).toLowerCase();
+  if (name.startsWith("ffmpeg") || name.startsWith("ffprobe")) {
+    const extension = extname(location);
+    return join(dirname(location), `${tool}${extension}`);
+  }
+  return join(location, process.platform === "win32" ? `${tool}.exe` : tool);
+}

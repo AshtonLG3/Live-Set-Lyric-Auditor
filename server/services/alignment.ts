@@ -107,7 +107,7 @@ export function classifyVariants(
   });
 
   const skipped = canonicalLines.filter((line) => !matchedCanonicalIds.has(line.id));
-  skipped.slice(0, 2).forEach((line) => {
+  skipped.forEach((line) => {
     variants.push({
       id: `V${variants.length + 1}`,
       type: "skipped_line",
@@ -141,7 +141,7 @@ export function buildPassport(input: {
   copyright?: string;
   trackingUrl?: string;
   matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
-  vocalIsolationSource: "lalalai" | "fixture";
+  vocalIsolationSource: "lalalai" | "original" | "fixture";
   vocalIsolationConfidence: number;
   asrSource: "replicate" | "external" | "fixture";
   source: ClipSource;
@@ -173,7 +173,9 @@ export function buildPassport(input: {
       filename: input.filename,
       durationSeconds: input.durationSeconds,
       vocalIsolationSource: input.vocalIsolationSource,
+      vocalIsolationConfidence: input.vocalIsolationConfidence,
       asrSource: input.asrSource,
+      transcript: input.transcript,
       source: input.source
     },
     summary,
@@ -224,7 +226,12 @@ export function buildPassport(input: {
         : "Source media was supplied directly by the user for this analysis.",
       input.performanceContext?.source === "cyanite"
         ? "Configured Cyanite analysis contributes derived energy, mood, BPM, and arrangement metadata."
-        : "Performance context uses seeded demo metadata when Cyanite analysis is unavailable."
+        : "Performance context uses seeded demo metadata when Cyanite analysis is unavailable.",
+      input.vocalIsolationSource === "lalalai"
+        ? "Configured LALAL.AI vocal isolation supplied the transcription stem."
+        : input.vocalIsolationSource === "original"
+          ? "Vocal isolation was unavailable, so transcription used the original user-supplied audio."
+          : "Seeded demo isolation metadata was used for the fixture run."
     ]
   };
 }

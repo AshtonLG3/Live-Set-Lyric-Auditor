@@ -4,10 +4,12 @@ import path from "node:path";
 import { env, getHealth } from "./config";
 import { searchEvents } from "./adapters/jambase";
 import { searchTracks } from "./adapters/musixmatch";
-import { createNarration, runAnalysis, runRecallRescue } from "./services/analysis";
-import { createJob, jobs } from "./store";
+import { createNarration, reanchorAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
+import { createJob, jobMedia, jobs } from "./store";
 import type { ClipSource, EventCandidate, TrackCandidate } from "../shared/types";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
+import { MediaProbeError, probeMediaDuration, resolveAnalysisDuration } from "./services/media";
+import { isAllowedLiveSource } from "./source-validation";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -77,13 +79,12 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
     const rangedDuration = source?.startSeconds !== undefined && source.endSeconds !== undefined
       ? source.endSeconds - source.startSeconds
       : 0;
-    const durationSeconds = requestedDuration || rangedDuration;
     if (!req.file && !useFixture && source?.kind !== "live_link") {
       res.status(400).json({ error: "Import an audio or video clip before starting analysis." });
       return;
     }
-    if (source?.kind === "live_link" && !isSafeSourceUrl(source.url)) {
-      res.status(400).json({ error: "Enter a valid HTTP or HTTPS live-performance link." });
+    if (source?.kind === "live_link" && !isAllowedLiveSource(source)) {
+      res.status(400).json({ error: source.provider === "youtube" ? "Enter a valid YouTube performance URL." : "Enter a valid HTTP or HTTPS live-performance link." });
       return;
     }
     if (source?.kind === "live_link" && rangedDuration <= 0) {
@@ -94,7 +95,9 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
       res.status(415).json({ error: "Unsupported clip type. Use MP3, WAV, M4A, AAC, OGG, MP4, MOV, or WebM." });
       return;
     }
-    if (durationSeconds > MAX_CLIP_SECONDS) {
+    const fileDuration = req.file ? await probeMediaDuration(req.file) : undefined;
+    const durationSeconds = resolveAnalysisDuration({ fileDuration, source, requestedDuration });
+    if ((durationSeconds ?? 0) > MAX_CLIP_SECONDS) {
       res.status(400).json({ error: `Keep clips under ${MAX_CLIP_SECONDS} seconds.` });
       return;
     }
@@ -130,6 +133,47 @@ app.get("/api/analyze/:jobId", (req, res) => {
   res.json(job);
 });
 
+app.get("/api/analyze/:jobId/media", (req, res) => {
+  const media = jobMedia.get(req.params.jobId);
+  if (!media) {
+    res.status(404).json({ error: "Analysis media is not available." });
+    return;
+  }
+  const range = req.headers.range;
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Content-Type", media.mimetype);
+  res.setHeader("Content-Disposition", `inline; filename="${media.filename.replace(/[\r\n"]/g, "_")}"`);
+  if (!range) {
+    res.setHeader("Content-Length", media.buffer.length);
+    res.end(media.buffer);
+    return;
+  }
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  const start = match?.[1] ? Number(match[1]) : 0;
+  const end = match?.[2] ? Math.min(Number(match[2]), media.buffer.length - 1) : media.buffer.length - 1;
+  if (!match || start > end || start >= media.buffer.length) {
+    res.status(416).setHeader("Content-Range", `bytes */${media.buffer.length}`).end();
+    return;
+  }
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${start}-${end}/${media.buffer.length}`);
+  res.setHeader("Content-Length", end - start + 1);
+  res.end(media.buffer.subarray(start, end + 1));
+});
+
+app.post("/api/analyze/:jobId/reanchor", async (req, res, next) => {
+  try {
+    const track = req.body.track as TrackCandidate | undefined;
+    if (!track?.title?.trim() || !track.artist?.trim()) {
+      res.status(400).json({ error: "Track title and artist are required." });
+      return;
+    }
+    res.json(await reanchorAnalysis(req.params.jobId, track));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/narrate/:jobId", async (req, res, next) => {
   try {
     res.json(await createNarration(req.params.jobId));
@@ -139,9 +183,16 @@ app.post("/api/narrate/:jobId", async (req, res, next) => {
 });
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const message = error instanceof Error ? error.message : "Unexpected server error";
-  const status = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE" ? 413 : 500;
-  res.status(status).json({ error: status === 413 ? "Clip is larger than 40 MB." : message });
+  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+    res.status(413).json({ error: "Clip is larger than 40 MB." });
+    return;
+  }
+  if (error instanceof MediaProbeError) {
+    res.status(error.kind === "unavailable" ? 503 : 400).json({ error: error.message });
+    return;
+  }
+  console.error("Unhandled API error", error);
+  res.status(500).json({ error: "Unexpected server error." });
 });
 
 if (isProduction) {
@@ -179,14 +230,4 @@ function isSupportedClip(file: Express.Multer.File): boolean {
     return true;
   }
   return /\.(mp3|wav|m4a|aac|ogg|mp4|mov|webm)$/i.test(file.originalname);
-}
-
-function isSafeSourceUrl(value?: string): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

@@ -36,6 +36,7 @@ type RawTrack = {
 };
 
 type MusixmatchTrackSearchItem = { track?: RawTrack };
+type MusixmatchFingerprintItem = { similarity?: number; track?: RawTrack };
 
 export async function searchTracks(query: string): Promise<TrackCandidate[]> {
   const normalizedQuery = query.trim().toLowerCase();
@@ -51,6 +52,15 @@ export async function searchTracks(query: string): Promise<TrackCandidate[]> {
 export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate | undefined> {
   if (!env.musixmatchKey) {
     return undefined;
+  }
+
+  const text = buildFingerprintText(segments);
+  if (wordCount(text) >= 10) {
+    const fingerprinted = await prioritizeCanonicalRecordings(text, await fingerprintLyrics(text));
+    const best = confidentFingerprintMatch(fingerprinted);
+    if (best) {
+      return best;
+    }
   }
 
   const phrases = buildIdentificationPhrases(segments);
@@ -83,13 +93,7 @@ export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Pr
 }
 
 export async function searchTracksByLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate[]> {
-  const phrase = segments
-    .map((segment) => segment.text)
-    .join(" ")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 18)
-    .join(" ");
+  const phrase = buildFingerprintText(segments);
 
   if (!phrase) {
     return [];
@@ -98,10 +102,27 @@ export async function searchTracksByLyrics(segments: TranscriptSegment[]): Promi
     return fixtureTracks;
   }
 
-  return searchMusixmatch(new URLSearchParams({ q_lyrics: phrase, f_has_lyrics: "1" }));
+  if (wordCount(phrase) >= 10) {
+    const fingerprinted = await prioritizeCanonicalRecordings(phrase, await fingerprintLyrics(phrase));
+    if (fingerprinted.length > 0) {
+      return fingerprinted;
+    }
+  }
+
+  return searchMusixmatch(new URLSearchParams({ q_lyrics: phrase.split(/\s+/).slice(0, 18).join(" "), f_has_lyrics: "1" }));
 }
 
 export async function getCanonicalReference(track: TrackCandidate): Promise<CanonicalReference> {
+  if (track.source === "manual") {
+    return {
+      lines: [],
+      source: "metadata-only",
+      sourceCoverage: 0.2,
+      restricted: true,
+      language: track.language,
+      copyright: "Manual track correction; no Musixmatch lyric reference is attached."
+    };
+  }
   if (!env.musixmatchKey || track.source === "fixture") {
     return {
       lines: fixtureCanonicalLines,
@@ -164,7 +185,7 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
 
 async function searchMusixmatch(query: URLSearchParams): Promise<TrackCandidate[]> {
   query.set("apikey", env.musixmatchKey ?? "");
-  query.set("page_size", "6");
+  if (!query.has("page_size")) query.set("page_size", "6");
   query.set("format", "json");
 
   try {
@@ -180,6 +201,91 @@ async function searchMusixmatch(query: URLSearchParams): Promise<TrackCandidate[
   } catch {
     return [];
   }
+}
+
+async function fingerprintLyrics(text: string): Promise<TrackCandidate[]> {
+  const query = new URLSearchParams({
+    apikey: env.musixmatchKey ?? "",
+    size: "20",
+    limit: "6",
+    format: "json"
+  });
+
+  try {
+    const response = await fetch(`${env.musixmatchBaseUrl}/track.lyrics.fingerprint.post?${query.toString()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: { text } })
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const json = await response.json();
+    const items: MusixmatchFingerprintItem[] = json?.track_list ?? json?.message?.body?.track_list ?? [];
+    const tracks: TrackCandidate[] = [];
+    for (const item of items) {
+      const track = mapTrack(item.track);
+      if (track) {
+        tracks.push({ ...track, lyricSimilarity: item.similarity });
+      }
+    }
+    return tracks.sort((left, right) =>
+      (right.lyricSimilarity ?? 0) - (left.lyricSimilarity ?? 0)
+      || (right.rating ?? 0) - (left.rating ?? 0)
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function prioritizeCanonicalRecordings(text: string, fingerprinted: TrackCandidate[]): Promise<TrackCandidate[]> {
+  const fingerprintLeader = fingerprinted[0];
+  if (!fingerprintLeader) {
+    return [];
+  }
+
+  const catalog = await searchMusixmatch(new URLSearchParams({
+    q_track: fingerprintLeader.title,
+    q_lyrics: text.split(/\s+/).slice(0, 30).join(" "),
+    f_has_lyrics: "1",
+    g_commontrack: "1",
+    s_track_rating: "desc",
+    page_size: "10"
+  }));
+  if (catalog.length === 0) {
+    return fingerprinted;
+  }
+
+  const similarity = fingerprintLeader.lyricSimilarity;
+  const rankedCatalog = catalog.map((track) => ({ ...track, lyricSimilarity: similarity }));
+  const catalogIds = new Set(rankedCatalog.map((track) => track.id));
+  return [...rankedCatalog, ...fingerprinted.filter((track) => !catalogIds.has(track.id))];
+}
+
+function confidentFingerprintMatch(tracks: TrackCandidate[]): TrackCandidate | undefined {
+  const best = tracks[0];
+  if (!best || (best.lyricSimilarity ?? 0) < 80) {
+    return undefined;
+  }
+  const runnerUp = tracks[1];
+  if (runnerUp && (best.lyricSimilarity ?? 0) < 95 && (best.lyricSimilarity ?? 0) - (runnerUp.lyricSimilarity ?? 0) < 8) {
+    return undefined;
+  }
+  return best;
+}
+
+function buildFingerprintText(segments: TranscriptSegment[]): string {
+  return segments
+    .map((segment) => segment.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .split(/\s+/)
+    .slice(0, 120)
+    .join(" ");
+}
+
+function wordCount(value: string): number {
+  return value.trim() ? value.trim().split(/\s+/).length : 0;
 }
 
 function buildIdentificationPhrases(segments: TranscriptSegment[]): string[] {

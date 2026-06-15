@@ -71,7 +71,12 @@ const completeJob: AnalysisJob = {
       filename: "seed.mp3",
       durationSeconds: 24,
       vocalIsolationSource: "fixture",
+      vocalIsolationConfidence: 0.74,
       asrSource: "fixture",
+      transcript: [
+        { id: "T1", start: 0, end: 4, text: "The night opens slowly under electric skies", confidence: 0.93 },
+        { id: "T2", start: 4, end: 8, text: "Cape Town carry this chorus", confidence: 0.84 }
+      ],
       source: { kind: "upload", processingMode: "uploaded_media" }
     },
     summary: "Detected 3 live variant candidates.",
@@ -186,6 +191,22 @@ beforeEach(() => {
     if (url === "/api/analyze/job-1") {
       return jsonResponse(completeJob);
     }
+    if (url === "/api/analyze/job-1/reanchor") {
+      return jsonResponse({
+        ...completeJob,
+        passport: {
+          ...completeJob.passport,
+          track: {
+            id: "manual-correct-song-correct-artist",
+            title: "Correct Song",
+            artist: "Correct Artist",
+            hasLyrics: false,
+            hasSubtitles: false,
+            source: "manual"
+          }
+        }
+      });
+    }
     if (url === "/api/narrate/job-1") {
       return jsonResponse({ jobId: "job-1", mode: "fixture", text: "Narration script" });
     }
@@ -234,7 +255,8 @@ it("uses remembered words to rescue a track", async () => {
   expect(await screen.findByText(/Recognized fragment/i)).toBeInTheDocument();
   const matches = screen.getAllByRole("button", { name: /Midnight Atlas/i });
   fireEvent.click(matches[0]);
-  expect(screen.getByRole("button", { name: /Continue with a live link/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Upload performance clip/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Use YouTube \/ live link/i })).toBeInTheDocument();
 });
 
 it("explains that mobile microphone capture needs HTTPS on an insecure origin", async () => {
@@ -285,6 +307,16 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(screen.getByText("2 of 3")).toBeInTheDocument();
   expect(screen.getAllByText("86%").length).toBeGreaterThan(0);
   expect(screen.getAllByRole("button", { name: /Export Passport/i })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: /Play analyzed clip/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Rewind 5 seconds/i })).toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: /Seek analyzed clip/i })).toBeInTheDocument();
+  expect(screen.getByText("Transcription Review")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /The night opens slowly under electric skies/i })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Correct match/i }));
+  fireEvent.change(screen.getByLabelText("Correct track title"), { target: { value: "Correct Song" } });
+  fireEvent.change(screen.getByLabelText("Correct track artist"), { target: { value: "Correct Artist" } });
+  fireEvent.click(screen.getByRole("button", { name: /Use manual labels/i }));
+  await waitFor(() => expect(screen.getAllByText("Correct Song").length).toBeGreaterThan(0));
   expect(screen.queryByRole("button", { name: /Filter candidates/i })).not.toBeInTheDocument();
   const performanceFilter = screen.getByRole("button", { name: /Performance \(1\)/i });
   fireEvent.click(performanceFilter);
@@ -299,7 +331,27 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(screen.getByText(/1 approved, 0 rejected, and 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
-});
+}, 40000);
+
+it("surfaces a polling failure instead of leaving analysis busy", async () => {
+  const baseFetch = fetch;
+  let jobReads = 0;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      jobReads += 1;
+      if (jobReads === 1) {
+        return jsonResponse({ ...completeJob, status: "running", passport: undefined });
+      }
+      throw new Error("Analysis status connection failed");
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+
+  expect(await screen.findByText("Analysis status connection failed", {}, { timeout: 5000 })).toBeInTheDocument();
+}, 40000);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
