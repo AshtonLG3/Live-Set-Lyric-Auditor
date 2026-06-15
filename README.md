@@ -87,6 +87,21 @@ ASR_API_KEY=
 
 Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
 
+### Partner Credentials
+
+Add credentials to `.env` as they are issued. Keep the default base URLs unless a partner gives you a different endpoint.
+
+| Partner | Required value | Optional value |
+| --- | --- | --- |
+| Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL` |
+| JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
+| Cyanite | `CYANITE_API_TOKEN` or `CYANITE_API_KEY` | `CYANITE_API_BASE_URL` |
+| LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL` |
+| ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID` |
+| External ASR | `ASR_API_URL` | `ASR_API_KEY` |
+
+Restart the server after adding a key. The Dashboard partner strip and `/api/health` show whether each integration is using live or demo data. Songstats and n8n remain intentionally deferred and do not yet have active adapters.
+
 ## Replit
 
 Use the same commands:
