@@ -19,6 +19,11 @@ export const env = {
   lalalPollTimeoutMs: Math.max(10_000, Number(process.env.LALAL_POLL_TIMEOUT_MS ?? 180_000)),
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
   elevenlabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
+  replicateToken: process.env.REPLICATE_API_TOKEN,
+  replicateWhisperVersion: process.env.REPLICATE_WHISPER_VERSION
+    ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
+  replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
+    ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
   asrApiUrl: process.env.ASR_API_URL,
   asrApiKey: process.env.ASR_API_KEY
 };
@@ -67,10 +72,12 @@ export function getIntegrationStatus(): IntegrationStatus[] {
     },
     {
       name: "ASR",
-      configured: configured("ASR_API_URL"),
-      mode: configured("ASR_API_URL") ? "live" : "fixture",
-      detail: configured("ASR_API_URL")
-        ? "External Whisper-style ASR endpoint configured."
+      configured: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL"),
+      mode: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL") ? "live" : "fixture",
+      detail: configured("REPLICATE_API_TOKEN")
+        ? "Replicate Whisper transcription configured with a pinned fallback model."
+        : configured("ASR_API_URL")
+          ? "External Whisper-style ASR endpoint configured."
         : "Using seeded transcript for demo resilience."
     }
   ];

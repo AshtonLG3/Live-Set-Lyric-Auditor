@@ -184,7 +184,7 @@ export type LiveVariantPassport = {
     filename: string;
     durationSeconds: number;
     vocalIsolationSource: "lalalai" | "fixture";
-    asrSource: "external" | "fixture";
+    asrSource: "replicate" | "external" | "fixture";
     source: ClipSource;
   };
   summary: string;

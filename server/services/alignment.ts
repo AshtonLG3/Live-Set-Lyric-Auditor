@@ -143,7 +143,7 @@ export function buildPassport(input: {
   matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
   vocalIsolationSource: "lalalai" | "fixture";
   vocalIsolationConfidence: number;
-  asrSource: "external" | "fixture";
+  asrSource: "replicate" | "external" | "fixture";
   source: ClipSource;
   liveContext?: LiveContext | null;
   performanceContext?: PerformanceContext;
