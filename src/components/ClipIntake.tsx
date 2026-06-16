@@ -17,7 +17,7 @@ import {
   Trash2,
   Upload
 } from "lucide-react";
-import type { ClipSource, RecallRescueResponse, TrackCandidate } from "../../shared/types";
+import type { ClipSource, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { MAX_CLIP_SECONDS, MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
 import { rescueRecall } from "../api";
 import { formatFileSize, inspectClip, type ClipSelection } from "../clip";
@@ -28,6 +28,7 @@ export type IntakeAnalysisInput = {
   durationSeconds?: number;
   autoMatch: boolean;
   source: ClipSource;
+  recallSegments?: TranscriptSegment[];
 };
 
 type IntakeMode = "upload" | "live_link" | "recall";
@@ -75,6 +76,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   const liveSourceReady = Boolean(parsedSource && (parsedSource.provider === "youtube" || linkClip));
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
   const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
+  const recallAnalysisReady = Boolean(recallResult?.segments.length);
 
   useEffect(() => () => {
     stopMediaStream();
@@ -420,6 +422,21 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
                   </button>
                 </div>
               )}
+              {recallAnalysisReady && (
+                <button
+                  type="button"
+                  className="button-primary w-full"
+                  disabled={busy || recallBusy}
+                  onClick={() => void onAnalyze({
+                    durationSeconds: recallDurationSeconds(recallResult?.segments),
+                    autoMatch: !matchedTrackId,
+                    source: { kind: "recall_recording", processingMode: "recall_recording" },
+                    recallSegments: recallResult?.segments
+                  })}
+                >
+                  <Play size={17} /> {matchedTrack ? `Analyze recalled fragment as ${matchedTrack.title}` : "Analyze recalled fragment"}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -581,4 +598,9 @@ function getMicrophoneCaptureErrorMessage(error: unknown): string {
     if (error.name === "SecurityError") return "Microphone capture needs HTTPS on mobile. Open this app from an HTTPS address, then try again.";
   }
   return error instanceof Error && error.message ? error.message : "Microphone permission was not granted.";
+}
+
+function recallDurationSeconds(segments?: TranscriptSegment[]): number | undefined {
+  const lastEnd = Math.max(0, ...(segments ?? []).map((segment) => Number(segment.end) || 0));
+  return lastEnd > 0 ? lastEnd : undefined;
 }

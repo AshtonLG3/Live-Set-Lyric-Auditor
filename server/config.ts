@@ -27,7 +27,7 @@ export const env = {
     ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
   pythonCommand: process.env.PYTHON_COMMAND?.trim() || "python",
   ffmpegLocation: process.env.FFMPEG_LOCATION?.trim(),
-  youtubeExtractTimeoutMs: Math.max(30_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 120_000)),
+  youtubeExtractTimeoutMs: Math.min(60_000, Math.max(15_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 45_000))),
   cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
   cyanitePollTimeoutMs: Math.max(30_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 180_000)),
   asrApiUrl: process.env.ASR_API_URL,

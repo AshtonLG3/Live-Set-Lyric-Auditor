@@ -259,6 +259,9 @@ it("uses remembered words to rescue a track", async () => {
   fireEvent.click(matches[0]);
   expect(screen.getByRole("button", { name: /Upload performance clip/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Use YouTube \/ live link/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i }));
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument());
 });
 
 it("explains that mobile microphone capture needs HTTPS on an insecure origin", async () => {

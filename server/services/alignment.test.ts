@@ -19,9 +19,21 @@ describe("alignment pipeline", () => {
     expect(variants.map((variant) => variant.type)).toContain("skipped_line");
   });
 
-  it("reports every canonical line omitted from the performance", () => {
+  it("does not report skipped lines when the excerpt has no canonical anchor window", () => {
     const variants = classifyVariants([], fixtureCanonicalLines, 1);
-    expect(variants.filter((variant) => variant.type === "skipped_line")).toHaveLength(fixtureCanonicalLines.length);
+    expect(variants.filter((variant) => variant.type === "skipped_line")).toHaveLength(0);
+  });
+
+  it("reports skipped lines only inside matched canonical anchors", () => {
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: fixtureCanonicalLines[0].text, confidence: 0.9 },
+      { id: "T2", start: 16, end: 20, text: fixtureCanonicalLines[3].text, confidence: 0.9 }
+    ], fixtureCanonicalLines);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 1);
+    expect(variants.filter((variant) => variant.type === "skipped_line").map((variant) => variant.canonicalAlignmentReference)).toEqual([
+      "L2 (canonical line absent from aligned ASR)",
+      "L3 (canonical line absent from aligned ASR)"
+    ]);
   });
 
   it("builds a passport with cached review excerpts but without storing canonicalLines", () => {

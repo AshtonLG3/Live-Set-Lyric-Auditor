@@ -4,7 +4,7 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
-Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requires `yt-dlp`, `ffmpeg`, and `ffprobe`.
+Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requires `yt-dlp`, `ffmpeg`, and `ffprobe`. If extraction times out, the app reports the failure and asks for an authorized excerpt instead of waiting indefinitely.
 
 Real uploads and provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
@@ -14,7 +14,7 @@ Version `0.8.0` includes live playback and transcript review, manual track corre
 
 1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.8.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
-3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable.
+3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploads and live links.
 4. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
 5. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
 6. Review timestamped candidates first, select any row to inspect its reference diff, and manually add missed live moments such as crowd responses or ad-libs that ASR did not capture.
@@ -28,11 +28,11 @@ Version `0.8.0` includes live playback and transcript review, manual track corre
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
-- **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip.
-- **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing.
+- **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip. Common low-confidence Whisper filler phrases are removed before alignment.
+- **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing. Extraction is bounded by `YOUTUBE_EXTRACT_TIMEOUT_MS` with a 45 second default.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
-App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, or recorded sources.
+App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, recorded, or recalled sources.
 
 ## Compliance Notes
 
@@ -55,7 +55,7 @@ The contest build deliberately prioritizes Musixmatch-native value:
 - performance structure changes and recommended QA actions
 - vocal-derived lyrics rescue when the user does not know the track
 - provider-aware live links with start/end evidence ranges
-- Recall Rescue from a personal spoken or sung lyric fragment
+- Recall Rescue from a personal spoken or sung lyric fragment, with direct Analysis continuation after a track match
 - JamBase event, lineup, canonical artist/venue ID, and setlist-position context
 - Cyanite performance energy, BPM, emotion, instrument, and arrangement context
 - a desktop QA workbench and compact mobile review flow for decisions in the field
@@ -99,7 +99,7 @@ REPLICATE_WHISPER_VERSION=vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309
 REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7
 PYTHON_COMMAND=python
 FFMPEG_LOCATION=
-YOUTUBE_EXTRACT_TIMEOUT_MS=120000
+YOUTUBE_EXTRACT_TIMEOUT_MS=45000
 CYANITE_POLL_INTERVAL_MS=2500
 CYANITE_POLL_TIMEOUT_MS=180000
 ```

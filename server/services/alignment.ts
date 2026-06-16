@@ -77,6 +77,7 @@ export function classifyVariants(
 ): VariantCandidate[] {
   const variants: VariantCandidate[] = [];
   const matchedCanonicalIds = new Set<string>();
+  const canonicalIndexes = new Map(canonicalLines.map((line, index) => [line.id, index]));
 
   alignments.forEach((alignment, index) => {
     if (alignment.canonical) {
@@ -108,7 +109,7 @@ export function classifyVariants(
     });
   });
 
-  const skipped = canonicalLines.filter((line) => !matchedCanonicalIds.has(line.id));
+  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes);
   skipped.forEach((line) => {
     variants.push({
       id: `V${variants.length + 1}`,
@@ -128,6 +129,26 @@ export function classifyVariants(
   });
 
   return variants;
+}
+
+function skippedLinesWithinAnchoredWindow(
+  canonicalLines: CanonicalLine[],
+  alignments: AlignmentResult[],
+  matchedCanonicalIds: Set<string>,
+  canonicalIndexes: Map<string, number>
+): CanonicalLine[] {
+  const matchedIndexes = alignments
+    .map((alignment) => alignment.canonical ? canonicalIndexes.get(alignment.canonical.id) : undefined)
+    .filter((index): index is number => typeof index === "number");
+  const uniqueIndexes = [...new Set(matchedIndexes)];
+  if (uniqueIndexes.length < 2) {
+    return [];
+  }
+  const min = Math.min(...uniqueIndexes);
+  const max = Math.max(...uniqueIndexes);
+  return canonicalLines.filter((line, index) =>
+    index >= min && index <= max && !matchedCanonicalIds.has(line.id)
+  );
 }
 
 export function buildPassport(input: {

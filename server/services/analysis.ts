@@ -5,6 +5,7 @@ import { analyzePerformance } from "../adapters/cyanite";
 import { narratePassport } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocals } from "../adapters/lalal";
+import type { VocalIsolationResult } from "../adapters/lalal";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
@@ -21,6 +22,7 @@ export type AnalyzeInput = {
   autoMatch?: boolean;
   useFixture?: boolean;
   source?: ClipSource;
+  recallSegments?: TranscriptSegment[];
 };
 
 export async function runRecallRescue(file?: Express.Multer.File, phrase?: string): Promise<RecallRescueResponse> {
@@ -50,6 +52,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     updateJob(jobId, (job) => ({ ...job, status: "running" }));
 
     setStep(jobId, "ingest", "running");
+    const recallSegments = normalizeRecallSegments(input.recallSegments);
     const analysisFile = await resolveAnalysisFile(input);
     const effectiveSource = analysisFile && !input.file && input.source?.kind === "live_link"
       ? { ...input.source, processingMode: "provider_excerpt" as const }
@@ -67,13 +70,21 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       "complete",
       analysisFile
         ? `${analysisFile.originalname} · ${formatBytes(analysisFile.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
+        : recallSegments.length
+          ? `${recallSegments.length} recalled lyric segment${recallSegments.length === 1 ? "" : "s"} loaded.`
         : input.source?.kind === "live_link"
           ? `${providerLabel(input.source)} reference · no processable excerpt`
           : "Seeded fixture clip loaded."
     );
 
     setStep(jobId, "isolate", "running");
-    const vocal = await isolateVocals(analysisFile);
+    const vocal: VocalIsolationResult = recallSegments.length && !analysisFile
+      ? {
+          source: "original",
+          confidence: 1,
+          detail: "Recall text supplied; no vocal isolation needed."
+        }
+      : await isolateVocals(analysisFile);
     setStep(jobId, "isolate", "complete", vocal.detail);
 
     setStep(jobId, "profile", "running");
@@ -86,7 +97,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     );
 
     setStep(jobId, "transcribe", "running");
-    const transcription = await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
+    const transcription = recallSegments.length && !analysisFile
+      ? { source: "external" as const, segments: recallSegments }
+      : await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
     setStep(jobId, "transcribe", "complete", `${transcription.segments.length} vocal segments from ${transcription.source}.`);
 
     updateJob(jobId, (job) => ({
@@ -330,4 +343,27 @@ function formatBytes(bytes: number): string {
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function normalizeRecallSegments(segments?: TranscriptSegment[]): TranscriptSegment[] {
+  return (segments ?? [])
+    .map((segment, index): TranscriptSegment | null => {
+      const text = segment.text?.trim();
+      if (!text) return null;
+      const start = finiteNumber(segment.start, index * 4);
+      const end = Math.max(start + 1, finiteNumber(segment.end, start + 4));
+      return {
+        id: segment.id || `R${index + 1}`,
+        start,
+        end,
+        text,
+        confidence: Math.max(0.1, Math.min(1, finiteNumber(segment.confidence, 1)))
+      };
+    })
+    .filter((segment): segment is TranscriptSegment => segment !== null);
+}
+
+function finiteNumber(...values: unknown[]): number {
+  const value = values.find((candidate) => typeof candidate === "number" && Number.isFinite(candidate));
+  return typeof value === "number" ? value : 0;
 }

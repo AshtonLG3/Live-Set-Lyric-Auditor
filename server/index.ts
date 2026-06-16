@@ -6,7 +6,7 @@ import { searchEvents } from "./adapters/jambase";
 import { searchTracks } from "./adapters/musixmatch";
 import { createNarration, reanchorAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobMedia, jobs } from "./store";
-import type { ClipSource, EventCandidate, TrackCandidate } from "../shared/types";
+import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
 import { MediaProbeError, probeMediaDuration, resolveAnalysisDuration } from "./services/media";
 import { isAllowedLiveSource } from "./source-validation";
@@ -75,11 +75,13 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
   try {
     const useFixture = req.body.useFixture === "true";
     const source = parseJsonField<ClipSource>(req.body.source);
+    const recallSegments = parseTranscriptSegments(req.body.recallSegments);
+    const hasRecallTranscript = source?.kind === "recall_recording" && recallSegments.length > 0;
     const requestedDuration = Number(req.body.durationSeconds || 0);
     const rangedDuration = source?.startSeconds !== undefined && source.endSeconds !== undefined
       ? source.endSeconds - source.startSeconds
       : 0;
-    if (!req.file && !useFixture && source?.kind !== "live_link") {
+    if (!req.file && !useFixture && source?.kind !== "live_link" && !hasRecallTranscript) {
       res.status(400).json({ error: "Import an audio or video clip before starting analysis." });
       return;
     }
@@ -117,7 +119,8 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
       durationSeconds: durationSeconds || undefined,
       autoMatch: req.body.autoMatch === "true",
       useFixture,
-      source
+      source,
+      recallSegments
     });
   } catch (error) {
     next(error);
@@ -230,4 +233,14 @@ function isSupportedClip(file: Express.Multer.File): boolean {
     return true;
   }
   return /\.(mp3|wav|m4a|aac|ogg|mp4|mov|webm)$/i.test(file.originalname);
+}
+
+function isTranscriptSegment(value: unknown): value is TranscriptSegment {
+  return Boolean(value && typeof value === "object" && typeof (value as TranscriptSegment).text === "string");
+}
+
+function parseTranscriptSegments(value: unknown): TranscriptSegment[] {
+  const parsed = parseJsonField<TranscriptSegment[] | TranscriptSegment>(value);
+  const values = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+  return values.filter(isTranscriptSegment);
 }

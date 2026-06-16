@@ -131,6 +131,7 @@ export default function App() {
         autoMatch: useFixture ? true : input?.autoMatch,
         useFixture,
         source: useFixture ? { kind: "fixture", processingMode: "fixture" } : input?.source,
+        recallSegments: input?.recallSegments,
         track: input?.autoMatch === false ? selectedTrack : undefined,
         event: input?.autoMatch === false ? selectedEvent ?? null : null,
         trackQuery,

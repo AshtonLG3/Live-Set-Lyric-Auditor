@@ -47,6 +47,9 @@ export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express
       path: ""
     };
   } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error(`Could not retrieve the selected YouTube range: extraction timed out after ${Math.round(env.youtubeExtractTimeoutMs / 1000)} seconds. Attach an authorized excerpt instead.`);
+    }
     const detail = error instanceof Error ? error.message : "unknown extraction error";
     throw new Error(`Could not retrieve the selected YouTube range: ${detail}`);
   } finally {
@@ -78,4 +81,10 @@ export function buildYouTubeExtractArgs(url: string, start: number, end: number,
     url
   );
   return args;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  return record.killed === true || record.signal === "SIGTERM" || String(record.code ?? "").toUpperCase() === "ETIMEDOUT";
 }

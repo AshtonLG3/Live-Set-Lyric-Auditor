@@ -175,8 +175,9 @@ function parseReplicateOutput(output: object): TranscriptSegment[] {
     })
     .filter((segment): segment is TranscriptSegment => segment !== null);
 
-  if (segments.length > 0) {
-    return segments;
+  const cleanedSegments = filterNoiseSegments(segments);
+  if (cleanedSegments.length > 0) {
+    return cleanedSegments;
   }
 
   const text = [record.text, record.transcription]
@@ -184,6 +185,34 @@ function parseReplicateOutput(output: object): TranscriptSegment[] {
   return text
     ? [{ id: "R1", start: 0, end: 4, text: text.trim(), confidence: 0.78 }]
     : [];
+}
+
+function filterNoiseSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
+  const filtered = segments.filter((segment) => {
+    const normalized = normalizeText(segment.text);
+    if (segment.confidence > 0.75) return true;
+    return !knownNoisePhrases.some((phrase) => normalized === phrase || normalized.includes(phrase));
+  });
+  return filtered.length > 0 ? filtered : segments;
+}
+
+const knownNoisePhrases = [
+  "okay heres this one",
+  "okay here is this one",
+  "thanks for watching",
+  "thank you for watching",
+  "dont forget to subscribe",
+  "please subscribe",
+  "like and subscribe"
+];
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[''`]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

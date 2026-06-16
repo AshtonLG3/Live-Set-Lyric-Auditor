@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { TrackCandidate } from "../../shared/types";
-import { fixturePerformanceContext } from "../data/fixtures";
+import { fixturePerformanceContext, fixtureTracks } from "../data/fixtures";
 import { createJob, jobs, updateJob } from "../store";
-import { reanchorAnalysis } from "./analysis";
+import { reanchorAnalysis, runAnalysis } from "./analysis";
 
 describe("analysis recovery", () => {
   beforeEach(() => {
@@ -39,6 +39,25 @@ describe("analysis recovery", () => {
       { id: "R1", start: 0, end: 5, text: "How you broke my heart", confidence: 0.9 }
     ]);
     expect(corrected.progress.find((step) => step.id === "anchor")?.status).toBe("complete");
+  });
+
+  it("analyzes a typed recall fragment without requiring an uploaded clip", async () => {
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      track: fixtureTracks[0],
+      autoMatch: false,
+      source: { kind: "recall_recording", processingMode: "recall_recording" },
+      recallSegments: [{ id: "R1", start: 0, end: 0, text: "We carry the chorus through the avenue", confidence: 1 }]
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.passport?.clip.source.kind).toBe("recall_recording");
+    expect(analyzed?.passport?.clip.transcript).toEqual([
+      { id: "R1", start: 0, end: 1, text: "We carry the chorus through the avenue", confidence: 1 }
+    ]);
+    expect(analyzed?.progress.find((step) => step.id === "isolate")?.detail).toContain("no vocal isolation needed");
   });
 });
 

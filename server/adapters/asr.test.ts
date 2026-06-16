@@ -75,6 +75,24 @@ describe("ASR adapter", () => {
     });
   });
 
+  it("drops common low-confidence Whisper filler from live transcripts", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    runMock.mockResolvedValue({
+      chunks: [
+        { timestamp: [0, 1.8], text: "Okay, here's this one." },
+        { timestamp: [1.8, 5.2], text: "I can tell by your eyes that you've probably been crying forever" }
+      ]
+    });
+
+    const { transcribeLiveVocal } = await import("./asr");
+    const result = await transcribeLiveVocal(audioFile());
+
+    expect(result.segments.map((segment) => segment.text)).toEqual([
+      "I can tell by your eyes that you've probably been crying forever"
+    ]);
+  });
+
+
   it("fails real media instead of substituting the fixture transcript", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
     runMock.mockRejectedValue(new Error("provider unavailable"));

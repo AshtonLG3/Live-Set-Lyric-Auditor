@@ -1,4 +1,4 @@
-import type { AnalysisJob, ClipSource, EventCandidate, HealthResponse, NarrationResponse, RecallRescueResponse, TrackCandidate, VariantCandidate } from "../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, HealthResponse, NarrationResponse, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate } from "../shared/types";
 
 export async function getHealth(): Promise<HealthResponse> {
   return fetchJson("/api/health");
@@ -26,6 +26,7 @@ export async function startAnalysis(input: {
   autoMatch?: boolean;
   useFixture?: boolean;
   source?: ClipSource;
+  recallSegments?: TranscriptSegment[];
 }): Promise<{ jobId: string }> {
   const formData = new FormData();
   if (input.file) formData.append("clip", input.file);
@@ -38,6 +39,7 @@ export async function startAnalysis(input: {
   formData.append("autoMatch", String(Boolean(input.autoMatch)));
   formData.append("useFixture", String(Boolean(input.useFixture)));
   if (input.source) formData.append("source", JSON.stringify(input.source));
+  if (input.recallSegments?.length) formData.append("recallSegments", JSON.stringify(input.recallSegments));
 
   const response = await fetch("/api/analyze", {
     method: "POST",
