@@ -8,6 +8,8 @@ Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requir
 
 Real uploads and provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
+Replit preview sharing is supported through Vite's allowed-host protection. The default dev allowlist includes `.replit.dev` and `.picard.replit.dev`; override it with `DEV_ALLOWED_HOSTS` if Replit assigns a different preview domain.
+
 Version `0.8.0` includes live playback and transcript review, manual track correction and failed-match recovery, reviewer-added live moments, cached reference excerpts for permitted review display, mobile capture, hardened media processing, and automatic loading of the ignored local `.env` file.
 
 ## Demo Flow
@@ -80,6 +82,7 @@ Optional environment variables:
 ```bash
 HOST=0.0.0.0
 PORT=4242
+DEV_ALLOWED_HOSTS=.replit.dev,.picard.replit.dev
 MUSIXMATCH_API_KEY=
 JAMBASE_API_KEY=
 JAMBASE_API_BASE_URL=https://api.data.jambase.com/v3

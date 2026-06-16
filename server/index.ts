@@ -207,7 +207,11 @@ if (isProduction) {
 } else {
   const { createServer } = await import("vite");
   const vite = await createServer({
-    server: { middlewareMode: true },
+    server: {
+      host: env.host,
+      middlewareMode: true,
+      allowedHosts: env.devAllowedHosts
+    },
     appType: "spa"
   });
   app.use(vite.middlewares);

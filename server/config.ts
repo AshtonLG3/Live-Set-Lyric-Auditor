@@ -3,10 +3,12 @@ import type { HealthResponse, IntegrationStatus, RuntimeMode } from "../shared/t
 
 const configured = (name: string) => Boolean(process.env[name]?.trim());
 const configuredAny = (...names: string[]) => names.some(configured);
+const defaultDevAllowedHosts = [".replit.dev", ".picard.replit.dev"];
 
 export const env = {
   host: process.env.HOST?.trim() || "0.0.0.0",
   port: Number(process.env.PORT ?? 4242),
+  devAllowedHosts: parseList(process.env.DEV_ALLOWED_HOSTS, defaultDevAllowedHosts),
   musixmatchKey: process.env.MUSIXMATCH_API_KEY,
   musixmatchBaseUrl: process.env.MUSIXMATCH_API_BASE_URL ?? "https://api.musixmatch.com/ws/1.1",
   jambaseKey: process.env.JAMBASE_API_KEY,
@@ -109,4 +111,12 @@ export function getHealth(): HealthResponse {
     runtimeMode: getRuntimeMode(),
     integrations: getIntegrationStatus()
   };
+}
+
+function parseList(value: string | undefined, fallback: string[]): string[] {
+  const parsed = value
+    ?.split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return parsed?.length ? parsed : fallback;
 }

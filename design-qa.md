@@ -35,6 +35,7 @@
 - The supplied MP4 smoke now produces three live variants and zero skipped-line spam; skipped-line reporting is limited to gaps between matched canonical anchors.
 - Recall fragments can now complete full Analysis as `recall_recording` input without requiring an uploaded clip or YouTube excerpt.
 - YouTube extraction failure is capped by a 15-60 second timeout window, defaulting to 45 seconds, and reports an authorized-excerpt fallback instead of stalling.
+- Replit preview hosts are allowed through Vite's host-check protection in both standalone Vite config and the Express-mounted dev middleware.
 - Manual correction re-anchors the existing transcript without rerunning isolation or ASR.
 - The media endpoint returns `206 Partial Content` for browser seeking.
 - Automated UI coverage asserts play, rewind, seek, timestamped transcript, Recall Rescue continuation, and manual correction controls.
@@ -56,6 +57,7 @@
 - Added explicit Recall Rescue continuation actions for upload, live-link, and direct recalled-fragment analysis.
 - Limited skipped-line detection to anchored reference windows so short excerpts do not fill the review queue with unrelated canonical omissions.
 - Added low-confidence ASR filler filtering and bounded YouTube extraction timeout errors.
+- Added a configurable `DEV_ALLOWED_HOSTS` allowlist for Replit preview sharing without disabling Vite's host protection.
 - Surfaced background analysis failures instead of leaving the interface stalled midway.
 - Added Musixmatch lyric-fingerprint ranking with catalog-authority resolution and compatibility fallback.
 - Removed premature Songstats exposure; it remains deferred until it contributes to the Passport.
