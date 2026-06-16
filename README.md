@@ -10,18 +10,19 @@ Real uploads and provider excerpts do not silently substitute demo transcripts, 
 
 Replit preview sharing is supported through Vite's allowed-host protection. The default dev allowlist includes `.replit.dev` and `.picard.replit.dev`; override it with `DEV_ALLOWED_HOSTS` if Replit assigns a different preview domain.
 
-Version `0.8.0` includes live playback and transcript review, manual track correction and failed-match recovery, reviewer-added live moments, cached reference excerpts for permitted review display, mobile capture, hardened media processing, and automatic loading of the ignored local `.env` file.
+Version `0.9.0` makes the live-vs-studio comparison the center of the product: the Passport now stores full line comparisons, the Analysis view shows matched and changed lines before the review queue, and selected details expose studio context, live context, and word-level changes. It also includes live playback and transcript review, manual track correction and failed-match recovery, reviewer-added live moments, cached reference excerpts for permitted review display, mobile capture, hardened media processing, and automatic loading of the ignored local `.env` file.
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.8.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.9.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploads and live links.
 4. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
 5. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
-6. Review timestamped candidates first, select any row to inspect its reference diff, and manually add missed live moments such as crowd responses or ad-libs that ASR did not capture.
-7. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before export.
-8. Generate the optional ElevenLabs narration and export the Passport JSON with current approve, reject, pending, and manual review decisions.
+6. Start with **Live vs Studio Comparison** to see each live line beside its studio reference, including matched rows, changed rows, skipped studio lines, timing drift, and live-only moments.
+7. Review timestamped candidates, select any row to inspect its reference diff, and manually add missed live moments such as crowd responses or ad-libs that ASR did not capture.
+8. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before export.
+9. Generate the optional ElevenLabs narration and export the Passport JSON with current approve, reject, pending, and manual review decisions.
 
 ## API Surfaces
 

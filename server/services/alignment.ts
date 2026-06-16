@@ -1,4 +1,4 @@
-import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, WordDiff } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -151,6 +151,117 @@ function skippedLinesWithinAnchoredWindow(
   );
 }
 
+export function buildLineComparisons(
+  alignments: AlignmentResult[],
+  canonicalLines: CanonicalLine[],
+  variants: VariantCandidate[] = []
+): LineComparison[] {
+  const canonicalIndexes = new Map(canonicalLines.map((line, index) => [line.id, index]));
+  const matchedCanonicalIds = new Set(alignments.flatMap((alignment) => alignment.canonical ? [alignment.canonical.id] : []));
+  const variantByLiveKey = new Map(
+    variants
+      .filter((variant) => variant.type !== "skipped_line")
+      .map((variant) => [variantKey(variant.start, variant.end, variant.liveText), variant.id])
+  );
+  const skippedVariantByCanonicalId = new Map(
+    variants
+      .filter((variant) => variant.type === "skipped_line")
+      .map((variant) => [variant.canonicalAlignmentReference.split(" ")[0], variant.id])
+  );
+
+  const liveComparisons = alignments.map((alignment, index): LineComparison => {
+    const canonicalIndex = alignment.canonical ? canonicalIndexes.get(alignment.canonical.id) : undefined;
+    const canonicalPrevious = typeof canonicalIndex === "number" ? canonicalLines[canonicalIndex - 1] : undefined;
+    const canonicalNext = typeof canonicalIndex === "number" ? canonicalLines[canonicalIndex + 1] : undefined;
+    const status = lineComparisonStatus(alignment, alignments[index - 1]);
+    return {
+      id: `C${index + 1}`,
+      start: alignment.transcript.start,
+      end: alignment.transcript.end,
+      canonicalId: alignment.canonical?.id,
+      canonicalText: alignment.canonical?.text,
+      canonicalPreviousText: canonicalPrevious?.text,
+      canonicalNextText: canonicalNext?.text,
+      liveText: alignment.transcript.text,
+      similarity: alignment.similarity,
+      timingDelta: alignment.timingDelta,
+      status,
+      changedWords: wordDiff(alignment.canonical?.text ?? "", alignment.transcript.text),
+      variantId: variantByLiveKey.get(variantKey(alignment.transcript.start, alignment.transcript.end, trimSnippet(alignment.transcript.text)))
+    };
+  });
+
+  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes);
+  const skippedComparisons = skipped.map((line, index): LineComparison => {
+    const canonicalIndex = canonicalIndexes.get(line.id) ?? -1;
+    return {
+      id: `C${liveComparisons.length + index + 1}`,
+      start: line.start,
+      end: line.end,
+      canonicalId: line.id,
+      canonicalText: line.text,
+      canonicalPreviousText: canonicalLines[canonicalIndex - 1]?.text,
+      canonicalNextText: canonicalLines[canonicalIndex + 1]?.text,
+      liveText: "[not detected in live vocal]",
+      similarity: 0,
+      timingDelta: 0,
+      status: "skipped",
+      changedWords: wordDiff(line.text, ""),
+      variantId: skippedVariantByCanonicalId.get(line.id)
+    };
+  });
+
+  return [...liveComparisons, ...skippedComparisons].sort((a, b) => a.start - b.start || statusSort(a.status) - statusSort(b.status));
+}
+
+function lineComparisonStatus(alignment: AlignmentResult, previous?: AlignmentResult): LineComparisonStatus {
+  if (!alignment.canonical) {
+    return alignment.similarity >= 0.18 ? "uncertain" : "live_only";
+  }
+  if (previous?.canonical?.id === alignment.canonical.id && alignment.similarity >= 0.6) {
+    return "repeated";
+  }
+  if (alignment.similarity >= 0.9 && alignment.timingDelta < 2.5) {
+    return "matched";
+  }
+  if (alignment.similarity >= 0.7 && alignment.timingDelta >= 2.5) {
+    return "timing_drift";
+  }
+  if (alignment.similarity >= 0.28) {
+    return "changed";
+  }
+  return "uncertain";
+}
+
+function wordDiff(canonicalText: string, liveText: string): WordDiff {
+  const canonicalTokens = tokenize(canonicalText);
+  const liveTokens = tokenize(liveText);
+  const liveSet = new Set(liveTokens);
+  const canonicalSet = new Set(canonicalTokens);
+  return {
+    kept: canonicalTokens.filter((token) => liveSet.has(token)),
+    removed: canonicalTokens.filter((token) => !liveSet.has(token)),
+    added: liveTokens.filter((token) => !canonicalSet.has(token))
+  };
+}
+
+function variantKey(start: number, end: number, liveText: string): string {
+  return `${start.toFixed(1)}:${end.toFixed(1)}:${normalizeText(liveText)}`;
+}
+
+function statusSort(status: LineComparisonStatus): number {
+  const order: Record<LineComparisonStatus, number> = {
+    matched: 0,
+    changed: 1,
+    timing_drift: 2,
+    repeated: 3,
+    live_only: 4,
+    skipped: 5,
+    uncertain: 6
+  };
+  return order[status];
+}
+
 export function buildPassport(input: {
   id: string;
   track: TrackCandidate;
@@ -184,6 +295,7 @@ export function buildPassport(input: {
   };
 
   const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage);
+  const lineComparisons = buildLineComparisons(alignments, input.canonicalLines, variants);
   const summary = summarizePassport(variants, confidenceOverview.overall);
   const syncFitScore = round(averageAlignment * 0.72 + input.sourceCoverage * 0.28);
   const versionConfidence = scoreVersionConfidence(input.track, input.matchMethod, input.canonicalSource);
@@ -239,6 +351,7 @@ export function buildPassport(input: {
     },
     structureMap: buildStructureMap(variants),
     confidenceOverview,
+    lineComparisons,
     variants,
     complianceNotes: [
       "Musixmatch lyric/subtitle content is used only as an in-memory analysis reference.",

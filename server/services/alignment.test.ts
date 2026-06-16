@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTranscript, buildPassport, classifyVariants, normalizeText, tokenSimilarity } from "./alignment";
+import { alignTranscript, buildLineComparisons, buildPassport, classifyVariants, normalizeText, tokenSimilarity } from "./alignment";
 import { fixtureCanonicalLines, fixtureEvents, fixtureTranscript, fixtureTracks } from "../data/fixtures";
 
 describe("alignment pipeline", () => {
@@ -36,6 +36,23 @@ describe("alignment pipeline", () => {
     ]);
   });
 
+  it("builds a line-by-line comparison model with matched and changed rows", () => {
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: fixtureCanonicalLines[0].text, confidence: 0.9 },
+      { id: "T2", start: 5, end: 8, text: `${fixtureCanonicalLines[1].text} extra`, confidence: 0.9 }
+    ], fixtureCanonicalLines);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 1);
+    const comparisons = buildLineComparisons(alignments, fixtureCanonicalLines, variants);
+
+    expect(comparisons[0]).toMatchObject({
+      canonicalId: fixtureCanonicalLines[0].id,
+      liveText: fixtureCanonicalLines[0].text,
+      status: "matched"
+    });
+    expect(comparisons.some((comparison) => comparison.status === "changed")).toBe(true);
+    expect(comparisons.some((comparison) => comparison.changedWords.added.includes("extra"))).toBe(true);
+  });
+
   it("builds a passport with cached review excerpts but without storing canonicalLines", () => {
     const passport = buildPassport({
       id: "job-1",
@@ -60,6 +77,8 @@ describe("alignment pipeline", () => {
     expect(passport.performanceContext.arrangement).toBe("uncertain");
     expect(passport.liveContext).toBeNull();
     expect(passport.variants.some((variant) => variant.canonicalExcerpt)).toBe(true);
+    expect(passport.lineComparisons.length).toBeGreaterThan(passport.variants.length);
+    expect(passport.lineComparisons.some((comparison) => comparison.status === "matched")).toBe(true);
     expect(JSON.stringify(passport)).not.toContain("canonicalLines");
     for (const line of fixtureCanonicalLines) expect(canonicalReferences).not.toContain(line.text);
   });

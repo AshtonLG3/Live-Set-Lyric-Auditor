@@ -1,4 +1,4 @@
-# Design QA: Live-Set Lyric Auditor v0.8.0
+# Design QA: Live-Set Lyric Auditor v0.9.0
 
 ## Evidence
 
@@ -36,6 +36,8 @@
 - Recall fragments can now complete full Analysis as `recall_recording` input without requiring an uploaded clip or YouTube excerpt.
 - YouTube extraction failure is capped by a 15-60 second timeout window, defaulting to 45 seconds, and reports an authorized-excerpt fallback instead of stalling.
 - Replit preview hosts are allowed through Vite's host-check protection in both standalone Vite config and the Express-mounted dev middleware.
+- The Passport now stores `lineComparisons`, and Analysis leads with a Live vs Studio Comparison table before the Review Queue.
+- The selected comparison detail shows studio previous/current/next context, live previous/current/next context, and word-level removed/added/kept chips.
 - Manual correction re-anchors the existing transcript without rerunning isolation or ASR.
 - The media endpoint returns `206 Partial Content` for browser seeking.
 - Automated UI coverage asserts play, rewind, seek, timestamped transcript, Recall Rescue continuation, and manual correction controls.
@@ -43,7 +45,7 @@
 - Passport variants now carry permitted cached reference excerpts for review display while restricted tracks remain metadata-only.
 - `npm start` production routing was smoke-tested on port `4262`; `/analysis` returns the SPA shell instead of crashing on the Express wildcard route.
 - `npm audit --audit-level=high` reports zero vulnerabilities after upgrading Vite/esbuild.
-- `http://192.168.0.44:4242/api/health` responds in live mode with `Live-Set Lyric Auditor v0.8.0`.
+- Build/test verification is green for `Live-Set Lyric Auditor v0.9.0`; the existing listener on port `4242` was still serving `v0.8.0` during this pass and needs a process restart before live browser verification.
 - Mobile capture actions now stack at 767px and imported camera video receives an inline playable preview.
 
 ## Patches Made
@@ -58,6 +60,9 @@
 - Limited skipped-line detection to anchored reference windows so short excerpts do not fill the review queue with unrelated canonical omissions.
 - Added low-confidence ASR filler filtering and bounded YouTube extraction timeout errors.
 - Added a configurable `DEV_ALLOWED_HOSTS` allowlist for Replit preview sharing without disabling Vite's host protection.
+- Added first-class line comparison output to the Passport so the UI can show matched lines and differences, not only variant candidates.
+- Added the Live vs Studio Comparison panel above the review queue, with desktop rows and mobile cards.
+- Upgraded selected detail from a small diff card to a studio/live context and word-change inspection view.
 - Surfaced background analysis failures instead of leaving the interface stalled midway.
 - Added Musixmatch lyric-fingerprint ranking with catalog-authority resolution and compatibility fallback.
 - Removed premature Songstats exposure; it remains deferred until it contributes to the Passport.

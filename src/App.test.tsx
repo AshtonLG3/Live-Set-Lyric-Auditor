@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import type { AnalysisJob, HealthResponse } from "../shared/types";
 
@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.8.0",
+  version: "0.9.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.8.0",
+    version: "0.9.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -124,6 +124,43 @@ const completeJob: AnalysisJob = {
       live: ["Live opening", "City shoutout", "Live close"]
     },
     confidenceOverview: { overall: 0.81, asr: 0.88, alignment: 0.72, sourceCoverage: 0.74 },
+    lineComparisons: [
+      {
+        id: "C1",
+        start: 0,
+        end: 4,
+        canonicalId: "L1",
+        canonicalText: "The night opens slowly under electric skies",
+        canonicalNextText: "Carry this chorus through the avenue",
+        liveText: "The night opens slowly under electric skies",
+        similarity: 1,
+        timingDelta: 0,
+        status: "matched",
+        changedWords: {
+          kept: ["the", "night", "opens", "slowly", "under", "electric", "skies"],
+          removed: [],
+          added: []
+        }
+      },
+      {
+        id: "C2",
+        start: 4,
+        end: 8,
+        canonicalId: "L2",
+        canonicalText: "Carry this chorus through the avenue",
+        canonicalPreviousText: "The night opens slowly under electric skies",
+        liveText: "Cape Town carry this chorus",
+        similarity: 0.57,
+        timingDelta: 0,
+        status: "changed",
+        changedWords: {
+          kept: ["carry", "this", "chorus"],
+          removed: ["through", "the", "avenue"],
+          added: ["cape", "town"]
+        },
+        variantId: "V1"
+      }
+    ],
     variants: [
       {
         id: "V1",
@@ -222,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.8.0/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.9.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Demo data")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -262,6 +299,8 @@ it("uses remembered words to rescue a track", async () => {
   expect(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i }));
   await waitFor(() => expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument());
+  expect(screen.getByText("Live vs Studio Comparison")).toBeInTheDocument();
+  expect(screen.getAllByText("No lyric difference").length).toBeGreaterThan(0);
 });
 
 it("explains that mobile microphone capture needs HTTPS on an insecure origin", async () => {
@@ -307,7 +346,7 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(variantsSectionLink).toHaveAttribute("aria-current", "location");
   expect(screen.getByRole("button", { name: "Timeline" })).not.toHaveAttribute("aria-current");
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
-  expect(screen.getByText("Live Context")).toBeInTheDocument();
+  expect(screen.getAllByText("Live Context").length).toBeGreaterThan(0);
   expect(screen.getByText("Performance Context")).toBeInTheDocument();
   expect(screen.getByText("2 of 3")).toBeInTheDocument();
   expect(screen.getAllByText("86%").length).toBeGreaterThan(0);
@@ -316,7 +355,8 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(screen.getByRole("button", { name: /Rewind 5 seconds/i })).toBeInTheDocument();
   expect(screen.getByRole("slider", { name: /Seek analyzed clip/i })).toBeInTheDocument();
   expect(screen.getByText("Transcription Review")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /The night opens slowly under electric skies/i })).toBeInTheDocument();
+  const transcriptPanel = screen.getByRole("region", { name: /Transcription Review/i });
+  expect(within(transcriptPanel).getByRole("button", { name: /The night opens slowly under electric skies/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Correct match/i }));
   fireEvent.change(screen.getByLabelText("Correct track title"), { target: { value: "Correct Song" } });
   fireEvent.change(screen.getByLabelText("Correct track artist"), { target: { value: "Correct Artist" } });

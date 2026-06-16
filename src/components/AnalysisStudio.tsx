@@ -29,6 +29,8 @@ import type {
   AnalysisStep,
   EventCandidate,
   HealthResponse,
+  LineComparison,
+  LineComparisonStatus,
   NarrationResponse,
   TrackCandidate,
   VariantCandidate,
@@ -69,6 +71,7 @@ export function AnalysisStudio(props: Props) {
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [selectedComparisonId, setSelectedComparisonId] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualTime, setManualTime] = useState("");
   const [manualType, setManualType] = useState<VariantType>("crowd_response");
@@ -81,6 +84,10 @@ export function AnalysisStudio(props: Props) {
   const event = passport?.event ?? props.selectedEvent ?? null;
   const detectedVariants = passport?.variants ?? (props.job ? [] : previewVariants);
   const variants = useMemo(() => [...detectedVariants, ...props.manualVariants], [detectedVariants, props.manualVariants]);
+  const comparisonRows = useMemo(() => {
+    const detectedRows = passport?.lineComparisons ?? [];
+    return [...detectedRows, ...props.manualVariants.map(manualVariantToComparison)].sort((a, b) => a.start - b.start || comparisonStatusOrder(a.status) - comparisonStatusOrder(b.status));
+  }, [passport?.lineComparisons, props.manualVariants]);
   const steps = props.job?.progress ?? defaultSteps;
   const completeSteps = steps.filter((step) => step.status === "complete").length;
   const progress = Math.round((completeSteps / Math.max(1, steps.length)) * 100);
@@ -96,6 +103,14 @@ export function AnalysisStudio(props: Props) {
   const status = props.job?.status ?? "queued";
   const active = status === "running" || status === "queued";
   const focusVariant = variants.find((variant) => variant.id === selectedVariantId) ?? filteredVariants[0] ?? variants[0];
+  const focusComparison = comparisonRows.find((comparison) => comparison.id === selectedComparisonId)
+    ?? comparisonRows.find((comparison) => comparison.variantId && comparison.variantId === focusVariant?.id)
+    ?? comparisonRows[0];
+  const focusDetailVariant = focusComparison?.variantId ? variants.find((variant) => variant.id === focusComparison.variantId) : undefined;
+  const focusComparisonIndex = focusComparison ? comparisonRows.findIndex((comparison) => comparison.id === focusComparison.id) : -1;
+  const previousLiveComparison = focusComparisonIndex > 0 ? comparisonRows[focusComparisonIndex - 1] : undefined;
+  const nextLiveComparison = focusComparisonIndex >= 0 ? comparisonRows[focusComparisonIndex + 1] : undefined;
+  const comparisonCounts = useMemo(() => summarizeComparisons(comparisonRows), [comparisonRows]);
   const divergence = Math.round((1 - (passport?.confidenceOverview.alignment ?? 0.72)) * 100);
   const liveContext = passport?.liveContext;
   const performanceContext = passport?.performanceContext;
@@ -113,6 +128,7 @@ export function AnalysisStudio(props: Props) {
     setMediaDuration(0);
     setIsPlaying(false);
     setSelectedVariantId("");
+    setSelectedComparisonId("");
     setManualOpen(false);
   }, [props.job?.id]);
 
@@ -125,6 +141,16 @@ export function AnalysisStudio(props: Props) {
       setSelectedVariantId(variants[0].id);
     }
   }, [selectedVariantId, variants]);
+
+  useEffect(() => {
+    if (comparisonRows.length === 0) {
+      setSelectedComparisonId("");
+      return;
+    }
+    if (!comparisonRows.some((comparison) => comparison.id === selectedComparisonId)) {
+      setSelectedComparisonId(comparisonRows[0].id);
+    }
+  }, [comparisonRows, selectedComparisonId]);
 
   useEffect(() => {
     setCorrectionTitle(track?.title ?? "");
@@ -195,7 +221,7 @@ export function AnalysisStudio(props: Props) {
   }
 
   function openManualMoment() {
-    setManualTime(formatTime(currentTime || focusVariant?.start || 0));
+    setManualTime(formatTime(currentTime || focusComparison?.start || focusVariant?.start || 0));
     setManualOpen((open) => !open);
     setManualError("");
   }
@@ -233,6 +259,7 @@ export function AnalysisStudio(props: Props) {
       reviewerNote: "Added manually from playback review."
     });
     setSelectedVariantId(id);
+    setSelectedComparisonId(`manual-comparison-${id}`);
     setManualText("");
     setManualReference("");
     setManualError("");
@@ -242,6 +269,22 @@ export function AnalysisStudio(props: Props) {
 
   function selectVariant(variant: VariantCandidate) {
     setSelectedVariantId(variant.id);
+    const linkedComparison = comparisonRows.find((comparison) => comparison.variantId === variant.id);
+    if (linkedComparison) {
+      setSelectedComparisonId(linkedComparison.id);
+    }
+    scrollToDiffDetail();
+  }
+
+  function selectComparison(comparison: LineComparison) {
+    setSelectedComparisonId(comparison.id);
+    const linkedVariant = comparison.variantId ? variants.find((variant) => variant.id === comparison.variantId) : undefined;
+    if (linkedVariant) {
+      setSelectedVariantId(linkedVariant.id);
+    }
+    if (!comparison.variantId) {
+      seekTo(comparison.start);
+    }
     scrollToDiffDetail();
   }
 
@@ -333,11 +376,40 @@ export function AnalysisStudio(props: Props) {
         {(props.error || props.job?.error) && <p className="studio-error">{props.error || props.job?.error}</p>}
 
         {transcript.length > 0 && (
-          <section id="transcript-review" className="studio-rack-panel studio-transcript-panel">
+          <section id="transcript-review" className="studio-rack-panel studio-transcript-panel" aria-label="Transcription Review">
             <header><span><AudioLines size={18} /> Transcription Review</span><small><i /> {transcript.length} segments</small></header>
             <div className="studio-rack-body">
               <p className="studio-panel-intro">Play the analyzed clip and select any line to seek directly to that moment.</p>
               <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => seekTo(segment.start, true)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
+            </div>
+          </section>
+        )}
+
+        {comparisonRows.length > 0 && (
+          <section id="live-studio-comparison" className="studio-rack-panel studio-comparison-panel">
+            <header><span><FileCheck2 size={18} /> Live vs Studio Comparison</span><small><i /> {comparisonRows.length} line checks</small></header>
+            <div className="studio-rack-body">
+              <p className="studio-panel-intro">This is the core evidence: each live line is aligned against the studio reference so reviewers can see what matched, changed, repeated, or went missing.</p>
+              <div className="studio-comparison-summary" aria-label="Comparison summary">
+                <ComparisonMetric label="Matched" value={comparisonCounts.matched} tone="match" />
+                <ComparisonMetric label="Changed" value={comparisonCounts.changed} tone="change" />
+                <ComparisonMetric label="Live-only" value={comparisonCounts.liveOnly} tone="live" />
+                <ComparisonMetric label="Skipped" value={comparisonCounts.skipped} tone="skip" />
+                <ComparisonMetric label="Timing" value={comparisonCounts.timing} tone="timing" />
+              </div>
+              <div className="studio-comparison-table hidden md:block">
+                <div className="studio-comparison-head"><span>Time</span><span>Studio line</span><span>Live line</span><span>Difference</span><span>Status</span></div>
+                <div>
+                  {comparisonRows.map((comparison) => (
+                    <ComparisonRow key={comparison.id} comparison={comparison} selected={focusComparison?.id === comparison.id} onSelect={selectComparison} />
+                  ))}
+                </div>
+              </div>
+              <div className="studio-comparison-cards md:hidden">
+                {comparisonRows.map((comparison) => (
+                  <ComparisonCard key={comparison.id} comparison={comparison} selected={focusComparison?.id === comparison.id} onSelect={selectComparison} />
+                ))}
+              </div>
             </div>
           </section>
         )}
@@ -390,24 +462,45 @@ export function AnalysisStudio(props: Props) {
         </section>
 
         <section id="studio-passport" className="studio-rack-panel studio-diff-panel">
-          <header><span><FileCheck2 size={18} /> Selected Diff Detail</span><small><i /> {passport?.rights.status === "display_allowed" || passport?.rights.status === "fixture" ? "Cached excerpts enabled" : "Reference restricted"}</small></header>
+          <header><span><FileCheck2 size={18} /> Selected Comparison Detail</span><small><i /> {passport?.rights.status === "display_allowed" || passport?.rights.status === "fixture" ? "Cached excerpts enabled" : "Reference restricted"}</small></header>
           <div className="studio-rack-body">
             <div className="studio-diff-grid">
               <article>
-                <p className="studio-label">Reference Excerpt</p>
+                <p className="studio-label">Studio Context</p>
                 <div className="studio-diff-copy muted">
-                  <strong>{focusVariant?.canonicalExcerpt ?? focusVariant?.canonicalAlignmentReference ?? "Reference line pending"}</strong>
-                  <p>{focusVariant?.canonicalExcerpt ? focusVariant.canonicalAlignmentReference : "No cached excerpt is attached to this candidate; use the manual anchor field when you can hear the nearby reference."}</p>
+                  <ContextLine label="Previous" value={focusComparison?.canonicalPreviousText} />
+                  <ContextLine label="Current" value={focusComparison?.canonicalText ?? focusDetailVariant?.canonicalExcerpt ?? focusDetailVariant?.canonicalAlignmentReference} emphasis />
+                  <ContextLine label="Next" value={focusComparison?.canonicalNextText} />
+                  <p>{focusComparison?.canonicalId ? `${focusComparison.canonicalId} · ${Math.round(focusComparison.similarity * 100)}% line match` : "No stable studio anchor is attached to this live moment yet."}</p>
                 </div>
               </article>
               <article>
-                <p className="studio-label studio-cyan">Selected Live Moment</p>
+                <p className="studio-label studio-cyan">Live Context</p>
                 <div className="studio-diff-copy live">
-                  <span className="studio-variant-badge">{focusVariant?.type.replaceAll("_", " ") ?? "pending"}</span>
-                  <strong>{focusVariant?.liveText ?? "Live text pending"}</strong>
-                  <p>{focusVariant?.impactNote ?? "Comparison will appear when analysis completes."}{focusVariant?.evidenceSource === "manual_entry" ? " Added manually from playback review." : ""}</p>
+                  <ContextLine label="Previous" value={previousLiveComparison?.liveText} />
+                  <ContextLine label="Current" value={focusComparison?.liveText ?? focusDetailVariant?.liveText} emphasis />
+                  <ContextLine label="Next" value={nextLiveComparison?.liveText} />
+                  <p>{focusComparison ? comparisonExplanation(focusComparison) : focusDetailVariant?.impactNote ?? "Comparison will appear when analysis completes."}{focusDetailVariant?.evidenceSource === "manual_entry" ? " Added manually from playback review." : ""}</p>
                 </div>
               </article>
+            </div>
+            <div className="studio-word-diff">
+              <div>
+                <p className="studio-label">Removed from studio</p>
+                <WordPills words={focusComparison?.changedWords.removed ?? []} empty="Nothing removed" tone="removed" />
+              </div>
+              <div>
+                <p className="studio-label">Added live</p>
+                <WordPills words={focusComparison?.changedWords.added ?? []} empty="Nothing added" tone="added" />
+              </div>
+              <div>
+                <p className="studio-label">Kept</p>
+                <WordPills words={focusComparison?.changedWords.kept ?? []} empty="No overlap yet" tone="kept" />
+              </div>
+            </div>
+            <div className="studio-comparison-impact">
+              <span className={`studio-comparison-status status-${focusComparison?.status ?? "uncertain"}`}>{formatComparisonStatus(focusComparison?.status ?? "uncertain")}</span>
+              <p>{focusDetailVariant?.impactNote ?? (focusComparison ? comparisonExplanation(focusComparison) : "Select a comparison row to inspect what changed.")}</p>
             </div>
           </div>
         </section>
@@ -503,6 +596,45 @@ function AnalysisLog({ steps, active }: { steps: AnalysisStep[]; active: boolean
   return <div className="studio-analysis-log" aria-label="Analysis processing log"><p><span>[SYS]</span> Source evidence validated and secured in memory.</p><p><span>[PIPE]</span> {current?.label ?? "Passport assembly"} {active ? "is active" : "complete"}.</p><p><span>[MXM]</span> Canonical reference aligned without persisting lyric content.<i /></p></div>;
 }
 
+function ComparisonMetric({ label, value, tone }: { label: string; value: number; tone: "match" | "change" | "live" | "skip" | "timing" }) {
+  return <div className={`studio-comparison-metric tone-${tone}`}><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function ComparisonRow({ comparison, selected, onSelect }: { comparison: LineComparison; selected: boolean; onSelect: (comparison: LineComparison) => void }) {
+  return (
+    <button type="button" className={`studio-comparison-row ${selected ? "selected" : ""} status-${comparison.status}`} onClick={() => onSelect(comparison)}>
+      <span className="studio-mono">{formatTime(comparison.start)}</span>
+      <strong>{comparison.canonicalText ?? "No studio anchor"}</strong>
+      <strong>{comparison.liveText}</strong>
+      <span>{differenceSummary(comparison)}</span>
+      <span className={`studio-comparison-status status-${comparison.status}`}>{formatComparisonStatus(comparison.status)}</span>
+    </button>
+  );
+}
+
+function ComparisonCard({ comparison, selected, onSelect }: { comparison: LineComparison; selected: boolean; onSelect: (comparison: LineComparison) => void }) {
+  return (
+    <button type="button" className={`studio-comparison-card ${selected ? "selected" : ""} status-${comparison.status}`} onClick={() => onSelect(comparison)}>
+      <div><span className="studio-mono">{formatTime(comparison.start)}</span><span className={`studio-comparison-status status-${comparison.status}`}>{formatComparisonStatus(comparison.status)}</span></div>
+      <p><span>Studio</span><strong>{comparison.canonicalText ?? "No studio anchor"}</strong></p>
+      <p><span>Live</span><strong>{comparison.liveText}</strong></p>
+      <small>{differenceSummary(comparison)}</small>
+    </button>
+  );
+}
+
+function ContextLine({ label, value, emphasis = false }: { label: string; value?: string; emphasis?: boolean }) {
+  return <p className={`studio-context-line ${emphasis ? "emphasis" : ""}`}><span>{label}</span><strong>{value || "Not available"}</strong></p>;
+}
+
+function WordPills({ words, empty, tone }: { words: string[]; empty: string; tone: "removed" | "added" | "kept" }) {
+  const uniqueWords = [...new Set(words)].slice(0, 12);
+  if (uniqueWords.length === 0) {
+    return <p className="studio-word-empty">{empty}</p>;
+  }
+  return <div className={`studio-word-pills tone-${tone}`}>{uniqueWords.map((word) => <span key={word}>{word}</span>)}</div>;
+}
+
 function CandidateRow({ variant, selected, decision, onSelect, onDecision }: { variant: VariantCandidate; selected: boolean; decision?: ReviewDecision; onSelect: (variant: VariantCandidate) => void; onDecision: (id: string, decision: ReviewDecision) => void }) {
   return <div className={`studio-table-row ${selected ? "studio-table-row-selected" : ""} ${variant.severity === "high" ? "studio-table-row-risk" : ""}`}><span className="studio-mono">{formatTime(variant.start)}</span><VariantBadge type={variant.type} /><div className="min-w-0"><p className="font-medium">{variant.liveText}</p><p className="studio-subtle mt-1">{variant.canonicalAlignmentReference}</p>{variant.canonicalExcerpt && <p className="studio-reference-line">Ref: {variant.canonicalExcerpt}</p>}<p className="mt-2 text-sm leading-5">{variant.recommendedAction}</p></div><Confidence value={variant.confidence} risk={variant.severity === "high"} /><div className="studio-candidate-actions"><button type="button" className={`studio-inspect-button ${selected ? "active" : ""}`} onClick={() => onSelect(variant)}>{selected ? "Selected" : "Inspect"}</button><div className="flex justify-end gap-2"><DecisionButton label="Approve candidate" active={decision === "approved"} tone="approve" onClick={() => onDecision(variant.id, "approved")} /><DecisionButton label="Reject candidate" active={decision === "rejected"} tone="reject" onClick={() => onDecision(variant.id, "rejected")} /></div></div></div>;
 }
@@ -535,6 +667,81 @@ function matchesFilter(variant: VariantCandidate, filter: FilterMode) {
 }
 function filterDescription(filter: FilterMode) { if (filter === "performance") return "live-performance changes"; if (filter === "risk") return "candidates needing focused review"; return "all detected candidates"; }
 function riskMessage(variants: VariantCandidate[]) { const risky = variants.filter((variant) => matchesFilter(variant, "risk")); return risky.length ? `${risky.length} candidate${risky.length === 1 ? "" : "s"} need focused review before export.` : "No high-risk candidates detected in the current comparison."; }
+function manualVariantToComparison(variant: VariantCandidate): LineComparison {
+  return {
+    id: `manual-comparison-${variant.id}`,
+    start: variant.start,
+    end: variant.end,
+    canonicalText: variant.canonicalExcerpt,
+    liveText: variant.liveText,
+    similarity: 0,
+    timingDelta: 0,
+    status: variant.type === "timing_drift" ? "timing_drift" : "live_only",
+    changedWords: {
+      kept: [],
+      removed: tokenizeLocal(variant.canonicalExcerpt ?? ""),
+      added: tokenizeLocal(variant.liveText)
+    },
+    variantId: variant.id
+  };
+}
+function summarizeComparisons(comparisons: LineComparison[]) {
+  return {
+    matched: comparisons.filter((comparison) => comparison.status === "matched").length,
+    changed: comparisons.filter((comparison) => comparison.status === "changed" || comparison.status === "repeated").length,
+    liveOnly: comparisons.filter((comparison) => comparison.status === "live_only" || comparison.status === "uncertain").length,
+    skipped: comparisons.filter((comparison) => comparison.status === "skipped").length,
+    timing: comparisons.filter((comparison) => comparison.status === "timing_drift").length
+  };
+}
+function comparisonStatusOrder(status: LineComparisonStatus): number {
+  const order: Record<LineComparisonStatus, number> = {
+    matched: 0,
+    changed: 1,
+    timing_drift: 2,
+    repeated: 3,
+    live_only: 4,
+    skipped: 5,
+    uncertain: 6
+  };
+  return order[status];
+}
+function formatComparisonStatus(status: LineComparisonStatus) {
+  const labels: Record<LineComparisonStatus, string> = {
+    matched: "Matched",
+    changed: "Changed",
+    skipped: "Skipped studio line",
+    repeated: "Repeated live line",
+    live_only: "Live-only",
+    timing_drift: "Timing drift",
+    uncertain: "Uncertain"
+  };
+  return labels[status];
+}
+function differenceSummary(comparison: LineComparison) {
+  if (comparison.status === "matched") return "No lyric difference";
+  if (comparison.status === "skipped") return "Studio line not detected live";
+  if (comparison.status === "live_only") return "Live phrase has no stable studio anchor";
+  if (comparison.status === "timing_drift") return `${Math.round(comparison.timingDelta * 10) / 10}s timing offset`;
+  const removed = comparison.changedWords.removed.slice(0, 4).join(" ");
+  const added = comparison.changedWords.added.slice(0, 4).join(" ");
+  if (removed && added) return `${removed} -> ${added}`;
+  if (removed) return `Removed: ${removed}`;
+  if (added) return `Added: ${added}`;
+  return `${Math.round(comparison.similarity * 100)}% word overlap`;
+}
+function comparisonExplanation(comparison: LineComparison) {
+  if (comparison.status === "matched") return "The live line matches the studio reference closely, so it proves alignment rather than a variant.";
+  if (comparison.status === "changed") return "The live wording differs from the studio reference and should be reviewed as a possible live lyric variant.";
+  if (comparison.status === "skipped") return "A studio line inside the anchored window was not detected in the live vocal.";
+  if (comparison.status === "repeated") return "The live performance repeats a previously matched studio line.";
+  if (comparison.status === "live_only") return "This live phrase has no stable studio anchor and may be an ad-lib, crowd response, or manual addition.";
+  if (comparison.status === "timing_drift") return "The words match closely, but the timing differs enough to affect subtitle alignment.";
+  return "The alignment is weak, so keep this row in human review before treating it as a confirmed difference.";
+}
+function tokenizeLocal(value: string) {
+  return value.toLowerCase().replace(/[''`]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+}
 function formatSourceMode(value: string) { if (value.includes("fixture")) return "Demo Ready"; return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function formatRecordingId(value: string) { return value.replace(/^fixture-/i, "demo-").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function formatTime(value: number) { const minutes = Math.floor(value / 60); const seconds = value - minutes * 60; return `${String(minutes).padStart(2, "0")}:${seconds.toFixed(1).padStart(4, "0")}`; }

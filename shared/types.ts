@@ -159,6 +159,37 @@ export type VariantCandidate = {
   reviewerNote?: string;
 };
 
+export type LineComparisonStatus =
+  | "matched"
+  | "changed"
+  | "skipped"
+  | "repeated"
+  | "live_only"
+  | "timing_drift"
+  | "uncertain";
+
+export type WordDiff = {
+  kept: string[];
+  removed: string[];
+  added: string[];
+};
+
+export type LineComparison = {
+  id: string;
+  start: number;
+  end: number;
+  canonicalId?: string;
+  canonicalText?: string;
+  canonicalPreviousText?: string;
+  canonicalNextText?: string;
+  liveText: string;
+  similarity: number;
+  timingDelta: number;
+  status: LineComparisonStatus;
+  changedWords: WordDiff;
+  variantId?: string;
+};
+
 export type CanonicalSource = "richsync" | "subtitles" | "lyrics" | "metadata-only" | "fixture";
 
 export type RecordingIdentity = {
@@ -213,6 +244,7 @@ export type LiveVariantPassport = {
   rights: RightsStatus;
   structureMap: StructureMap;
   confidenceOverview: ConfidenceOverview;
+  lineComparisons: LineComparison[];
   variants: VariantCandidate[];
   complianceNotes: string[];
 };
