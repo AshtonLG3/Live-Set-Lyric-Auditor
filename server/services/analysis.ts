@@ -72,9 +72,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
         ? `${analysisFile.originalname} · ${formatBytes(analysisFile.size)} · ${Math.round(input.durationSeconds ?? fixtureClipDuration)}s`
         : recallSegments.length
           ? `${recallSegments.length} recalled lyric segment${recallSegments.length === 1 ? "" : "s"} loaded.`
-        : input.source?.kind === "live_link"
-          ? `${providerLabel(input.source)} reference · no processable excerpt`
-          : "Seeded fixture clip loaded."
+          : input.source?.kind === "live_link"
+            ? `${providerLabel(input.source)} reference · no processable excerpt`
+            : "Seeded fixture clip loaded."
     );
 
     setStep(jobId, "isolate", "running");
@@ -327,13 +327,16 @@ function sourceFilename(source?: ClipSource): string {
 }
 
 async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise<EventCandidate | null> {
+  if (input.useFixture) {
+    return fixtureEvents[0];
+  }
   if (input.event !== undefined) {
     return input.event;
   }
   const events = await searchEvents({
     artist: track.artist,
-    city: input.eventCity ?? fixtureEvents[0].city,
-    date: input.eventDate ?? fixtureEvents[0].date
+    city: input.eventCity,
+    date: input.eventDate
   });
   return events[0] ?? null;
 }

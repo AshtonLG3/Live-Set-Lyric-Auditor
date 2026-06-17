@@ -37,7 +37,7 @@ export async function searchEvents(input: {
   date?: string;
 }): Promise<EventCandidate[]> {
   if (!env.jambaseKey) {
-    return filterFixtureEvents(input);
+    return [];
   }
 
   const params = new URLSearchParams();
@@ -61,8 +61,10 @@ export async function searchEvents(input: {
     const json = await response.json() as { events?: JamBaseEvent[]; results?: JamBaseEvent[] };
     const events = json.events ?? json.results ?? [];
     const mapped = events.slice(0, 6).map((event, index) => mapEvent(event, input, index));
-    return mapped.length > 0 ? mapped : filterFixtureEvents(input);
-  } catch {
+    return mapped;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown JamBase error";
+    console.warn(`JamBase search unavailable; falling back to fixture events. ${detail}`);
     return filterFixtureEvents(input);
   }
 }

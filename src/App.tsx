@@ -27,11 +27,11 @@ export default function App() {
   const [workspace, setWorkspace] = useState<Workspace>("session");
   const [activeSection, setActiveSection] = useState("clip-intake");
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [trackQuery, setTrackQuery] = useState("Midnight Atlas");
+  const [trackQuery, setTrackQuery] = useState("");
   const [tracks, setTracks] = useState<TrackCandidate[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<TrackCandidate | undefined>();
-  const [eventCity, setEventCity] = useState("Cape Town");
-  const [eventDate, setEventDate] = useState("2026-06-18");
+  const [eventCity, setEventCity] = useState("");
+  const [eventDate, setEventDate] = useState("");
   const [events, setEvents] = useState<EventCandidate[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventCandidate | null | undefined>();
   const [job, setJob] = useState<AnalysisJob | null>(null);
@@ -49,11 +49,15 @@ export default function App() {
 
   useEffect(() => {
     void getHealth().then(setHealth).catch(() => setHealth(null));
+  }, []);
+
+  useEffect(() => {
+    if (!trackQuery.trim()) return;
     void searchTracks(trackQuery).then((items) => {
       setTracks(items);
       setSelectedTrack(items[0]);
     });
-  }, []);
+  }, [trackQuery]);
 
   useEffect(() => {
     if (!selectedTrack) return;
@@ -99,7 +103,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [job?.id]);
+  }, [job?.id, job?.status]);
 
   async function handleTrackSearch() {
     setError("");
@@ -339,6 +343,6 @@ function SideNavButton({ label, icon, active, disabled, onClick }: { label: stri
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {
   if (mode === "live") return { label: "API mode", detail: "All partner credentials are present. Each analysis step reports whether its live request completed or fell back." };
-  if (mode === "mixed") return { label: "Mixed sources", detail: "Configured partners are requested live; unavailable or failed optional context is clearly labeled as demo data." };
-  return { label: "Demo data", detail: "External API keys are unavailable, so seeded contest data keeps the full demo working." };
+  if (mode === "mixed") return { label: "Mixed sources", detail: "Configured partners are requested live; unavailable optional context is left empty or clearly labeled." };
+  return { label: "Setup needed", detail: "Add partner keys for live processing. A tucked-away judge demo remains available under Judge / Deploy tools." };
 }
