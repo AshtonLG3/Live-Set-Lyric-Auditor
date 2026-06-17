@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFfprobeArgs, resolveAnalysisDuration } from "./media";
+import { buildFfprobeArgs, buildTranscodeToMp3Args, resolveAnalysisDuration } from "./media";
 
 describe("media validation", () => {
   it("uses measured upload duration instead of client metadata", () => {
@@ -29,6 +29,20 @@ describe("media validation", () => {
       "-of",
       "default=noprint_wrappers=1:nokey=1",
       "C:\\Temp\\clip.mp4"
+    ]);
+  });
+
+  it("builds a video-safe MP3 transcode request", () => {
+    expect(buildTranscodeToMp3Args("C:\\Temp\\clip.mp4", "C:\\Temp\\profile.mp3")).toEqual([
+      "-y",
+      "-i",
+      "C:\\Temp\\clip.mp4",
+      "-vn",
+      "-acodec",
+      "libmp3lame",
+      "-q:a",
+      "5",
+      "C:\\Temp\\profile.mp3"
     ]);
   });
 });

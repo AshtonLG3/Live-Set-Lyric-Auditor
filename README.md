@@ -14,7 +14,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.9.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.10.1`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploads and live links.
 4. Paste a YouTube or other live-performance URL, select a 15-45 second range, and optionally attach an authorized excerpt.
@@ -29,7 +29,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 - **Musixmatch:** `track.search`, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
 - **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. Purchased minutes are the API processing balance.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
-- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
+- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip. Common low-confidence Whisper filler phrases are removed before alignment.
 - **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing. Extraction is bounded by `YOUTUBE_EXTRACT_TIMEOUT_MS` with a 45 second default.

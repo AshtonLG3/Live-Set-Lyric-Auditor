@@ -4,6 +4,7 @@ describe("Cyanite adapter", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    vi.doUnmock("../services/media");
     vi.resetModules();
   });
 
@@ -88,6 +89,42 @@ describe("Cyanite adapter", () => {
     expect(uploadRequest.query).toContain("fileUploadRequest { id uploadUrl }");
     expect(uploadRequest.variables).toEqual({});
   });
+
+  it("converts non-MP3 uploads before requesting Cyanite analysis", async () => {
+    vi.stubEnv("CYANITE_API_TOKEN", "cyanite-test-token");
+    const transcodeMediaToMp3 = vi.fn(async (file: Express.Multer.File) => ({
+      ...file,
+      originalname: "stage-video.mp3",
+      mimetype: "audio/mpeg",
+      buffer: Buffer.from([9, 8, 7]),
+      size: 3
+    }));
+    vi.doMock("../services/media", () => ({ transcodeMediaToMp3 }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: { fileUploadRequest: { id: "upload-1", uploadUrl: "https://upload.example/file" } } }))
+      .mockResolvedValueOnce(new Response("", { status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ data: { libraryTrackCreate: { __typename: "LibraryTrackCreateSuccess", createdLibraryTrack: { id: "track-1" } } } }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          libraryTrack: {
+            __typename: "LibraryTrack",
+            audioAnalysisV7: {
+              __typename: "AudioAnalysisV7Finished",
+              result: { energyLevel: "HIGH", moodTags: ["ENERGETIC"], advancedInstrumentTags: ["DRUMS"] }
+            }
+          }
+        }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { analyzePerformance } = await import("./cyanite");
+    const result = await analyzePerformance({ file: videoFile() });
+
+    expect(result.source).toBe("cyanite");
+    expect(transcodeMediaToMp3).toHaveBeenCalledWith(expect.objectContaining({ originalname: "stage-video.mp4" }), "cyanite");
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).toMatchObject({ "Content-Type": "audio/mpeg" });
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBeInstanceOf(Uint8Array);
+  });
 });
 
 function jsonResponse(body: unknown): Response {
@@ -109,5 +146,13 @@ function audioFile(): Express.Multer.File {
     destination: "",
     filename: "",
     path: ""
+  };
+}
+
+function videoFile(): Express.Multer.File {
+  return {
+    ...audioFile(),
+    originalname: "stage-video.mp4",
+    mimetype: "video/mp4"
   };
 }

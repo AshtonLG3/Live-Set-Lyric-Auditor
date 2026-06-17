@@ -1,6 +1,7 @@
 import type { ClipSource, PerformanceContext } from "../../shared/types";
 import { env } from "../config";
 import { fixturePerformanceContext } from "../data/fixtures";
+import { transcodeMediaToMp3 } from "../services/media";
 
 type CyaniteAnalysisResult = {
   bpmRangeAdjusted?: number;
@@ -24,8 +25,13 @@ export async function analyzePerformance(input: {
   if (!env.cyaniteToken) return fixturePerformanceContext;
 
   try {
-    const trackId = isMp3(input.file)
-      ? await uploadLibraryTrack(input.file)
+    const uploadFile = input.file
+      ? isMp3(input.file)
+        ? input.file
+        : await transcodeMediaToMp3(input.file, "cyanite")
+      : undefined;
+    const trackId = uploadFile
+      ? await uploadLibraryTrack(uploadFile)
       : input.source?.kind === "live_link" && input.source.provider === "youtube"
         ? await enqueueYoutubeTrack(input.source)
         : null;
@@ -81,7 +87,7 @@ async function uploadLibraryTrack(file: Express.Multer.File): Promise<string | n
 
   const uploadResponse = await fetch(upload.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": "audio/mpeg" },
+    headers: { "Content-Type": file.mimetype || "audio/mpeg" },
     body: new Uint8Array(file.buffer)
   });
   if (!uploadResponse.ok) return null;

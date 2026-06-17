@@ -198,6 +198,8 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
   res.status(500).json({ error: "Unexpected server error." });
 });
 
+const publicAssets = path.resolve(process.cwd(), "public");
+
 if (isProduction) {
   const clientDist = path.resolve(process.cwd(), "dist/client");
   app.use(express.static(clientDist));
@@ -214,6 +216,7 @@ if (isProduction) {
     },
     appType: "spa"
   });
+  app.use(express.static(publicAssets));
   app.use(vite.middlewares);
 }
 

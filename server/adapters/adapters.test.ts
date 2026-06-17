@@ -13,9 +13,9 @@ describe("fixture-safe adapters", () => {
     expect(tracks[0]?.source).toBe("fixture");
   });
 
-  it("returns JamBase fixture events when no API key is configured", async () => {
+  it("returns no JamBase events when no API key is configured", async () => {
     const events = await searchEvents({ artist: "The Signal Keeps", city: "Cape Town" });
-    expect(events[0]?.source).toBe("fixture");
+    expect(events).toEqual([]);
   });
 
   it("derives a setlist-aware live context from the event anchor", () => {
