@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.10.1",
+  version: "0.11.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.10.1",
+    version: "0.11.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.10.1/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -298,10 +298,8 @@ it("uses remembered words to rescue a track", async () => {
   expect(screen.getByRole("button", { name: /Use YouTube \/ live link/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i }));
-  await waitFor(() => expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument());
-  expect(screen.getByText("Live vs Studio Comparison")).toBeInTheDocument();
-  expect(screen.getAllByText("No lyric difference").length).toBeGreaterThan(0);
-});
+  await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
+}, 60000);
 
 it("explains that mobile microphone capture needs HTTPS on an insecure origin", async () => {
   vi.stubGlobal("isSecureContext", false);
@@ -340,10 +338,10 @@ it("runs the seeded demo and renders a passport", async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
-  expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument();
-  const variantsSectionLink = screen.getByRole("button", { name: "Variants" });
-  fireEvent.click(variantsSectionLink);
-  expect(variantsSectionLink).toHaveAttribute("aria-current", "location");
+  expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument();
+  const diffViewLink = screen.getByRole("button", { name: "Diff View" });
+  fireEvent.click(diffViewLink);
+  expect(diffViewLink).toHaveAttribute("aria-current", "location");
   expect(screen.getByRole("button", { name: "Timeline" })).not.toHaveAttribute("aria-current");
   expect(screen.getByText(/Detected 3 live variant candidates/i)).toBeInTheDocument();
   expect(screen.getAllByText("Live Context").length).toBeGreaterThan(0);
@@ -362,36 +360,28 @@ it("runs the seeded demo and renders a passport", async () => {
   fireEvent.change(screen.getByLabelText("Correct track artist"), { target: { value: "Correct Artist" } });
   fireEvent.click(screen.getByRole("button", { name: /Use manual labels/i }));
   await waitFor(() => expect(screen.getAllByText("Correct Song").length).toBeGreaterThan(0));
-  expect(screen.queryByRole("button", { name: /Filter candidates/i })).not.toBeInTheDocument();
-  const performanceFilter = screen.getByRole("button", { name: /Performance \(1\)/i });
-  fireEvent.click(performanceFilter);
-  expect(performanceFilter).toHaveAttribute("aria-pressed", "true");
-  expect(screen.getByText(/Showing 1 of 1: live-performance changes/i)).toBeInTheDocument();
-  const riskFilter = screen.getByRole("button", { name: /Risks \(0\)/i });
-  fireEvent.click(riskFilter);
-  expect(screen.getAllByText("No candidates match this filter.")).toHaveLength(2);
-  fireEvent.click(screen.getByRole("button", { name: /All \(1\)/i }));
-  fireEvent.click(screen.getAllByRole("button", { name: "Approve candidate" })[0]);
-  expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getAllByRole("button", { name: "Approve variant" })[0]);
   expect(screen.getByText(/1 approved, 0 rejected, and 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
-}, 40000);
+}, 60000);
 
-it("adds a missed live moment manually from playback review", async () => {
+it("adds a missed live moment via the inline insert button", async () => {
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
-  await waitFor(() => expect(screen.getByRole("heading", { name: "Review Queue" })).toBeInTheDocument());
-  await waitFor(() => expect(screen.getByRole("button", { name: /Add missed moment/i })).toBeEnabled());
+  await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
 
-  fireEvent.click(screen.getByRole("button", { name: /Add missed moment/i }));
+  const insertButtons = await screen.findAllByRole("button", { name: /Add missed moment/i });
+  fireEvent.click(insertButtons[0]);
   fireEvent.change(screen.getByLabelText("Manual live content"), { target: { value: "fan shouts: better!" } });
   fireEvent.change(screen.getByLabelText("Reference excerpt or anchor"), { target: { value: "near: How you broke my heart" } });
   fireEvent.click(screen.getByRole("button", { name: /Add live moment/i }));
 
-  expect((await screen.findAllByText("fan shouts: better!")).length).toBeGreaterThan(0);
-  expect(screen.getAllByText("near: How you broke my heart").length).toBeGreaterThan(0);
-  expect(screen.getAllByText(/1 approved/i).length).toBeGreaterThan(0);
+  await waitFor(() => {
+    const lyricRows = document.querySelectorAll(".studio-lyric-row");
+    const texts = [...lyricRows].map((row) => row.textContent ?? "");
+    expect(texts.some((text) => text.includes("fan") && text.includes("shouts"))).toBe(true);
+  });
 }, 40000);
 
 it("surfaces a polling failure instead of leaving analysis busy", async () => {

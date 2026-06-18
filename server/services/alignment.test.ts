@@ -53,6 +53,42 @@ describe("alignment pipeline", () => {
     expect(comparisons.some((comparison) => comparison.changedWords.added.includes("extra"))).toBe(true);
   });
 
+  it("returns similarity of 1 for identical texts", () => {
+    expect(tokenSimilarity("hello world", "hello world")).toBe(1);
+  });
+
+  it("returns similarity of 0 for completely different texts", () => {
+    expect(tokenSimilarity("hello world", "foo bar baz")).toBe(0);
+  });
+
+  it("penalizes word reordering via LCS component", () => {
+    const inOrder = tokenSimilarity("one two three four", "one two three four");
+    const reversed = tokenSimilarity("one two three four", "four three two one");
+    expect(inOrder).toBeGreaterThan(reversed);
+  });
+
+  it("handles empty transcript gracefully", () => {
+    const alignments = alignTranscript([], fixtureCanonicalLines);
+    expect(alignments).toHaveLength(0);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 0.9);
+    expect(variants.filter((v) => v.type === "skipped_line")).toHaveLength(0);
+  });
+
+  it("handles single-word segments", () => {
+    const segments = [{ id: "T1", start: 0, end: 2, text: "hey", confidence: 0.8 }];
+    const alignments = alignTranscript(segments, fixtureCanonicalLines);
+    expect(alignments).toHaveLength(1);
+  });
+
+  it("classifies timing_drift when similarity is high but timing offset is large", () => {
+    const segments = [
+      { id: "T1", start: 30, end: 34, text: fixtureCanonicalLines[0].text, confidence: 0.95 }
+    ];
+    const alignments = alignTranscript(segments, fixtureCanonicalLines);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 0.9);
+    expect(variants.some((v) => v.type === "timing_drift")).toBe(true);
+  });
+
   it("builds a passport with cached review excerpts but without storing canonicalLines", () => {
     const passport = buildPassport({
       id: "job-1",

@@ -1,11 +1,13 @@
 import express from "express";
 import multer from "multer";
 import path from "node:path";
+import rateLimit from "express-rate-limit";
 import { env, getHealth } from "./config";
 import { searchEvents } from "./adapters/jambase";
 import { searchTracks } from "./adapters/musixmatch";
 import { createNarration, reanchorAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobMedia, jobs } from "./store";
+import { addJobSubscriber } from "./sse";
 import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
 import { MediaProbeError, probeMediaDuration, resolveAnalysisDuration } from "./services/media";
@@ -19,6 +21,14 @@ const upload = multer({
   limits: {
     fileSize: MAX_CLIP_BYTES
   }
+});
+
+const mutationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Try again in a minute." }
 });
 
 app.use(express.json({ limit: "1mb" }));
@@ -54,7 +64,7 @@ app.get("/api/events/search", async (req, res, next) => {
   }
 });
 
-app.post("/api/recall", upload.single("fragment"), async (req, res, next) => {
+app.post("/api/recall", mutationLimiter, upload.single("fragment"), async (req, res, next) => {
   try {
     const phrase = String(req.body.phrase ?? "").trim();
     if (!req.file && !phrase) {
@@ -71,7 +81,7 @@ app.post("/api/recall", upload.single("fragment"), async (req, res, next) => {
   }
 });
 
-app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
+app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res, next) => {
   try {
     const useFixture = req.body.useFixture === "true";
     const source = parseJsonField<ClipSource>(req.body.source);
@@ -128,7 +138,7 @@ app.post("/api/analyze", upload.single("clip"), async (req, res, next) => {
 });
 
 app.get("/api/analyze/:jobId", (req, res) => {
-  const job = jobs.get(req.params.jobId);
+  const job = jobs.get(paramString(req.params.jobId));
   if (!job) {
     res.status(404).json({ error: "Analysis job not found." });
     return;
@@ -136,8 +146,33 @@ app.get("/api/analyze/:jobId", (req, res) => {
   res.json(job);
 });
 
+app.get("/api/analyze/:jobId/events", (req, res) => {
+  const job = jobs.get(paramString(req.params.jobId));
+  if (!job) {
+    res.status(404).json({ error: "Analysis job not found." });
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive"
+  });
+  res.write(`data: ${JSON.stringify(job)}\n\n`);
+  if (job.status === "complete" || job.status === "failed") {
+    res.end();
+    return;
+  }
+  const cleanup = addJobSubscriber(paramString(req.params.jobId), (updated) => {
+    res.write(`data: ${JSON.stringify(updated)}\n\n`);
+    if (updated.status === "complete" || updated.status === "failed") {
+      res.end();
+    }
+  });
+  req.on("close", cleanup);
+});
+
 app.get("/api/analyze/:jobId/media", (req, res) => {
-  const media = jobMedia.get(req.params.jobId);
+  const media = jobMedia.get(paramString(req.params.jobId));
   if (!media) {
     res.status(404).json({ error: "Analysis media is not available." });
     return;
@@ -164,22 +199,27 @@ app.get("/api/analyze/:jobId/media", (req, res) => {
   res.end(media.buffer.subarray(start, end + 1));
 });
 
-app.post("/api/analyze/:jobId/reanchor", async (req, res, next) => {
+app.post("/api/analyze/:jobId/reanchor", mutationLimiter, async (req, res, next) => {
   try {
     const track = req.body.track as TrackCandidate | undefined;
     if (!track?.title?.trim() || !track.artist?.trim()) {
       res.status(400).json({ error: "Track title and artist are required." });
       return;
     }
-    res.json(await reanchorAnalysis(req.params.jobId, track));
+    res.json(await reanchorAnalysis(paramString(req.params.jobId), track));
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/narrate/:jobId", async (req, res, next) => {
+app.post("/api/narrate/:jobId", mutationLimiter, async (req, res, next) => {
   try {
-    res.json(await createNarration(req.params.jobId, Array.isArray(req.body?.manualVariants) ? req.body.manualVariants : []));
+    res.json(await createNarration(
+      paramString(req.params.jobId),
+      Array.isArray(req.body?.manualVariants) ? req.body.manualVariants : [],
+      req.body?.editedTexts && typeof req.body.editedTexts === "object" ? req.body.editedTexts : {},
+      req.body?.reviewDecisions && typeof req.body.reviewDecisions === "object" ? req.body.reviewDecisions : {}
+    ));
   } catch (error) {
     next(error);
   }
@@ -223,6 +263,10 @@ if (isProduction) {
 app.listen(env.port, env.host, () => {
   console.log(`Live-Set Lyric Auditor listening on http://${env.host}:${env.port}`);
 });
+
+function paramString(value: string | string[]): string {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function parseJsonField<T>(value: unknown): T | undefined {
   if (typeof value !== "string" || !value.trim()) {

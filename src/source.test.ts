@@ -7,6 +7,8 @@ describe("live source parsing", () => {
     expect(source).toMatchObject({ provider: "youtube", label: "YouTube" });
     expect(source?.embedUrl).toContain("start=42");
     expect(source?.embedUrl).toContain("end=68");
+    expect(source?.embedUrl).toContain("playsinline=1");
+    expect(source?.embedUrl).toContain("youtube.com/embed");
   });
 
   it("recognizes direct media and rejects unsafe protocols", () => {

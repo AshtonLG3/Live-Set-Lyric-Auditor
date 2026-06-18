@@ -68,6 +68,11 @@ function narrationText(passport: LiveVariantPassport): string {
       }).join("; ")
     : "no review candidates cleared the confidence threshold";
   const manualCount = passport.variants.filter((variant) => variant.evidenceSource === "manual_entry").length;
+  const approvedCount = passport.variants.filter((variant) => (variant as { reviewerDecision?: string }).reviewerDecision === "approved").length;
+  const rejectedCount = passport.variants.filter((variant) => (variant as { reviewerDecision?: string }).reviewerDecision === "rejected").length;
+  const reviewSentence = approvedCount || rejectedCount
+    ? `The reviewer has approved ${approvedCount} and rejected ${rejectedCount} variant${rejectedCount === 1 ? "" : "s"}.`
+    : "";
   const manualSentence = manualCount
     ? `${manualCount} human-added live moment${manualCount === 1 ? "" : "s"} are included in the review queue.`
     : "All current candidates come from the automated transcript alignment.";
@@ -77,7 +82,7 @@ function narrationText(passport: LiveVariantPassport): string {
   const referencePolicy = passport.rights.status === "display_allowed" || passport.rights.status === "fixture"
     ? "Short canonical excerpts are cached for reviewer comparison."
     : "Canonical reference display is restricted for this track.";
-  return `Live Set Lyric Auditor review brief: ${passport.track.title} by ${passport.track.artist}, sourced from ${event}. ${passport.summary} ${liveContext} ${profile} Priority checks: ${candidateBrief}. ${manualSentence} ${referencePolicy}`;
+  return `Live Set Lyric Auditor review brief: ${passport.track.title} by ${passport.track.artist}, sourced from ${event}. ${passport.summary} ${liveContext} ${profile} Priority checks: ${candidateBrief}. ${reviewSentence} ${manualSentence} ${referencePolicy}`.replace(/  +/g, " ");
 }
 
 function variantLabel(type: LiveVariantPassport["variants"][number]["type"]): string {

@@ -24,10 +24,7 @@ export async function inspectClip(file: File): Promise<ClipSelection> {
   return { file, durationSeconds: durationSeconds ?? undefined, kind };
 }
 
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+export { formatBytes as formatFileSize } from "../shared/format";
 
 function getClipKind(file: File): ClipSelection["kind"] | null {
   if (file.type.startsWith("audio/")) return "audio";

@@ -37,17 +37,36 @@ export function tokenize(value: string): string[] {
 }
 
 export function tokenSimilarity(a: string, b: string): number {
-  const left = new Set(tokenize(a));
-  const right = new Set(tokenize(b));
-  if (left.size === 0 && right.size === 0) {
-    return 1;
+  const leftTokens = tokenize(a);
+  const rightTokens = tokenize(b);
+  if (leftTokens.length === 0 && rightTokens.length === 0) return 1;
+  if (leftTokens.length === 0 || rightTokens.length === 0) return 0;
+
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  const intersection = [...leftSet].filter((token) => rightSet.has(token)).length;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  const jaccard = intersection / union;
+
+  const lcsLen = longestCommonSubsequenceLength(leftTokens, rightTokens);
+  const lcsRatio = lcsLen / Math.max(leftTokens.length, rightTokens.length);
+
+  return round(jaccard * 0.6 + lcsRatio * 0.4);
+}
+
+function longestCommonSubsequenceLength(a: string[], b: string[]): number {
+  const rows = a.length;
+  const cols = b.length;
+  let prev = new Array<number>(cols + 1).fill(0);
+  let curr = new Array<number>(cols + 1).fill(0);
+  for (let i = 1; i <= rows; i++) {
+    for (let j = 1; j <= cols; j++) {
+      curr[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], curr[j - 1]);
+    }
+    [prev, curr] = [curr, prev];
+    curr.fill(0);
   }
-  if (left.size === 0 || right.size === 0) {
-    return 0;
-  }
-  const intersection = [...left].filter((token) => right.has(token)).length;
-  const union = new Set([...left, ...right]).size;
-  return round(intersection / union);
+  return prev[cols];
 }
 
 export function alignTranscript(transcript: TranscriptSegment[], canonicalLines: CanonicalLine[]): AlignmentResult[] {

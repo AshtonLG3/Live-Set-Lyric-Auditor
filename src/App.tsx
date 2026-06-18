@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AudioLines,
@@ -6,17 +6,17 @@ import {
   Download,
   FileText,
   LayoutDashboard,
-  MessageSquareDiff,
   Moon,
   Plus,
   Search,
   Sun,
 } from "lucide-react";
-import { createNarration, getAnalysis, getHealth, reanchorAnalysis, searchEvents, searchTracks, startAnalysis } from "./api";
+import { createNarration, getAnalysis, getHealth, reanchorAnalysis, searchEvents, searchTracks, startAnalysis, subscribeToJob } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import type { IntakeAnalysisInput } from "./components/ClipIntake";
 
 type Theme = "light" | "dark";
@@ -40,6 +40,7 @@ export default function App() {
   const [narration, setNarration] = useState<NarrationResponse | null>(null);
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecisions>({});
   const [manualVariants, setManualVariants] = useState<VariantCandidate[]>([]);
+  const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
   const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
 
   useEffect(() => {
@@ -51,12 +52,17 @@ export default function App() {
     void getHealth().then(setHealth).catch(() => setHealth(null));
   }, []);
 
+  const trackSearchTimer = useRef(0);
   useEffect(() => {
+    window.clearTimeout(trackSearchTimer.current);
     if (!trackQuery.trim()) return;
-    void searchTracks(trackQuery).then((items) => {
-      setTracks(items);
-      setSelectedTrack(items[0]);
-    });
+    trackSearchTimer.current = window.setTimeout(() => {
+      void searchTracks(trackQuery).then((items) => {
+        setTracks(items);
+        setSelectedTrack(items[0]);
+      });
+    }, 350);
+    return () => window.clearTimeout(trackSearchTimer.current);
   }, [trackQuery]);
 
   useEffect(() => {
@@ -72,38 +78,28 @@ export default function App() {
       });
   }, [selectedTrack, eventCity, eventDate]);
 
+  const handleJobUpdate = useCallback((updated: AnalysisJob) => {
+    setJob(updated);
+    if (updated.status === "complete" || updated.status === "failed") {
+      setBusy(false);
+      if (updated.status === "failed") {
+        setError(updated.error ?? "Analysis stopped before completion.");
+      }
+    }
+  }, []);
+
+  const handleJobError = useCallback((err: Error) => {
+    setBusy(false);
+    setError(err.message);
+  }, []);
+
   useEffect(() => {
     const jobId = job?.id;
     if (!jobId || job.status === "complete" || job.status === "failed") return;
-    let cancelled = false;
-    let timer = 0;
 
-    const poll = async () => {
-      try {
-        const updated = await getAnalysis(jobId);
-        if (cancelled) return;
-        setJob(updated);
-        if (updated.status === "complete" || updated.status === "failed") {
-          setBusy(false);
-          if (updated.status === "failed") {
-            setError(updated.error ?? "Analysis stopped before completion.");
-          }
-          return;
-        }
-        timer = window.setTimeout(poll, 650);
-      } catch (pollError) {
-        if (cancelled) return;
-        setBusy(false);
-        setError(pollError instanceof Error ? pollError.message : "Analysis status could not be refreshed.");
-      }
-    };
-
-    timer = window.setTimeout(poll, 650);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [job?.id, job?.status]);
+    const cleanup = subscribeToJob(jobId, handleJobUpdate, handleJobError);
+    return cleanup;
+  }, [job?.id, job?.status, handleJobUpdate, handleJobError]);
 
   async function handleTrackSearch() {
     setError("");
@@ -152,7 +148,7 @@ export default function App() {
   async function handleNarration() {
     if (!job?.id || !job.passport) return;
     setError("");
-    setNarration(await createNarration(job.id, manualVariants));
+    setNarration(await createNarration(job.id, manualVariants, editedTexts, reviewDecisions));
   }
 
   async function handleCorrectTrack(track: TrackCandidate) {
@@ -194,6 +190,7 @@ export default function App() {
     setNarration(null);
     setReviewDecisions({});
     setManualVariants([]);
+    setEditedTexts({});
     setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -216,9 +213,19 @@ export default function App() {
       variantId: variant.id,
       decision: reviewDecisions[variant.id] ?? "pending"
     }));
+    const editedComparisons = job.passport.lineComparisons.map((lc) => {
+      const edited = editedTexts[lc.id];
+      return edited && edited !== lc.liveText ? { ...lc, liveText: edited } : lc;
+    });
+    const editedTranscript = job.passport.clip.transcript.map((seg) => {
+      const match = editedComparisons.find((lc) => lc.canonicalId && Math.abs(lc.start - seg.start) < 0.5);
+      return match && editedTexts[match.id] ? { ...seg, text: editedTexts[match.id] } : seg;
+    });
     const reviewedPassport = {
       ...job.passport,
       variants,
+      lineComparisons: editedComparisons,
+      clip: { ...job.passport.clip, transcript: editedTranscript },
       review: {
         exportedAt: new Date().toISOString(),
         status: review.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
@@ -276,14 +283,14 @@ export default function App() {
             ) : (
               <>
                 <SideNavButton label="Timeline" icon={<Activity size={19} />} active={activeSection === "analysis-timeline"} onClick={() => navigate("studio", "analysis-timeline")} />
-                <SideNavButton label="Variants" icon={<MessageSquareDiff size={19} />} active={activeSection === "variant-candidates"} onClick={() => navigate("studio", "variant-candidates")} />
-                <SideNavButton label="Diff Detail" icon={<FileText size={19} />} active={activeSection === "studio-passport"} onClick={() => navigate("studio", "studio-passport")} />
+                <SideNavButton label="Diff View" icon={<FileText size={19} />} active={activeSection === "diff-view"} onClick={() => navigate("studio", "diff-view")} />
               </>
             )}
           </nav>
         </aside>
 
         <div className="studio-app-content">
+          <ErrorBoundary>
           {workspace === "session" ? (
             <SessionWorkspace
               health={health}
@@ -319,9 +326,12 @@ export default function App() {
               onDecision={decideVariant}
               onAddManualVariant={addManualVariant}
               onNarrate={handleNarration}
+              editedTexts={editedTexts}
+              onEditLiveText={(id, text) => setEditedTexts((prev) => ({ ...prev, [id]: text }))}
               onCorrectTrack={handleCorrectTrack}
             />
           )}
+          </ErrorBoundary>
         </div>
       </div>
 

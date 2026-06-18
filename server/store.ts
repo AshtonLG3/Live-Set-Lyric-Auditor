@@ -1,9 +1,14 @@
 import type { AnalysisJob } from "../shared/types";
+import { notifyJobSubscribers } from "./sse";
+
+const MAX_JOBS = 50;
+const JOB_TTL_MS = 60 * 60 * 1000;
 
 export const jobs = new Map<string, AnalysisJob>();
 export const jobMedia = new Map<string, { buffer: Buffer; mimetype: string; filename: string }>();
 
 export function createJob(): AnalysisJob {
+  evictStaleJobs();
   const now = new Date().toISOString();
   const job: AnalysisJob = {
     id: crypto.randomUUID(),
@@ -24,6 +29,27 @@ export function createJob(): AnalysisJob {
   return job;
 }
 
+function evictStaleJobs() {
+  const now = Date.now();
+  for (const [id, job] of jobs) {
+    const age = now - new Date(job.updatedAt).getTime();
+    if (age > JOB_TTL_MS && job.status !== "running") {
+      jobs.delete(id);
+      jobMedia.delete(id);
+    }
+  }
+  if (jobs.size > MAX_JOBS) {
+    const sorted = [...jobs.entries()]
+      .filter(([, j]) => j.status !== "running")
+      .sort(([, a], [, b]) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+    while (jobs.size > MAX_JOBS && sorted.length) {
+      const [id] = sorted.shift()!;
+      jobs.delete(id);
+      jobMedia.delete(id);
+    }
+  }
+}
+
 export function updateJob(id: string, updater: (job: AnalysisJob) => AnalysisJob): AnalysisJob | undefined {
   const current = jobs.get(id);
   if (!current) {
@@ -32,6 +58,7 @@ export function updateJob(id: string, updater: (job: AnalysisJob) => AnalysisJob
   const updated = updater({ ...current, progress: current.progress.map((step) => ({ ...step })) });
   updated.updatedAt = new Date().toISOString();
   jobs.set(id, updated);
+  notifyJobSubscribers(id, updated);
   return updated;
 }
 

@@ -1,4 +1,5 @@
 import type { AnalysisJob, ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate } from "../../shared/types";
+import { formatBytes } from "../../shared/format";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
@@ -255,14 +256,32 @@ export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Pr
   return updated;
 }
 
-export async function createNarration(jobId: string, manualVariants: VariantCandidate[] = []) {
+export async function createNarration(
+  jobId: string,
+  manualVariants: VariantCandidate[] = [],
+  editedTexts: Record<string, string> = {},
+  reviewDecisions: Record<string, string> = {}
+) {
   const job = jobs.get(jobId);
   if (!job?.passport) {
     throw new Error("Analysis job is not complete.");
   }
-  const passport = manualVariants.length
-    ? { ...job.passport, variants: [...job.passport.variants, ...manualVariants.slice(0, 25)] }
-    : job.passport;
+  const allVariants = [...job.passport.variants, ...manualVariants.slice(0, 25)];
+  const variants = allVariants.map((v) => {
+    const comparison = job.passport!.lineComparisons.find((lc) => lc.variantId === v.id);
+    const edited = comparison ? editedTexts[comparison.id] : undefined;
+    const decision = reviewDecisions[v.id];
+    return {
+      ...v,
+      liveText: edited ?? v.liveText,
+      reviewerDecision: decision
+    };
+  });
+  const editedComparisons = job.passport.lineComparisons.map((lc) => {
+    const edited = editedTexts[lc.id];
+    return edited ? { ...lc, liveText: edited } : lc;
+  });
+  const passport = { ...job.passport, variants, lineComparisons: editedComparisons };
   return narratePassport(jobId, passport);
 }
 
@@ -339,13 +358,6 @@ async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise
     date: input.eventDate
   });
   return events[0] ?? null;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) {
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function normalizeRecallSegments(segments?: TranscriptSegment[]): TranscriptSegment[] {

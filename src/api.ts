@@ -74,12 +74,63 @@ export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Pr
   });
 }
 
-export async function createNarration(jobId: string, manualVariants: VariantCandidate[] = []): Promise<NarrationResponse> {
+export async function createNarration(
+  jobId: string,
+  manualVariants: VariantCandidate[] = [],
+  editedTexts: Record<string, string> = {},
+  reviewDecisions: Partial<Record<string, string>> = {}
+): Promise<NarrationResponse> {
   return fetchJson(`/api/narrate/${jobId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ manualVariants })
+    body: JSON.stringify({ manualVariants, editedTexts, reviewDecisions })
   });
+}
+
+export function subscribeToJob(jobId: string, onUpdate: (job: AnalysisJob) => void, onError?: (error: Error) => void): () => void {
+  let cancelled = false;
+  let fallbackCleanup: (() => void) | undefined;
+
+  try {
+    if (typeof EventSource === "undefined") throw new Error("SSE unavailable");
+    const source = new EventSource(`/api/analyze/${jobId}/events`);
+    source.onmessage = (event) => {
+      if (cancelled) return;
+      try {
+        onUpdate(JSON.parse(event.data));
+      } catch { /* malformed message */ }
+    };
+    source.onerror = () => {
+      source.close();
+      if (!cancelled && !fallbackCleanup) {
+        fallbackCleanup = fallbackPoll(jobId, onUpdate, onError, () => cancelled);
+      }
+    };
+    return () => { cancelled = true; source.close(); fallbackCleanup?.(); };
+  } catch {
+    fallbackCleanup = fallbackPoll(jobId, onUpdate, onError, () => cancelled);
+    return () => { cancelled = true; fallbackCleanup?.(); };
+  }
+}
+
+function fallbackPoll(jobId: string, onUpdate: (job: AnalysisJob) => void, onError: ((error: Error) => void) | undefined, isCancelled: () => boolean): () => void {
+  let timer = 0;
+  const poll = async () => {
+    try {
+      const updated = await getAnalysis(jobId);
+      if (isCancelled()) return;
+      onUpdate(updated);
+      if (updated.status !== "complete" && updated.status !== "failed") {
+        timer = window.setTimeout(poll, 800);
+      }
+    } catch (error) {
+      if (isCancelled()) return;
+      if (onError) onError(error instanceof Error ? error : new Error("Analysis status could not be refreshed."));
+      else timer = window.setTimeout(poll, 2000);
+    }
+  };
+  timer = window.setTimeout(poll, 800);
+  return () => window.clearTimeout(timer);
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

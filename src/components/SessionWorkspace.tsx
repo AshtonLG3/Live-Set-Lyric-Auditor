@@ -10,6 +10,7 @@ import {
   WandSparkles
 } from "lucide-react";
 import type { EventCandidate, HealthResponse, IntegrationName, TrackCandidate } from "../../shared/types";
+import { formatEventDate } from "../../shared/format";
 import { ClipIntake, type IntakeAnalysisInput } from "./ClipIntake";
 
 type Props = {
@@ -144,9 +145,4 @@ function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolea
   if (name === "LALAL.AI") return busy ? "Isolating Vocal" : "Vocal Ready";
   if (name === "Cyanite") return busy ? "Profiling Live Energy" : "Context Ready";
   return "Narration Ready";
-}
-
-function formatEventDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
