@@ -4,9 +4,9 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
-Runtime requirement: Node.js 20.6 or newer. YouTube links are reference evidence by default; attach an authorized audio/video excerpt for stable analysis. Advanced YouTube range extraction remains available only when this server is explicitly configured for it, and still falls back to the excerpt workflow when YouTube blocks automation.
+Runtime requirement: Node.js 20.6 or newer. The normal analysis path starts from an uploaded or recorded audio/video clip so the app can work with media the reviewer is authorized to process.
 
-Real uploads, authorized excerpts, and advanced provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
+Real uploads do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
 Replit preview sharing is supported through Vite's allowed-host protection. The default dev allowlist includes `.replit.dev` and `.picard.replit.dev`; override it with `DEV_ALLOWED_HOSTS` if Replit assigns a different preview domain.
 
@@ -16,26 +16,24 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.2`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
-3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploads and live links.
-4. Paste a YouTube or other live-performance URL as evidence, select a 15-45 second range, and attach an authorized excerpt for analysis. If this server exposes the advanced YouTube extraction control, use it only as a deliberate fallback.
-5. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
-6. Start with **Live vs Studio Comparison** to see each live line beside its studio reference, including matched rows, changed rows, skipped studio lines, timing drift, and live-only moments.
-7. Review timestamped candidates, select any row to inspect its reference diff, and manually add missed live moments such as crowd responses or ad-libs that ASR did not capture.
-8. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before export.
-9. Generate the optional ElevenLabs narration and export the Passport JSON with current approve, reject, pending, and manual review decisions.
+3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
+4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
+5. Start with **Live vs Studio Comparison** to see each live line beside its studio reference, including matched rows, changed rows, skipped studio lines, timing drift, and live-only moments.
+6. Review timestamped candidates, select any row to inspect its reference diff, and manually add missed live moments such as crowd responses or ad-libs that ASR did not capture.
+7. Inspect JamBase setlist/lineup evidence and Cyanite energy, BPM, mood, instrument, and arrangement context before export.
+8. Generate the optional ElevenLabs narration and export the Passport JSON with current approve, reject, pending, and manual review decisions.
 
 ## API Surfaces
 
 - **Musixmatch:** `track.search`, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
 - **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. Purchased minutes are the API processing balance.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
-- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload, and advanced YouTube enqueue when enabled, feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
+- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip. Common low-confidence Whisper filler phrases are removed before alignment.
-- **Advanced YouTube excerpts:** when `YOUTUBE_EXTRACTION_ENABLED=true` or a YouTube cookies secret is configured, `yt-dlp` and ffmpeg can try to extract only the selected range into a temporary MP3. The file is removed after it is loaded for LALAL/Whisper processing. Extraction is bounded by `YOUTUBE_EXTRACT_TIMEOUT_MS` with a 45 second default. On hosted deploys, add an authorized Netscape-format cookies file through `YOUTUBE_COOKIES_FILE` or `YOUTUBE_COOKIES_BASE64` when YouTube requires sign-in verification.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
-App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, recorded, or recalled sources.
+App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, recorded, or recalled sources.
 
 ## Compliance Notes
 
@@ -43,8 +41,7 @@ App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and 
 - The app does not bulk-download, redistribute, or persist full Musixmatch lyric content.
 - Passports store review metadata: variant type, timestamp, confidence, impact note, short live snippets, reviewer-added moments, and short cached reference excerpts where display is permitted.
 - Uploaded audio is held in memory for this MVP and is not written to persistent storage.
-- YouTube and other hosted provider streams are linked as evidence by default, not downloaded by the app.
-- A linked source without an authorized excerpt cannot start normal analysis; advanced YouTube extraction must be explicitly enabled before the provider excerpt path appears.
+- Hosted provider streams are not downloaded by the normal app flow; reviewers import media they are authorized to process.
 - Restricted lyrics switch the passport to metadata-only mode; permitted references can display short cached excerpts for reviewer comparison.
 
 ## Product Focus
@@ -99,35 +96,12 @@ ASR_API_KEY=
 REPLICATE_API_TOKEN=
 REPLICATE_WHISPER_VERSION=vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c
 REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7
-PYTHON_COMMAND=python
 FFMPEG_LOCATION=
-YOUTUBE_EXTRACTION_ENABLED=false
-YOUTUBE_EXTRACT_TIMEOUT_MS=45000
-YOUTUBE_COOKIES_FILE=
-YOUTUBE_COOKIES_BASE64=
 CYANITE_POLL_INTERVAL_MS=2500
 CYANITE_POLL_TIMEOUT_MS=180000
 ```
 
 Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
-
-For advanced local YouTube extraction, install `yt-dlp`, `ffmpeg`, and `ffprobe`, then set `YOUTUBE_EXTRACTION_ENABLED=true`:
-
-```bash
-python -m pip install --user yt-dlp
-ffmpeg -version && ffprobe -version
-```
-
-For Replit, keep YouTube cookies in Secrets rather than the repository. If you are authorized to access the source, export a Netscape-format `cookies.txt`, encode it locally, and store the output as `YOUTUBE_COOKIES_BASE64`:
-
-```bash
-python - <<'PY'
-import base64, pathlib
-print(base64.b64encode(pathlib.Path("cookies.txt").read_bytes()).decode())
-PY
-```
-
-If cookies are unavailable or expire, attach an authorized excerpt in the Live link panel instead.
 
 ### Partner Credentials
 

@@ -22,12 +22,6 @@ export type HealthResponse = {
   version: typeof APP_VERSION;
   runtimeMode: RuntimeMode;
   integrations: IntegrationStatus[];
-  capabilities: {
-    youtubeExtraction: {
-      enabled: boolean;
-      detail: string;
-    };
-  };
 };
 
 export type TrackCandidate = {

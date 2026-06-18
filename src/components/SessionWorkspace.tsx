@@ -46,7 +46,7 @@ export function SessionWorkspace(props: Props) {
         <div className="studio-session-hero-content">
           <p className="studio-kicker"><span /> Live Variant Passport</p>
           <h1>Start a Live Variant Passport</h1>
-          <p>Upload a clip, paste a live-performance link, or recall a lyric fragment.</p>
+          <p>Upload a clip, record a live moment, or recall a lyric fragment.</p>
           <div className="studio-session-hero-meta">
             <span><ShieldCheck size={15} /> Musixmatch identity and rights</span>
             <span><Radio size={15} /> Live-performance evidence</span>
@@ -71,7 +71,6 @@ export function SessionWorkspace(props: Props) {
           <div className="studio-clip-intake">
             <ClipIntake
               busy={props.busy}
-              youtubeExtractionEnabled={Boolean(props.health?.capabilities?.youtubeExtraction.enabled)}
               onAnalyze={(input) => props.onAnalyze(input)}
               onTrackMatched={props.onTrackMatched}
             />

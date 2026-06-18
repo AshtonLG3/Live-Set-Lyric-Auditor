@@ -33,8 +33,8 @@
 - The supplied MP4 completed real LALAL.AI isolation and Replicate transcription with three correct transcript segments.
 - Musixmatch lyric fingerprint plus rated catalog resolution maps the transcript to Rod Stewart instead of a low-authority cover entry.
 - The supplied MP4 smoke now produces three live variants and zero skipped-line spam; skipped-line reporting is limited to gaps between matched canonical anchors.
-- Recall fragments can now complete full Analysis as `recall_recording` input without requiring an uploaded clip or YouTube excerpt.
-- Advanced YouTube extraction is hidden unless enabled by server config; failures are capped by a 15-60 second timeout window, defaulting to 45 seconds, and report an authorized-excerpt fallback instead of stalling.
+- Recall fragments can now complete full Analysis as `recall_recording` input without requiring an uploaded clip.
+- The visible YouTube/live-link intake was removed so the main flow stays focused on uploading, recording, or recalling authorized media.
 - Replit preview hosts are allowed through Vite's host-check protection in both standalone Vite config and the Express-mounted dev middleware.
 - The Passport now stores `lineComparisons`, and Analysis leads with a Live vs Studio Comparison table before the Review Queue.
 - The selected comparison detail shows studio previous/current/next context, live previous/current/next context, and word-level removed/added/kept chips.
@@ -58,7 +58,7 @@
 - Reworked narration copy to summarize concrete timed candidates and manual moments instead of repeating hardcoded category wording.
 - Added explicit Recall Rescue continuation actions for upload, live-link, and direct recalled-fragment analysis.
 - Limited skipped-line detection to anchored reference windows so short excerpts do not fill the review queue with unrelated canonical omissions.
-- Added low-confidence ASR filler filtering and bounded advanced YouTube extraction timeout errors.
+- Added low-confidence ASR filler filtering and removed the visible YouTube/live-link intake path from the dashboard.
 - Added a configurable `DEV_ALLOWED_HOSTS` allowlist for Replit preview sharing without disabling Vite's host protection.
 - Added first-class line comparison output to the Passport so the UI can show matched lines and differences, not only variant candidates.
 - Added the Live vs Studio Comparison panel above the review queue, with desktop rows and mobile cards.

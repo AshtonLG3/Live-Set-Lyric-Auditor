@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Camera,
   CircleAlert,
-  ExternalLink,
   FileAudio,
   FileCheck2,
   FileVideo,
   Fingerprint,
-  Link2,
   Mic,
   Play,
   Search,
@@ -18,10 +16,9 @@ import {
   Upload
 } from "lucide-react";
 import type { ClipSource, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
-import { MAX_CLIP_SECONDS, MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
+import { MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
 import { rescueRecall } from "../api";
 import { formatFileSize, inspectClip, type ClipSelection } from "../clip";
-import { formatSourceTime, parseLiveSource } from "../source";
 
 export type IntakeAnalysisInput = {
   file?: File;
@@ -31,19 +28,17 @@ export type IntakeAnalysisInput = {
   recallSegments?: TranscriptSegment[];
 };
 
-type IntakeMode = "upload" | "live_link" | "recall";
+type IntakeMode = "upload" | "recall";
 
 type Props = {
   busy: boolean;
-  youtubeExtractionEnabled?: boolean;
   onAnalyze: (input: IntakeAnalysisInput) => Promise<void> | void;
   onTrackMatched: (track: TrackCandidate) => void;
 };
 
-export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, onTrackMatched }: Props) {
+export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const excerptInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
@@ -51,14 +46,9 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
   const [mode, setMode] = useState<IntakeMode>("upload");
   const [autoMatch, setAutoMatch] = useState(true);
   const [uploadClip, setUploadClip] = useState<ClipSelection>();
-  const [linkClip, setLinkClip] = useState<ClipSelection>();
   const [fileError, setFileError] = useState("");
   const [fileProcessing, setFileProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [startSeconds, setStartSeconds] = useState(0);
-  const [endSeconds, setEndSeconds] = useState(30);
-  const [tryProviderExtraction, setTryProviderExtraction] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingFile, setRecordingFile] = useState<File>();
@@ -69,16 +59,6 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
   const [recallResult, setRecallResult] = useState<RecallRescueResponse>();
   const [matchedTrackId, setMatchedTrackId] = useState("");
 
-  const parsedSource = useMemo(
-    () => parseLiveSource(sourceUrl, startSeconds, endSeconds),
-    [sourceUrl, startSeconds, endSeconds]
-  );
-  const rangeDuration = endSeconds - startSeconds;
-  const validRange = rangeDuration > 0 && rangeDuration <= MAX_CLIP_SECONDS;
-  const isYouTubeSource = parsedSource?.provider === "youtube";
-  const canTryProviderExtraction = Boolean(isYouTubeSource && youtubeExtractionEnabled);
-  const providerExtractionReady = canTryProviderExtraction && tryProviderExtraction;
-  const liveSourceReady = Boolean(parsedSource && (linkClip || providerExtractionReady));
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
   const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
   const recallAnalysisReady = Boolean(recallResult?.segments.length);
@@ -92,21 +72,15 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
     if (recordingUrl) URL.revokeObjectURL(recordingUrl);
   }, [recordingUrl]);
 
-  useEffect(() => {
-    if (!canTryProviderExtraction) setTryProviderExtraction(false);
-  }, [canTryProviderExtraction]);
-
-  async function importClip(file: File | undefined, target: "upload" | "link") {
+  async function importClip(file: File | undefined) {
     setFileError("");
     if (!file) return;
     setFileProcessing(true);
     try {
       const inspected = await inspectClip(file);
-      if (target === "upload") setUploadClip(inspected);
-      else setLinkClip(inspected);
+      setUploadClip(inspected);
     } catch (error) {
-      if (target === "upload") setUploadClip(undefined);
-      else setLinkClip(undefined);
+      setUploadClip(undefined);
       setFileError(error instanceof Error ? error.message : "Could not import this clip.");
     } finally {
       setFileProcessing(false);
@@ -200,17 +174,10 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   }
 
-  function removeLinkClip() {
-    setLinkClip(undefined);
-    setFileError("");
-    if (excerptInputRef.current) excerptInputRef.current.value = "";
-  }
-
   return (
     <div>
-      <div className="mb-4 grid grid-cols-3 gap-1 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
         <ModeButton active={mode === "upload"} onClick={() => setMode("upload")} icon={<Upload size={15} />} label="Upload clip" />
-        <ModeButton active={mode === "live_link"} onClick={() => setMode("live_link")} icon={<Link2 size={15} />} label="Live link" />
         <ModeButton active={mode === "recall"} onClick={() => setMode("recall")} icon={<Mic size={15} />} label="Recall lyric fragment" />
       </div>
 
@@ -230,7 +197,7 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
           onDrop={(event) => {
             event.preventDefault();
             setIsDragging(false);
-            void importClip(event.dataTransfer.files?.[0], "upload");
+            void importClip(event.dataTransfer.files?.[0]);
           }}
         >
           {uploadClip ? (
@@ -263,7 +230,7 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
             className="sr-only"
             type="file"
             accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.mov,.webm"
-            onChange={(event) => void importClip(event.target.files?.[0], "upload")}
+            onChange={(event) => void importClip(event.target.files?.[0])}
           />
           <input
             ref={cameraInputRef}
@@ -272,140 +239,8 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
             accept="video/*"
             capture="environment"
             aria-label="Record a live performance video"
-            onChange={(event) => void importClip(event.target.files?.[0], "upload")}
+            onChange={(event) => void importClip(event.target.files?.[0])}
           />
-        </div>
-      )}
-
-      {mode === "live_link" && (
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">Live performance URL</span>
-            <div className="flex gap-2">
-              <input
-                className="field w-full"
-                type="url"
-                placeholder="https://example.com/live-performance"
-                value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
-                aria-label="Live performance URL"
-              />
-              {parsedSource && (
-                <a className="icon-button" href={parsedSource.normalizedUrl} target="_blank" rel="noreferrer" aria-label="Open source link" title="Open source link">
-                  <ExternalLink size={17} />
-                </a>
-              )}
-            </div>
-          </label>
-
-          {sourceUrl && !parsedSource && <InlineNotice tone="warning" text="Enter a valid HTTP or HTTPS media link." />}
-
-          {parsedSource?.provider === "youtube" && (
-            <div className="rounded-md border border-slate-200 bg-slate-950 p-4 text-white dark:border-slate-700">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-bold">YouTube link saved as evidence</p>
-                  <p className="mt-1 text-[13px] leading-5 text-slate-300">
-                    Attach an authorized excerpt for stable analysis.
-                  </p>
-                </div>
-                <a
-                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-white/20 px-3 text-xs font-bold text-white transition hover:bg-white/10"
-                  href={parsedSource.normalizedUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <ExternalLink size={15} /> Open on YouTube
-                </a>
-              </div>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100">
-                <Link2 size={14} /> {formatSourceTime(startSeconds)}-{formatSourceTime(endSeconds)}
-              </div>
-              {canTryProviderExtraction && (
-                <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100">
-                  <input
-                    className="mt-0.5"
-                    type="checkbox"
-                    checked={tryProviderExtraction}
-                    onChange={(event) => setTryProviderExtraction(event.target.checked)}
-                    aria-label="Try advanced YouTube extraction"
-                  />
-                  <span>
-                    <strong className="block">Try YouTube extraction</strong>
-                    <span className="mt-0.5 block text-slate-300">Advanced server-side import</span>
-                  </span>
-                </label>
-              )}
-            </div>
-          )}
-
-          {parsedSource?.provider !== "youtube" && parsedSource?.embedUrl && (
-            <div className="aspect-video overflow-hidden rounded-md bg-black">
-              <iframe
-                className="h-full w-full"
-                src={parsedSource.embedUrl}
-                title="Live performance preview"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          )}
-
-          {parsedSource && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 dark:border-slate-800">
-              <span className="inline-flex items-center gap-2 text-sm font-semibold"><Link2 size={16} className="text-lagoon" /> {parsedSource.label}</span>
-              <span className="text-xs text-slate-500">source evidence</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2">
-            <label>
-              <span className="mb-1 block text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">Start</span>
-              <input className="field w-full" type="number" min="0" value={startSeconds} onChange={(event) => setStartSeconds(Number(event.target.value))} aria-label="Clip start seconds" />
-            </label>
-            <label>
-              <span className="mb-1 block text-[12px] font-bold uppercase text-slate-600 dark:text-slate-400">End</span>
-              <input className="field w-full" type="number" min="1" value={endSeconds} onChange={(event) => setEndSeconds(Number(event.target.value))} aria-label="Clip end seconds" />
-            </label>
-          </div>
-          <p className={`text-xs ${validRange ? "text-slate-500" : "text-ember"}`}>
-            {formatSourceTime(startSeconds)}-{formatSourceTime(endSeconds)} · {Math.max(0, rangeDuration)}s selected · maximum {MAX_CLIP_SECONDS}s
-          </p>
-
-          <div className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
-            {linkClip ? (
-              <ClipSummary clip={linkClip} onReplace={() => excerptInputRef.current?.click()} onRemove={removeLinkClip} compact />
-            ) : (
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-bold">Authorized excerpt</p>
-                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">Audio/video used for stable analysis.</p>
-                </div>
-                <button type="button" className="button-secondary shrink-0" onClick={() => excerptInputRef.current?.click()}>
-                  <Upload size={16} /> Attach
-                </button>
-              </div>
-            )}
-            <input
-              ref={excerptInputRef}
-              className="sr-only"
-              type="file"
-              accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.mov,.webm"
-              aria-label="Authorized excerpt file"
-              onChange={(event) => void importClip(event.target.files?.[0], "link")}
-            />
-          </div>
-
-          {!linkClip && parsedSource && (
-            <InlineNotice
-              tone={providerExtractionReady ? "neutral" : "warning"}
-              text={providerExtractionReady
-                ? "Advanced extraction will request only the selected YouTube range. If YouTube blocks this server, attach an authorized excerpt instead."
-                : parsedSource.provider === "youtube"
-                  ? "Attach an authorized audio or video excerpt to analyze this YouTube source."
-                : "Attach an authorized audio or video excerpt to analyze this provider."}
-            />
-          )}
         </div>
       )}
 
@@ -464,14 +299,9 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
                 </button>
               ))}
               {matchedTrack && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button type="button" className="button-secondary w-full" onClick={() => setMode("upload")}>
-                    <Upload size={16} /> Upload performance clip
-                  </button>
-                  <button type="button" className="button-secondary w-full" onClick={() => setMode("live_link")}>
-                    <Link2 size={16} /> Use live link
-                  </button>
-                </div>
+                <button type="button" className="button-secondary w-full" onClick={() => setMode("upload")}>
+                  <Upload size={16} /> Upload performance clip
+                </button>
               )}
               {recallAnalysisReady && (
                 <button
@@ -525,32 +355,6 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
             <Play size={17} /> Analyze clip
           </button>
         )}
-        {mode === "live_link" && (
-          <button
-            type="button"
-            className="button-primary w-full"
-            disabled={busy || fileProcessing || !liveSourceReady || !validRange || Boolean(fileError)}
-            onClick={() => {
-              if (!parsedSource) return;
-              const useProviderExtraction = !linkClip && providerExtractionReady;
-              void onAnalyze({
-                file: linkClip?.file,
-                durationSeconds: linkClip?.durationSeconds ?? rangeDuration,
-                autoMatch,
-                source: {
-                  kind: "live_link",
-                  processingMode: useProviderExtraction ? "provider_excerpt" : "authorized_excerpt",
-                  provider: parsedSource.provider,
-                  url: parsedSource.normalizedUrl,
-                  startSeconds,
-                  endSeconds
-                }
-              });
-            }}
-          >
-            <Play size={17} /> {providerExtractionReady && !linkClip ? "Try YouTube extraction" : "Analyze attached excerpt"}
-          </button>
-        )}
         {mode === "recall" && recordingFile && (
           <button
             type="button"
@@ -568,12 +372,6 @@ export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, 
         )}
       </div>
 
-      {mode === "live_link" && (
-        <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-slate-500">
-          <ShieldCheck className="mt-0.5 shrink-0 text-lagoon" size={14} />
-          Original provider attribution and source URL remain attached to the Passport.
-        </p>
-      )}
     </div>
   );
 }

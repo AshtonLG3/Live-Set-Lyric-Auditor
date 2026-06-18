@@ -2,15 +2,15 @@
 
 ## 0-15 seconds
 
-Open Dashboard. Point out `v0.11.2`, the cinematic Start a Live Variant Passport hero, partner readiness including Cyanite, and the three intake modes: Upload clip with Browse files / Record live, Live link, and Recall lyric fragment.
+Open Dashboard. Point out `v0.11.2`, the cinematic Start a Live Variant Passport hero, partner readiness including Cyanite, and the two intake modes: Upload clip with Browse files / Record live, and Recall lyric fragment.
 
 ## 15-35 seconds
 
-Open Recall, speak or type a remembered lyric fragment, and select the Musixmatch candidate. Continue to Live link, paste a YouTube performance as evidence, set a short start/end range, and attach an authorized excerpt for analysis.
+Open Recall, speak or type a remembered lyric fragment, and select the Musixmatch candidate. Continue by uploading or recording the authorized live-performance clip you want to analyze.
 
 ## 35-60 seconds
 
-Start analysis and land in the studio Analysis view. Show the waveform, processing timeline, and the new Live vs Studio Comparison table: studio line, live line, status, and what changed. Use the judge-ready demo when an authorized excerpt is not available.
+Start analysis and land in the studio Analysis view. Show the waveform, processing timeline, and the new Live vs Studio Comparison table: studio line, live line, status, and what changed. Use the judge-ready demo when a real clip is not available.
 
 ## 60-80 seconds
 

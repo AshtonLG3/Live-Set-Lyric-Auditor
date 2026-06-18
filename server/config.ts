@@ -115,15 +115,7 @@ export function getHealth(): HealthResponse {
     appName: APP_NAME,
     version: APP_VERSION,
     runtimeMode: getRuntimeMode(),
-    integrations: getIntegrationStatus(),
-    capabilities: {
-      youtubeExtraction: {
-        enabled: env.youtubeExtractionEnabled,
-        detail: env.youtubeExtractionEnabled
-          ? "Advanced YouTube extraction is enabled for this server."
-          : "YouTube links are saved as evidence; attach an authorized excerpt for analysis."
-      }
-    }
+    integrations: getIntegrationStatus()
   };
 }
 
