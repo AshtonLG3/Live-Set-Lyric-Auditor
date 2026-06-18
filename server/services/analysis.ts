@@ -9,6 +9,7 @@ import { isolateVocals } from "../adapters/lalal";
 import type { VocalIsolationResult } from "../adapters/lalal";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
+import { env } from "../config";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 
@@ -322,7 +323,10 @@ async function resolveAnalysisFile(input: AnalyzeInput): Promise<Express.Multer.
   if (input.useFixture || input.source?.kind === "fixture") {
     return undefined;
   }
-  if (input.source?.kind === "live_link" && input.source.provider === "youtube") {
+  if (input.source?.kind === "live_link" && input.source.provider === "youtube" && input.source.processingMode === "provider_excerpt") {
+    if (!env.youtubeExtractionEnabled) {
+      throw new Error("YouTube extraction is disabled for this server. Attach an authorized excerpt instead.");
+    }
     return extractYouTubeExcerpt(input.source);
   }
   if (input.source?.kind === "live_link") {

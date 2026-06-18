@@ -69,7 +69,12 @@ export function SessionWorkspace(props: Props) {
       <section className="studio-intake-grid">
         <RackPanel id="clip-intake" title="Clip Intake" icon={<AudioLines size={18} />} status={props.busy ? "Processing" : "Ready"}>
           <div className="studio-clip-intake">
-            <ClipIntake busy={props.busy} onAnalyze={(input) => props.onAnalyze(input)} onTrackMatched={props.onTrackMatched} />
+            <ClipIntake
+              busy={props.busy}
+              youtubeExtractionEnabled={Boolean(props.health?.capabilities?.youtubeExtraction.enabled)}
+              onAnalyze={(input) => props.onAnalyze(input)}
+              onTrackMatched={props.onTrackMatched}
+            />
           </div>
           <button className="studio-demo-button" disabled={props.busy} onClick={() => void props.onAnalyze(undefined, true)} title="Run the complete contest flow with seeded demo data">
             <WandSparkles size={17} /> Run judge-ready demo

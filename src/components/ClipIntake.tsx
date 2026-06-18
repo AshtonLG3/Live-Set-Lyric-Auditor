@@ -35,11 +35,12 @@ type IntakeMode = "upload" | "live_link" | "recall";
 
 type Props = {
   busy: boolean;
+  youtubeExtractionEnabled?: boolean;
   onAnalyze: (input: IntakeAnalysisInput) => Promise<void> | void;
   onTrackMatched: (track: TrackCandidate) => void;
 };
 
-export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
+export function ClipIntake({ busy, youtubeExtractionEnabled = false, onAnalyze, onTrackMatched }: Props) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const excerptInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +58,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   const [sourceUrl, setSourceUrl] = useState("");
   const [startSeconds, setStartSeconds] = useState(0);
   const [endSeconds, setEndSeconds] = useState(30);
+  const [tryProviderExtraction, setTryProviderExtraction] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordingFile, setRecordingFile] = useState<File>();
@@ -73,7 +75,10 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   );
   const rangeDuration = endSeconds - startSeconds;
   const validRange = rangeDuration > 0 && rangeDuration <= MAX_CLIP_SECONDS;
-  const liveSourceReady = Boolean(parsedSource && (parsedSource.provider === "youtube" || linkClip));
+  const isYouTubeSource = parsedSource?.provider === "youtube";
+  const canTryProviderExtraction = Boolean(isYouTubeSource && youtubeExtractionEnabled);
+  const providerExtractionReady = canTryProviderExtraction && tryProviderExtraction;
+  const liveSourceReady = Boolean(parsedSource && (linkClip || providerExtractionReady));
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
   const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
   const recallAnalysisReady = Boolean(recallResult?.segments.length);
@@ -86,6 +91,10 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
   useEffect(() => () => {
     if (recordingUrl) URL.revokeObjectURL(recordingUrl);
   }, [recordingUrl]);
+
+  useEffect(() => {
+    if (!canTryProviderExtraction) setTryProviderExtraction(false);
+  }, [canTryProviderExtraction]);
 
   async function importClip(file: File | undefined, target: "upload" | "link") {
     setFileError("");
@@ -276,7 +285,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               <input
                 className="field w-full"
                 type="url"
-                placeholder="https://youtube.com/watch?v=..."
+                placeholder="https://example.com/live-performance"
                 value={sourceUrl}
                 onChange={(event) => setSourceUrl(event.target.value)}
                 aria-label="Live performance URL"
@@ -295,9 +304,9 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             <div className="rounded-md border border-slate-200 bg-slate-950 p-4 text-white dark:border-slate-700">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[15px] font-bold">YouTube source ready</p>
+                  <p className="text-[15px] font-bold">YouTube link saved as evidence</p>
                   <p className="mt-1 text-[13px] leading-5 text-slate-300">
-                    Inline preview is unavailable for some videos. The selected range stays available for analysis.
+                    Attach an authorized excerpt for stable analysis.
                   </p>
                 </div>
                 <a
@@ -312,6 +321,21 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100">
                 <Link2 size={14} /> {formatSourceTime(startSeconds)}-{formatSourceTime(endSeconds)}
               </div>
+              {canTryProviderExtraction && (
+                <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100">
+                  <input
+                    className="mt-0.5"
+                    type="checkbox"
+                    checked={tryProviderExtraction}
+                    onChange={(event) => setTryProviderExtraction(event.target.checked)}
+                    aria-label="Try advanced YouTube extraction"
+                  />
+                  <span>
+                    <strong className="block">Try YouTube extraction</strong>
+                    <span className="mt-0.5 block text-slate-300">Advanced server-side import</span>
+                  </span>
+                </label>
+              )}
             </div>
           )}
 
@@ -355,7 +379,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[15px] font-bold">Authorized excerpt</p>
-                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">Optional audio/video for real processing.</p>
+                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">Audio/video used for stable analysis.</p>
                 </div>
                 <button type="button" className="button-secondary shrink-0" onClick={() => excerptInputRef.current?.click()}>
                   <Upload size={16} /> Attach
@@ -367,15 +391,18 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               className="sr-only"
               type="file"
               accept="audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.mov,.webm"
+              aria-label="Authorized excerpt file"
               onChange={(event) => void importClip(event.target.files?.[0], "link")}
             />
           </div>
 
           {!linkClip && parsedSource && (
             <InlineNotice
-              tone={parsedSource.provider === "youtube" ? "neutral" : "warning"}
-              text={parsedSource.provider === "youtube"
-                ? "Only the selected YouTube time range is temporarily extracted for analysis. Hosted servers may need private YouTube cookies configured, or you can attach an authorized excerpt."
+              tone={providerExtractionReady ? "neutral" : "warning"}
+              text={providerExtractionReady
+                ? "Advanced extraction will request only the selected YouTube range. If YouTube blocks this server, attach an authorized excerpt instead."
+                : parsedSource.provider === "youtube"
+                  ? "Attach an authorized audio or video excerpt to analyze this YouTube source."
                 : "Attach an authorized audio or video excerpt to analyze this provider."}
             />
           )}
@@ -442,7 +469,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
                     <Upload size={16} /> Upload performance clip
                   </button>
                   <button type="button" className="button-secondary w-full" onClick={() => setMode("live_link")}>
-                    <Link2 size={16} /> Use YouTube / live link
+                    <Link2 size={16} /> Use live link
                   </button>
                 </div>
               )}
@@ -503,21 +530,25 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             type="button"
             className="button-primary w-full"
             disabled={busy || fileProcessing || !liveSourceReady || !validRange || Boolean(fileError)}
-            onClick={() => parsedSource && void onAnalyze({
-              file: linkClip?.file,
-              durationSeconds: linkClip?.durationSeconds ?? rangeDuration,
-              autoMatch,
-              source: {
-                kind: "live_link",
-                processingMode: linkClip ? "authorized_excerpt" : "provider_excerpt",
-                provider: parsedSource.provider,
-                url: parsedSource.normalizedUrl,
-                startSeconds,
-                endSeconds
-              }
-            })}
+            onClick={() => {
+              if (!parsedSource) return;
+              const useProviderExtraction = !linkClip && providerExtractionReady;
+              void onAnalyze({
+                file: linkClip?.file,
+                durationSeconds: linkClip?.durationSeconds ?? rangeDuration,
+                autoMatch,
+                source: {
+                  kind: "live_link",
+                  processingMode: useProviderExtraction ? "provider_excerpt" : "authorized_excerpt",
+                  provider: parsedSource.provider,
+                  url: parsedSource.normalizedUrl,
+                  startSeconds,
+                  endSeconds
+                }
+              });
+            }}
           >
-            <Play size={17} /> Analyze selected range
+            <Play size={17} /> {providerExtractionReady && !linkClip ? "Try YouTube extraction" : "Analyze attached excerpt"}
           </button>
         )}
         {mode === "recall" && recordingFile && (

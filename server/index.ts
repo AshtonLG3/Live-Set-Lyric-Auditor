@@ -87,12 +87,24 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
     const source = parseJsonField<ClipSource>(req.body.source);
     const recallSegments = parseTranscriptSegments(req.body.recallSegments);
     const hasRecallTranscript = source?.kind === "recall_recording" && recallSegments.length > 0;
+    const canUseProviderExtraction = source?.kind === "live_link"
+      && source.provider === "youtube"
+      && source.processingMode === "provider_excerpt"
+      && env.youtubeExtractionEnabled;
     const requestedDuration = Number(req.body.durationSeconds || 0);
     const rangedDuration = source?.startSeconds !== undefined && source.endSeconds !== undefined
       ? source.endSeconds - source.startSeconds
       : 0;
-    if (!req.file && !useFixture && source?.kind !== "live_link" && !hasRecallTranscript) {
-      res.status(400).json({ error: "Import an audio or video clip before starting analysis." });
+    if (source?.kind === "live_link" && source.processingMode === "provider_excerpt" && !canUseProviderExtraction) {
+      res.status(400).json({ error: "YouTube extraction is unavailable on this server. Attach an authorized excerpt instead." });
+      return;
+    }
+    if (!req.file && !useFixture && !canUseProviderExtraction && !hasRecallTranscript) {
+      res.status(400).json({
+        error: source?.kind === "live_link"
+          ? "Attach an authorized audio or video excerpt before starting analysis."
+          : "Import an audio or video clip before starting analysis."
+      });
       return;
     }
     if (source?.kind === "live_link" && !isAllowedLiveSource(source)) {

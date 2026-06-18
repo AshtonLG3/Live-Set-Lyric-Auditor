@@ -32,7 +32,10 @@ export async function analyzePerformance(input: {
       : undefined;
     const trackId = uploadFile
       ? await uploadLibraryTrack(uploadFile)
-      : input.source?.kind === "live_link" && input.source.provider === "youtube"
+      : input.source?.kind === "live_link"
+        && input.source.provider === "youtube"
+        && input.source.processingMode === "provider_excerpt"
+        && env.youtubeExtractionEnabled
         ? await enqueueYoutubeTrack(input.source)
         : null;
     if (!trackId) return fixturePerformanceContext;

@@ -10,6 +10,7 @@ describe("Cyanite adapter", () => {
 
   it("maps a completed YouTube analysis into performance context", async () => {
     vi.stubEnv("CYANITE_API_TOKEN", "cyanite-test-token");
+    vi.stubEnv("YOUTUBE_EXTRACTION_ENABLED", "true");
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({
         data: {
@@ -44,7 +45,7 @@ describe("Cyanite adapter", () => {
     const result = await analyzePerformance({
       source: {
         kind: "live_link",
-        processingMode: "reference_fixture",
+        processingMode: "provider_excerpt",
         provider: "youtube",
         url: "https://www.youtube.com/watch?v=M7lc1UVf-VE"
       }

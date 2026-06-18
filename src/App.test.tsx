@@ -25,7 +25,13 @@ const health: HealthResponse = {
     { name: "Cyanite", configured: false, mode: "fixture", detail: "fixture" },
     { name: "ElevenLabs", configured: false, mode: "fixture", detail: "fixture" },
     { name: "ASR", configured: false, mode: "fixture", detail: "fixture" }
-  ]
+  ],
+  capabilities: {
+    youtubeExtraction: {
+      enabled: false,
+      detail: "YouTube links are saved as evidence; attach an authorized excerpt for analysis."
+    }
+  }
 };
 
 const completeJob: AnalysisJob = {
@@ -273,17 +279,25 @@ it("shows the app version and theme toggle", async () => {
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
 
-it("accepts a YouTube live link without showing a blocked inline player", async () => {
+it("keeps a YouTube live link as evidence until an excerpt is attached", async () => {
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Live link" }));
   fireEvent.change(screen.getByLabelText("Live performance URL"), {
     target: { value: "https://www.youtube.com/watch?v=M7lc1UVf-VE" }
   });
-  expect(await screen.findByText("YouTube source ready")).toBeInTheDocument();
+  expect(await screen.findByText("YouTube link saved as evidence")).toBeInTheDocument();
   expect(screen.queryByTitle("Live performance preview")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: /Open on YouTube/i })).toHaveAttribute("href", "https://www.youtube.com/watch?v=M7lc1UVf-VE");
   expect(screen.getAllByText(/0:00-0:30/).length).toBeGreaterThan(0);
-  expect(screen.getByRole("button", { name: /Analyze selected range/i })).toBeEnabled();
+  expect(screen.getByText("Attach an authorized audio or video excerpt to analyze this YouTube source.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze attached excerpt/i })).toBeDisabled();
+
+  const file = new File(["audio"], "authorized-excerpt.mp3", { type: "audio/mpeg" });
+  fireEvent.change(screen.getByLabelText("Authorized excerpt file"), {
+    target: { files: [file] }
+  });
+  expect(await screen.findByText("authorized-excerpt.mp3")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Analyze attached excerpt/i })).toBeEnabled();
 });
 
 it("uses remembered words to rescue a track", async () => {
@@ -297,7 +311,7 @@ it("uses remembered words to rescue a track", async () => {
   const matches = screen.getAllByRole("button", { name: /Midnight Atlas/i });
   fireEvent.click(matches[0]);
   expect(screen.getByRole("button", { name: /Upload performance clip/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /Use YouTube \/ live link/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Use live link/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i }));
   await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());

@@ -4,6 +4,8 @@ import type { HealthResponse, IntegrationStatus, RuntimeMode } from "../shared/t
 const configured = (name: string) => Boolean(process.env[name]?.trim());
 const configuredAny = (...names: string[]) => names.some(configured);
 const defaultDevAllowedHosts = [".replit.dev", ".picard.replit.dev"];
+const youtubeExtractionFlag = parseBoolean(process.env.YOUTUBE_EXTRACTION_ENABLED);
+const youtubeCookiesConfigured = configuredAny("YOUTUBE_COOKIES_FILE", "YOUTUBE_COOKIES_PATH", "YOUTUBE_COOKIES_BASE64", "YOUTUBE_COOKIES");
 
 export const env = {
   host: process.env.HOST?.trim() || "0.0.0.0",
@@ -33,6 +35,7 @@ export const env = {
   youtubeCookiesFile: process.env.YOUTUBE_COOKIES_FILE?.trim() || process.env.YOUTUBE_COOKIES_PATH?.trim(),
   youtubeCookiesBase64: process.env.YOUTUBE_COOKIES_BASE64?.trim(),
   youtubeCookies: process.env.YOUTUBE_COOKIES?.trim(),
+  youtubeExtractionEnabled: youtubeExtractionFlag ?? youtubeCookiesConfigured,
   cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
   cyanitePollTimeoutMs: Math.max(30_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 180_000)),
   asrApiUrl: process.env.ASR_API_URL,
@@ -112,7 +115,15 @@ export function getHealth(): HealthResponse {
     appName: APP_NAME,
     version: APP_VERSION,
     runtimeMode: getRuntimeMode(),
-    integrations: getIntegrationStatus()
+    integrations: getIntegrationStatus(),
+    capabilities: {
+      youtubeExtraction: {
+        enabled: env.youtubeExtractionEnabled,
+        detail: env.youtubeExtractionEnabled
+          ? "Advanced YouTube extraction is enabled for this server."
+          : "YouTube links are saved as evidence; attach an authorized excerpt for analysis."
+      }
+    }
   };
 }
 
@@ -122,4 +133,11 @@ function parseList(value: string | undefined, fallback: string[]): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed?.length ? parsed : fallback;
+}
+
+function parseBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (/^(1|true|yes|on)$/i.test(value.trim())) return true;
+  if (/^(0|false|no|off)$/i.test(value.trim())) return false;
+  return undefined;
 }
