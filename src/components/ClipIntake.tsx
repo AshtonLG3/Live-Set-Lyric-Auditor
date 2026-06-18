@@ -375,7 +375,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
             <InlineNotice
               tone={parsedSource.provider === "youtube" ? "neutral" : "warning"}
               text={parsedSource.provider === "youtube"
-                ? "Only the selected YouTube time range is temporarily extracted for analysis. Install yt-dlp plus ffmpeg on the server."
+                ? "Only the selected YouTube time range is temporarily extracted for analysis. Hosted servers may need private YouTube cookies configured, or you can attach an authorized excerpt."
                 : "Attach an authorized audio or video excerpt to analyze this provider."}
             />
           )}

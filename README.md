@@ -4,7 +4,7 @@
 
 Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; LALAL.AI isolates vocals, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, a Whisper-style ASR adapter transcribes the performance, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
-Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requires `yt-dlp`, `ffmpeg`, and `ffprobe`. If extraction times out, the app reports the failure and asks for an authorized excerpt instead of waiting indefinitely.
+Runtime requirement: Node.js 20.6 or newer. YouTube range extraction also requires `yt-dlp`, `ffmpeg`, and `ffprobe`. Hosted environments such as Replit may also need an authorized cookies file when YouTube challenges datacenter traffic. If extraction times out or is challenged, the app reports a setup-safe failure and asks for an authorized excerpt instead of waiting indefinitely.
 
 Real uploads and provider excerpts do not silently substitute demo transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
@@ -32,7 +32,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; YouTube enqueue and MP3 signed upload feed energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip. Common low-confidence Whisper filler phrases are removed before alignment.
-- **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing. Extraction is bounded by `YOUTUBE_EXTRACT_TIMEOUT_MS` with a 45 second default.
+- **YouTube excerpts:** `yt-dlp` and ffmpeg extract only the selected range into a temporary MP3, then remove the temporary file after it is loaded for LALAL/Whisper processing. Extraction is bounded by `YOUTUBE_EXTRACT_TIMEOUT_MS` with a 45 second default. On hosted deploys, add an authorized Netscape-format cookies file through `YOUTUBE_COOKIES_FILE` or `YOUTUBE_COOKIES_BASE64` when YouTube requires sign-in verification.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, linked, recorded, or recalled sources.
@@ -104,11 +104,24 @@ REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper:91ee9c0c3df30478510ff8c8a3a545
 PYTHON_COMMAND=python
 FFMPEG_LOCATION=
 YOUTUBE_EXTRACT_TIMEOUT_MS=45000
+YOUTUBE_COOKIES_FILE=
+YOUTUBE_COOKIES_BASE64=
 CYANITE_POLL_INTERVAL_MS=2500
 CYANITE_POLL_TIMEOUT_MS=180000
 ```
 
 Both `npm run dev` and `npm start` automatically load these values from an ignored root-level `.env` file when it exists.
+
+For Replit, keep YouTube cookies in Secrets rather than the repository. If you are authorized to access the source, export a Netscape-format `cookies.txt`, encode it locally, and store the output as `YOUTUBE_COOKIES_BASE64`:
+
+```bash
+python - <<'PY'
+import base64, pathlib
+print(base64.b64encode(pathlib.Path("cookies.txt").read_bytes()).decode())
+PY
+```
+
+If cookies are unavailable or expire, attach an authorized excerpt in the Live link panel instead.
 
 ### Partner Credentials
 
