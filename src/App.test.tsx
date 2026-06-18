@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.0",
+  version: "0.11.1",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.0",
+    version: "0.11.1",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.0/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.1/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -273,14 +273,16 @@ it("shows the app version and theme toggle", async () => {
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
 
-it("accepts a YouTube live link and shows the selected range", async () => {
+it("accepts a YouTube live link without showing a blocked inline player", async () => {
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Live link" }));
   fireEvent.change(screen.getByLabelText("Live performance URL"), {
     target: { value: "https://www.youtube.com/watch?v=M7lc1UVf-VE" }
   });
-  expect(await screen.findByTitle("Live performance preview")).toBeInTheDocument();
-  expect(screen.getByText(/0:00-0:30/)).toBeInTheDocument();
+  expect(await screen.findByText("YouTube source ready")).toBeInTheDocument();
+  expect(screen.queryByTitle("Live performance preview")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Open on YouTube/i })).toHaveAttribute("href", "https://www.youtube.com/watch?v=M7lc1UVf-VE");
+  expect(screen.getAllByText(/0:00-0:30/).length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: /Analyze selected range/i })).toBeEnabled();
 });
 

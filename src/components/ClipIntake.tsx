@@ -291,7 +291,31 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
 
           {sourceUrl && !parsedSource && <InlineNotice tone="warning" text="Enter a valid HTTP or HTTPS media link." />}
 
-          {parsedSource?.embedUrl && (
+          {parsedSource?.provider === "youtube" && (
+            <div className="rounded-md border border-slate-200 bg-slate-950 p-4 text-white dark:border-slate-700">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[15px] font-bold">YouTube source ready</p>
+                  <p className="mt-1 text-[13px] leading-5 text-slate-300">
+                    Inline preview is unavailable for some videos. The selected range stays available for analysis.
+                  </p>
+                </div>
+                <a
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-white/20 px-3 text-xs font-bold text-white transition hover:bg-white/10"
+                  href={parsedSource.normalizedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink size={15} /> Open on YouTube
+                </a>
+              </div>
+              <div className="mt-3 inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs font-semibold text-slate-100">
+                <Link2 size={14} /> {formatSourceTime(startSeconds)}-{formatSourceTime(endSeconds)}
+              </div>
+            </div>
+          )}
+
+          {parsedSource?.provider !== "youtube" && parsedSource?.embedUrl && (
             <div className="aspect-video overflow-hidden rounded-md bg-black">
               <iframe
                 className="h-full w-full"
