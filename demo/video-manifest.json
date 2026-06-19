@@ -1,0 +1,43 @@
+{
+  "version": "0.11.3",
+  "output": "demo\\live-set-lyric-auditor-demo-v0.11.3.mp4",
+  "voiceoverSeconds": 142.19,
+  "slides": [
+    {
+      "name": "01-title",
+      "seconds": 10.53
+    },
+    {
+      "name": "02-dashboard",
+      "seconds": 15.8
+    },
+    {
+      "name": "03-musixmatch",
+      "seconds": 17.91
+    },
+    {
+      "name": "04-recall",
+      "seconds": 15.8
+    },
+    {
+      "name": "05-timeline",
+      "seconds": 17.91
+    },
+    {
+      "name": "06-diff",
+      "seconds": 21.07
+    },
+    {
+      "name": "07-context",
+      "seconds": 16.85
+    },
+    {
+      "name": "08-export",
+      "seconds": 15.8
+    },
+    {
+      "name": "09-close",
+      "seconds": 10.53
+    }
+  ]
+}

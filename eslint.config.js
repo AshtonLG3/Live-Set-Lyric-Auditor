@@ -6,7 +6,17 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["dist", "node_modules", "coverage"]
+    ignores: ["dist", "node_modules", "coverage", ".remember", ".assistant-local", ".codex-remote-attachments", "demo/captures", "demo/slides", "demo/tmp"]
+  },
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node
+      }
+    }
   },
   {
     files: ["**/*.{ts,tsx}"],

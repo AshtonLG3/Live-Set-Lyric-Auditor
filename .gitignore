@@ -13,5 +13,11 @@ tmp/
 dev-server*.log
 .codex-dev*.log
 .codex-qa/
+.remember/
 musicathon-live-set-lyric-auditor-smoke.png
 .idea/
+demo/captures/
+demo/slides/
+demo/tmp/
+demo/*.wav
+demo/*.webm
