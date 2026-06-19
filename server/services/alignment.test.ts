@@ -116,6 +116,74 @@ describe("alignment pipeline", () => {
     });
   });
 
+  it("anchors a chorus reprise in song order instead of an earlier duplicate", () => {
+    const canonicalLines = [
+      { id: "L1", start: 0, end: 4, text: "verse one alpha bravo" },
+      { id: "L2", start: 4, end: 8, text: "chorus shine so bright" },
+      { id: "L3", start: 8, end: 12, text: "verse two charlie delta" },
+      { id: "L4", start: 12, end: 16, text: "chorus shine so bright" }
+    ];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: "verse two charlie delta", confidence: 0.95 },
+      { id: "T2", start: 4, end: 8, text: "chorus shine so bright", confidence: 0.95 }
+    ], canonicalLines);
+
+    // Greedy matching grabs the first "chorus" duplicate (L2) for T2, producing a
+    // backward L3 -> L2 jump and a corrupted +4s offset. A global ordered alignment
+    // must keep canonical order: T1 -> L3, T2 -> L4, anchoring the clip at +8s.
+    expect(alignments.map((alignment) => alignment.canonical?.id)).toEqual(["L3", "L4"]);
+    expect(alignments[0].clipOffset).toBe(8);
+  });
+
+  it("zeroes timing signals when canonical timestamps are unreliable", () => {
+    const segments = [
+      { id: "T1", start: 30, end: 34, text: fixtureCanonicalLines[0].text, confidence: 0.95 },
+      { id: "T2", start: 34, end: 38, text: fixtureCanonicalLines[1].text, confidence: 0.95 },
+      { id: "T3", start: 44, end: 48, text: fixtureCanonicalLines[2].text, confidence: 0.95 }
+    ];
+    const reliable = alignTranscript(segments, fixtureCanonicalLines, true);
+    const unreliable = alignTranscript(segments, fixtureCanonicalLines, false);
+
+    // With real timing the offset anchors and T3 still drifts.
+    expect(reliable.some((alignment) => alignment.timingDelta >= 2.5)).toBe(true);
+    // With fabricated (index*4 lyrics) timing, no drift is asserted at all.
+    expect(unreliable.every((alignment) => alignment.timingDelta === 0)).toBe(true);
+    expect(unreliable.every((alignment) => alignment.clipOffset === 0)).toBe(true);
+    // Alignment itself is unaffected — same canonical lines are matched.
+    expect(unreliable.map((alignment) => alignment.canonical?.id)).toEqual(reliable.map((alignment) => alignment.canonical?.id));
+  });
+
+  it("does not report fabricated timing drift for lyrics-only canonical sources", () => {
+    const segments = [
+      { id: "T1", start: 30, end: 34, text: fixtureCanonicalLines[0].text, confidence: 0.95 },
+      { id: "T2", start: 34, end: 38, text: fixtureCanonicalLines[1].text, confidence: 0.95 },
+      { id: "T3", start: 44, end: 48, text: fixtureCanonicalLines[2].text, confidence: 0.95 }
+    ];
+    const base = {
+      id: "job-timing",
+      track: fixtureTracks[0],
+      event: null,
+      filename: "demo.mp3",
+      durationSeconds: 24,
+      canonicalLines: fixtureCanonicalLines,
+      transcript: segments,
+      sourceCoverage: 0.8,
+      restricted: false,
+      matchMethod: "selected_track" as const,
+      vocalIsolationSource: "original" as const,
+      vocalIsolationConfidence: 0.6,
+      asrSource: "replicate" as const,
+      source: { kind: "upload" as const, processingMode: "uploaded_media" as const }
+    };
+    const richsync = buildPassport({ ...base, canonicalSource: "richsync" });
+    const lyrics = buildPassport({ ...base, canonicalSource: "lyrics" });
+
+    expect(richsync.variants.some((variant) => variant.type === "timing_drift")).toBe(true);
+    expect(lyrics.variants.some((variant) => variant.type === "timing_drift")).toBe(false);
+    expect(lyrics.confidenceOverview.timingOffsetSeconds).toBe(0);
+    expect(lyrics.confidenceOverview.averageTimingDelta).toBe(0);
+  });
+
   it("marks low-confidence ASR as uncertain instead of a confirmed lyric change", () => {
     const alignments = alignTranscript([
       { id: "T1", start: 4, end: 8, text: "Cape Town carry this chorus", confidence: 0.52 }

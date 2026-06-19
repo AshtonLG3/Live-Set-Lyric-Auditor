@@ -34,6 +34,10 @@ export const env = {
     ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
   replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
     ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
+  replicateDemucsRef: process.env.REPLICATE_DEMUCS_REF?.trim()
+    || "cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81158fa03836d953",
+  replicateDemucsModel: process.env.REPLICATE_DEMUCS_MODEL?.trim() || undefined,
+  replicateDemucsStem: process.env.REPLICATE_DEMUCS_STEM?.trim() || "vocals",
   pythonCommand: process.env.PYTHON_COMMAND?.trim() || "python",
   ffmpegLocation: process.env.FFMPEG_LOCATION?.trim(),
   youtubeExtractTimeoutMs: Math.min(60_000, Math.max(15_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 45_000))),
@@ -58,12 +62,12 @@ export function getIntegrationStatus(): IntegrationStatus[] {
         : "Using seeded track and canonical reference fixtures."
     },
     {
-      name: "LALAL.AI",
-      configured: configured("LALAL_LICENSE_KEY"),
-      mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
-      detail: configured("LALAL_LICENSE_KEY")
-        ? "Activation key configured; lead-vocal splitting, dereverb settings, and result polling enabled."
-        : "Real uploads use original audio; seeded demos use fixture isolation."
+      name: "Demucs",
+      configured: configured("REPLICATE_API_TOKEN"),
+      mode: configured("REPLICATE_API_TOKEN") ? "live" : "fixture",
+      detail: configured("REPLICATE_API_TOKEN")
+        ? "Replicate Demucs is the active vocal isolation provider for uploaded clips."
+        : "Uploads fall back to original audio; seeded demos use fixture isolation."
     },
     {
       name: "JamBase",

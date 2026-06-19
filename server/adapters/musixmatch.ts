@@ -367,7 +367,34 @@ async function fetchSubtitleLines(trackId: string): Promise<CanonicalLine[]> {
   if (!response.ok) return [];
   const json = await response.json();
   const body = json?.message?.body?.subtitle?.subtitle_body as string | undefined;
-  return splitCanonicalBody(body);
+  return parseLrcBody(body);
+}
+
+// LRC subtitle bodies carry real per-line timestamps (`[mm:ss.xx]text`). Preserve
+// them so downstream timing-drift detection runs against the actual performance
+// clock instead of the fabricated index*4 spacing used for plain lyrics.
+export function parseLrcBody(body?: string): CanonicalLine[] {
+  if (!body) return [];
+  const parsed: Array<{ start: number; text: string }> = [];
+  for (const raw of body.split(/\r?\n/)) {
+    const match = /^\[(\d+):(\d{2})(?:[.:](\d{1,3}))?\]\s*(.*)$/.exec(raw.trim());
+    if (!match) continue;
+    const [, minutes, seconds, fraction, rest] = match;
+    const text = rest.replace(/^(?:\[[^\]]*\]\s*)+/, "").trim();
+    if (!text || text.includes("*******")) continue;
+    const start = Number(minutes) * 60 + Number(seconds) + (fraction ? Number(`0.${fraction}`) : 0);
+    parsed.push({ start, text });
+  }
+  return parsed.slice(0, 100).map((line, index, all) => ({
+    id: `L${index + 1}`,
+    start: roundSeconds(line.start),
+    end: roundSeconds(index + 1 < all.length ? all[index + 1].start : line.start + 4),
+    text: line.text
+  }));
+}
+
+function roundSeconds(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 async function fetchLyrics(trackId: string): Promise<{

@@ -19,7 +19,7 @@ describe("analysis recovery", () => {
       recovery: {
         filename: "stage.mp4",
         durationSeconds: 21.7,
-        vocalIsolationSource: "lalalai",
+        vocalIsolationSource: "demucs",
         vocalIsolationConfidence: 0.86,
         asrSource: "replicate",
         transcript: [{ id: "R1", start: 0, end: 5, text: "How you broke my heart", confidence: 0.9 }],

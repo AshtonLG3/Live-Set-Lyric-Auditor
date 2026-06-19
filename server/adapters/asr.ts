@@ -70,7 +70,7 @@ async function transcribe(
         throw new Error(`Separated vocal download failed with ${vocalResponse.status}`);
       }
       const vocalBlob = await vocalResponse.blob();
-      formData.append("file", vocalBlob, "lalal-vocals.mp3");
+      formData.append("file", vocalBlob, "demucs-vocals.mp3");
     } else if (file) {
       formData.append("file", new Blob([toBlobPart(file.buffer)], { type: file.mimetype || "audio/mpeg" }), file.originalname);
     }
@@ -299,10 +299,10 @@ function ensureAudioFilename(filename: string, mimetype?: string): string {
 
 function filenameFromUrl(url: string, contentType?: string): string {
   try {
-    const leaf = new URL(url).pathname.split("/").filter(Boolean).at(-1) ?? "lalal-vocals";
+    const leaf = new URL(url).pathname.split("/").filter(Boolean).at(-1) ?? "demucs-vocals";
     return ensureAudioFilename(leaf, contentType);
   } catch {
-    return ensureAudioFilename("lalal-vocals", contentType);
+    return ensureAudioFilename("demucs-vocals", contentType);
   }
 }
 

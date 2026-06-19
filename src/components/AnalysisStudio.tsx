@@ -149,6 +149,8 @@ export function AnalysisStudio(props: Props) {
       />
 
       <section className="studio-analysis-content">
+        <ProvenanceBanner passport={passport} health={props.health} />
+
         <div className="studio-analysis-context">
           <ContextCard icon={<Fingerprint size={17} />} label="Track Anchor" status="Musixmatch">
             <strong>{track?.title ?? "Track match pending"}</strong>
@@ -184,6 +186,8 @@ export function AnalysisStudio(props: Props) {
           timingOffsetSeconds={timingOffsetSeconds}
           averageTimingDeltaSeconds={averageTimingDeltaSeconds}
         />
+
+        <MusixmatchIdentityChain passport={passport} track={track} />
 
         <section id="analysis-timeline" className="studio-rack-panel studio-analysis-rack">
           <header><span><Activity size={18} /> Analysis Timeline</span><small><i /> {active ? "Processing" : "Complete"}</small></header>
@@ -293,6 +297,8 @@ export function AnalysisStudio(props: Props) {
               <div className="studio-data-list">
                 <DataLine label="Track ID" value={formatRecordingId(passport?.recordingIdentity.trackId ?? track?.id ?? "pending")} />
                 <DataLine label="Common track" value={formatRecordingId(passport?.recordingIdentity.commonTrackId ?? "not supplied")} />
+                <DataLine label="ISRC" value={passport?.recordingIdentity.isrc ?? "Not supplied"} />
+                <DataLine label="Lyric source" value={formatSourceMode(passport?.recordingIdentity.canonicalSource ?? "fixture")} />
                 <DataLine label="Attribution" value={passport?.rights.attribution ?? "Lyrics powered by Musixmatch"} />
                 <DataLine label="Language" value={passport?.rights.language?.toUpperCase() ?? track?.language?.toUpperCase() ?? "EN"} />
                 <DataLine label="Performance profile" value={performanceContext?.source === "cyanite" ? "Cyanite live analysis" : "Demo-safe fallback"} />
@@ -309,6 +315,34 @@ export function AnalysisStudio(props: Props) {
         </section>
       </section>
     </main>
+  );
+}
+
+// Guardrail against demoing fixtures as a real run: when the passport's identity,
+// canonical lyrics, or transcript came from seeded fixtures, say so loudly. A real
+// keyed run (real Musixmatch canonical + real ASR) gets a quiet positive confirmation
+// instead, so the presenter always knows which one is on screen.
+function ProvenanceBanner({ passport, health }: { passport?: AnalysisJob["passport"]; health: HealthResponse | null }) {
+  if (!passport) return null;
+  const seeded = passport.recordingIdentity.canonicalSource === "fixture"
+    || passport.clip.asrSource === "fixture"
+    || passport.recordingIdentity.matchMethod === "fixture_rescue";
+
+  if (!seeded) {
+    return (
+      <div className="studio-provenance studio-provenance-live" role="status" aria-label="Run provenance">
+        <ShieldCheck size={15} /><strong>Live partner run</strong>
+        <span>Canonical lyrics, recording identity, and transcript came from configured partner APIs.</span>
+      </div>
+    );
+  }
+
+  const fixturePartners = (health?.integrations ?? []).filter((integration) => integration.mode === "fixture").map((integration) => integration.name);
+  return (
+    <div className="studio-provenance studio-provenance-demo" role="status" aria-label="Run provenance">
+      <CircleAlert size={15} /><strong>Seeded demo data</strong>
+      <span>This passport was generated from built-in fixtures{fixturePartners.length ? ` (${fixturePartners.join(", ")} not configured)` : ""}, not a live Musixmatch run. Upload a real clip with partner keys set for a true end-to-end demo.</span>
+    </div>
   );
 }
 
@@ -363,6 +397,32 @@ function EvidenceStep({ label, value, detail, tone = "active" }: { label: string
   return <article className={`studio-evidence-step ${tone === "risk" ? "risk" : ""}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
 }
 
+// The Musixmatch identity lineage is the contest's headline integration axis, so it
+// gets its own chain: track.search -> track_id -> commontrack_id -> ISRC -> the
+// richsync/subtitle/lyrics tier the canonical reference came from -> rights status.
+function MusixmatchIdentityChain({ passport, track }: { passport?: AnalysisJob["passport"]; track?: TrackCandidate }) {
+  const identity = passport?.recordingIdentity;
+  const versionConfidence = identity?.versionConfidence;
+  const canonicalSource = identity?.canonicalSource ?? "fixture";
+  const rightsStatus = passport?.rights.status ?? "fixture";
+  const isrc = identity?.isrc;
+  return (
+    <section className="studio-mxm-identity" aria-label="Musixmatch identity chain">
+      <header>
+        <span><Fingerprint size={16} /> Musixmatch Identity Chain</span>
+        <small className="studio-mono">{formatSourceMode(identity?.matchMethod ?? "demo_ready")}{typeof versionConfidence === "number" ? ` · ${Math.round(versionConfidence * 100)}% version confidence` : ""}</small>
+      </header>
+      <div className="studio-mxm-chain">
+        <EvidenceStep label="Track ID" value={formatRecordingId(identity?.trackId ?? track?.id ?? "pending")} detail="track.search → track_id" />
+        <EvidenceStep label="Common Track" value={formatRecordingId(identity?.commonTrackId ?? "not supplied")} detail="commontrack_id" />
+        <EvidenceStep label="ISRC" value={isrc ?? "Not supplied"} detail="recording identity" tone={isrc ? "active" : "risk"} />
+        <EvidenceStep label="Lyric Source" value={formatSourceMode(canonicalSource)} detail="richsync · subtitle · lyrics" />
+        <EvidenceStep label="Rights" value={formatSourceMode(rightsStatus)} detail={passport?.rights.attribution ?? "Lyrics powered by Musixmatch"} tone={rightsStatus === "restricted" || rightsStatus === "metadata_only" ? "risk" : "active"} />
+      </div>
+    </section>
+  );
+}
+
 function ExportPreview({ passport, approvedCount, rejectedCount, pendingCount }: { passport: NonNullable<AnalysisJob["passport"]>; approvedCount: number; rejectedCount: number; pendingCount: number }) {
   const firstVariant = passport.variants[0];
   return (
@@ -405,7 +465,7 @@ function formatCadenceDelta(seconds: number) {
 
 function formatVocalSource(report?: VocalQualityReport) {
   if (!report) return "Pending";
-  const source = report.selectedSource === "lalalai" ? "LALAL.AI" : report.selectedSource === "original" ? "Original audio" : "Fixture";
+  const source = report.selectedSource === "lalalai" ? "LALAL.AI" : report.selectedSource === "demucs" ? "Demucs" : report.selectedSource === "original" ? "Original audio" : "Fixture";
   return report.fallbackUsed ? "Original fallback" : source;
 }
 

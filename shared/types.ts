@@ -4,7 +4,7 @@ export type RuntimeMode = "live" | "fixture" | "mixed";
 
 export type IntegrationName =
   | "Musixmatch"
-  | "LALAL.AI"
+  | "Demucs"
   | "JamBase"
   | "Cyanite"
   | "ElevenLabs"
@@ -103,7 +103,7 @@ export type PerformanceContext = {
 export type AnalysisRecovery = {
   filename: string;
   durationSeconds: number;
-  vocalIsolationSource: "lalalai" | "original" | "fixture";
+  vocalIsolationSource: "lalalai" | "demucs" | "original" | "fixture";
   vocalIsolationConfidence: number;
   vocalQuality?: VocalQualityReport;
   asrSource: "replicate" | "external" | "fixture";
@@ -117,8 +117,8 @@ export type AnalysisRecovery = {
 export type VocalQualityStatus = "passed" | "warning" | "failed" | "fallback_original";
 
 export type VocalQualityReport = {
-  selectedSource: "lalalai" | "original" | "fixture";
-  rejectedSource?: "lalalai";
+  selectedSource: "lalalai" | "demucs" | "original" | "fixture";
+  rejectedSource?: "lalalai" | "demucs";
   status: VocalQualityStatus;
   score: number;
   segmentCount: number;
@@ -265,7 +265,7 @@ export type LiveVariantPassport = {
   clip: {
     filename: string;
     durationSeconds: number;
-    vocalIsolationSource: "lalalai" | "original" | "fixture";
+    vocalIsolationSource: "lalalai" | "demucs" | "original" | "fixture";
     vocalIsolationConfidence: number;
     vocalQuality?: VocalQualityReport;
     asrSource: "replicate" | "external" | "fixture";

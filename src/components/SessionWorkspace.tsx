@@ -146,7 +146,7 @@ function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolea
   if (name === "Musixmatch") return hasTrack ? "Track Ready" : "Catalog Ready";
   if (name === "JamBase") return hasEvent ? "Event Found" : "Search Ready";
   if (name === "ASR") return busy ? "Processing" : "Transcript Ready";
-  if (name === "LALAL.AI") return busy ? "Isolating Vocal" : "Vocal Ready";
+  if (name === "Demucs") return busy ? "Isolating Vocal" : "Vocal Ready";
   if (name === "Cyanite") return busy ? "Profiling Live Energy" : "Context Ready";
   return "Narration Ready";
 }

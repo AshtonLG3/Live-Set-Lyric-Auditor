@@ -36,7 +36,7 @@ type LalalVocalPreset = {
 };
 
 export type VocalIsolationResult = {
-  source: "lalalai" | "original" | "fixture";
+  source: "lalalai" | "demucs" | "original" | "fixture";
   confidence: number;
   detail: string;
   vocalUrl?: string;

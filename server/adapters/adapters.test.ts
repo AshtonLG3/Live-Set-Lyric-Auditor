@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildLiveContext, searchEvents } from "./jambase";
 import { analyzePerformance } from "./cyanite";
-import { isolateVocals } from "./lalal";
+import { isolateVocalsWithDemucs } from "./demucs";
 import { searchTracks } from "./musixmatch";
 import { narratePassport } from "./elevenlabs";
 import { buildPassport } from "../services/alignment";
@@ -32,8 +32,8 @@ describe("fixture-safe adapters", () => {
     });
   });
 
-  it("returns fixture vocal isolation without a file or key", async () => {
-    await expect(isolateVocals()).resolves.toMatchObject({ source: "fixture" });
+  it("returns fixture Demucs isolation without a file or key", async () => {
+    await expect(isolateVocalsWithDemucs()).resolves.toMatchObject({ source: "fixture" });
   });
 
   it("returns a fixture narration script when ElevenLabs is not configured", async () => {

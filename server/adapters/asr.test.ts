@@ -94,7 +94,7 @@ describe("ASR adapter", () => {
       });
 
     const { transcribeLiveVocal } = await import("./asr");
-    const result = await transcribeLiveVocal(undefined, "https://cdn.example/lalal-vocals.mp3");
+    const result = await transcribeLiveVocal(undefined, "https://cdn.example/demucs-vocals.mp3");
 
     expect(result.engine).toBe("openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7");
     expect(result.segments.map((segment) => segment.text).join(" ")).toContain("Talk to God");
@@ -129,13 +129,13 @@ describe("ASR adapter", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { transcribeLiveVocal } = await import("./asr");
-    const result = await transcribeLiveVocal(undefined, "https://cdn.example/lalal-vocals");
+    const result = await transcribeLiveVocal(undefined, "https://cdn.example/demucs-vocals");
 
     expect(result.segments.map((segment) => segment.text)).toEqual(["talk to god wonder if he is mad"]);
-    expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/lalal-vocals");
+    expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/demucs-vocals");
     const audio = runMock.mock.calls[0]?.[1]?.input.audio as File;
     expect(audio).toBeInstanceOf(Blob);
-    expect(audio.name).toBe("lalal-vocals.mp3");
+    expect(audio.name).toBe("demucs-vocals.mp3");
   });
 
   it("drops common low-confidence Whisper filler from live transcripts", async () => {
@@ -165,7 +165,7 @@ describe("ASR adapter", () => {
     await expect(transcribeLiveVocal(audioFile())).rejects.toThrow("Live transcription failed");
   });
 
-  it("sends the separated LALAL vocal stem to external ASR", async () => {
+  it("sends the separated Demucs vocal stem to external ASR", async () => {
     vi.stubEnv("ASR_API_URL", "https://asr.example/transcribe");
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(new Uint8Array([4, 3, 2, 1]), {
@@ -185,7 +185,7 @@ describe("ASR adapter", () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://asr.example/transcribe");
     const body = fetchMock.mock.calls[1]?.[1]?.body as FormData;
     const uploaded = body.get("file") as File;
-    expect(uploaded.name).toBe("lalal-vocals.mp3");
+    expect(uploaded.name).toBe("demucs-vocals.mp3");
     expect(uploaded.type).toBe("audio/mpeg");
   });
 });

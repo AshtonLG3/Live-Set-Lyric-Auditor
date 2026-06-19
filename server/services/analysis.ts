@@ -6,14 +6,14 @@ import type { TranscriptionResult } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
 import { narratePassport } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
-import { isolateVocals } from "../adapters/lalal";
-import type { VocalIsolationResult } from "../adapters/lalal";
+import { isolateVocalsWithDemucs } from "../adapters/demucs";
+import type { VocalIsolationResult } from "../adapters/demucs";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
 import { env } from "../config";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
-import { assessVocalTranscript, buildFallbackQualityReport, shouldRejectLalalStem } from "./vocal-quality";
+import { assessVocalTranscript, buildFallbackQualityReport, shouldRejectSeparatedStem } from "./vocal-quality";
 
 export type AnalyzeInput = {
   file?: Express.Multer.File;
@@ -88,7 +88,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
           confidence: 1,
           detail: "Recall text supplied; no vocal isolation needed."
         }
-      : await isolateVocals(analysisFile);
+      : await isolateVocalsWithDemucs(analysisFile);
     setStep(jobId, "isolate", "complete", initialVocal.detail);
 
     setStep(jobId, "profile", "running");
@@ -138,7 +138,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
       persistRecovery();
       resolved = await resolveTrack(input, selected.transcription.segments).catch(() => {
-        throw new Error("Neither the LALAL.AI stem nor the original-audio fallback produced a confident Musixmatch track match. Select the track manually or use a cleaner vocal excerpt.");
+        throw new Error("Neither the Demucs stem nor the original-audio fallback produced a confident Musixmatch track match. Select the track manually or use a cleaner vocal excerpt.");
       });
     }
     const track = resolved.track;
@@ -314,6 +314,14 @@ type VocalTranscriptionSelection = {
   vocalQuality: VocalQualityReport;
 };
 
+function isSeparatedStem(source: VocalIsolationResult["source"]): boolean {
+  return source === "demucs";
+}
+
+function stemSourceLabel(source: VocalIsolationResult["source"]): string {
+  return source === "demucs" ? "Demucs" : "Separated-audio";
+}
+
 async function selectVocalTranscription(
   jobId: string,
   analysisFile: Express.Multer.File | undefined,
@@ -338,20 +346,21 @@ async function selectVocalTranscription(
       vocalQuality: addIsolationDetail(assessVocalTranscript(transcription.segments, vocal.source), vocal)
     };
   } catch (error) {
-    if (vocal.source === "lalalai" && analysisFile) {
-      const reason = error instanceof Error ? error.message : "LALAL.AI stem transcription failed";
-      setStep(jobId, "transcribe", "running", "LALAL.AI stem ASR failed; retrying original audio.");
+    if (isSeparatedStem(vocal.source) && analysisFile) {
+      const label = stemSourceLabel(vocal.source);
+      const reason = error instanceof Error ? error.message : `${label} stem transcription failed`;
+      setStep(jobId, "transcribe", "running", `${label} stem ASR failed; retrying original audio.`);
       return originalFallbackSelection(
         analysisFile,
-        assessVocalTranscript([], "lalalai", [reason]),
-        "the LALAL.AI stem could not be transcribed"
+        assessVocalTranscript([], vocal.source, [reason]),
+        `the ${label} stem could not be transcribed`
       );
     }
     throw error;
   }
 
-  if (primary.vocal.source === "lalalai" && analysisFile) {
-    setStep(jobId, "transcribe", "running", "Comparing LALAL.AI stem with raw audio ASR.");
+  if (isSeparatedStem(primary.vocal.source) && analysisFile) {
+    setStep(jobId, "transcribe", "running", `Comparing ${stemSourceLabel(primary.vocal.source)} stem with raw audio ASR.`);
     try {
       const original = await originalTranscriptionSelection(analysisFile);
       const fallbackReason = originalFallbackReason(primary, original);
@@ -362,12 +371,12 @@ async function selectVocalTranscription(
         ...primary,
         vocalQuality: {
           ...primary.vocalQuality,
-          detail: `${primary.vocalQuality.detail} Raw comparison scored ${Math.round(original.vocalQuality.score * 100)}%; LALAL.AI stem retained.`
+          detail: `${primary.vocalQuality.detail} Raw comparison scored ${Math.round(original.vocalQuality.score * 100)}%; ${stemSourceLabel(primary.vocal.source)} stem retained.`
         }
       };
     } catch (error) {
       const fallbackError = error instanceof Error ? error.message : "original audio fallback failed";
-      if (!shouldRejectLalalStem(primary.vocalQuality)) {
+      if (!shouldRejectSeparatedStem(primary.vocalQuality)) {
         return {
           ...primary,
           vocalQuality: {
@@ -398,16 +407,17 @@ async function maybeRetryOriginalForAnchor(
   selected: VocalTranscriptionSelection,
   anchorError: unknown
 ): Promise<VocalTranscriptionSelection | null> {
-  if (!input.autoMatch || !analysisFile || selected.vocal.source !== "lalalai") {
+  if (!input.autoMatch || !analysisFile || !isSeparatedStem(selected.vocal.source)) {
     return null;
   }
-  const reason = anchorError instanceof Error ? anchorError.message : "LALAL.AI stem did not anchor to a Musixmatch track";
-  setStep(jobId, "anchor", "running", "LALAL.AI transcript could not anchor; retrying original-audio transcript.");
+  const label = stemSourceLabel(selected.vocal.source);
+  const reason = anchorError instanceof Error ? anchorError.message : `${label} stem did not anchor to a Musixmatch track`;
+  setStep(jobId, "anchor", "running", `${label} transcript could not anchor; retrying original-audio transcript.`);
   return originalFallbackSelection(
     analysisFile,
     selected.vocalQuality,
     reason.includes("confident Musixmatch")
-      ? "the LALAL.AI transcript did not produce a confident Musixmatch match"
+      ? `the ${label} transcript did not produce a confident Musixmatch match`
       : reason
   );
 }
@@ -424,31 +434,32 @@ function originalFallbackReason(stem: VocalTranscriptionSelection, original: Voc
   if (original.vocalQuality.status === "failed") {
     return null;
   }
-  if (shouldRejectLalalStem(stem.vocalQuality)) {
-    return stem.vocalQuality.issues[0] ?? "the LALAL.AI stem failed transcript quality checks";
+  const label = stemSourceLabel(stem.vocal.source);
+  if (shouldRejectSeparatedStem(stem.vocalQuality)) {
+    return stem.vocalQuality.issues[0] ?? `the ${label} stem failed transcript quality checks`;
   }
   if (original.vocalQuality.score >= stem.vocalQuality.score + 0.08) {
-    return `raw ASR scored ${Math.round(original.vocalQuality.score * 100)}% versus ${Math.round(stem.vocalQuality.score * 100)}% for the LALAL.AI stem`;
+    return `raw ASR scored ${Math.round(original.vocalQuality.score * 100)}% versus ${Math.round(stem.vocalQuality.score * 100)}% for the ${label} stem`;
   }
   if (
     stem.vocalQuality.status === "warning" &&
     original.vocalQuality.status === "passed" &&
     original.vocalQuality.score >= stem.vocalQuality.score
   ) {
-    return "the LALAL.AI stem carried a quality warning and raw ASR was at least as strong";
+    return `the ${label} stem carried a quality warning and raw ASR was at least as strong`;
   }
   if (
     stem.vocalQuality.repetitionRatio - original.vocalQuality.repetitionRatio >= 0.18 &&
     original.vocalQuality.score >= stem.vocalQuality.score - 0.03
   ) {
-    return "raw ASR had materially less repetition than the LALAL.AI stem";
+    return `raw ASR had materially less repetition than the ${label} stem`;
   }
   if (
     original.vocalQuality.tokenCount >= stem.vocalQuality.tokenCount * 1.45 &&
     original.vocalQuality.uniqueTokenRatio >= stem.vocalQuality.uniqueTokenRatio &&
     original.vocalQuality.score >= stem.vocalQuality.score - 0.02
   ) {
-    return "raw ASR preserved substantially more lyric content than the LALAL.AI stem";
+    return `raw ASR preserved substantially more lyric content than the ${label} stem`;
   }
   return null;
 }
@@ -478,15 +489,15 @@ function selectOriginalFallback(
     ...original,
     vocal: {
       ...original.vocal,
-      detail: `Original audio selected after LALAL.AI stem comparison. ${reason}`
+      detail: `Original audio selected after Demucs stem comparison. ${reason}`
     },
     vocalQuality: buildFallbackQualityReport(original.vocalQuality, rejectedQuality, reason)
   };
 }
 
 function transcriptionDetail(selection: VocalTranscriptionSelection): string {
-  const sourceLabel = selection.vocal.source === "lalalai"
-    ? "LALAL.AI stem"
+  const sourceLabel = selection.vocal.source === "demucs"
+    ? "Demucs stem"
     : selection.vocal.source === "original"
       ? "original audio"
       : "fixture vocal";
@@ -524,7 +535,7 @@ function assertSelectedTrackFitsTranscript(passport: LiveVariantPassport): void 
 }
 
 function addIsolationDetail(report: VocalQualityReport, vocal: VocalIsolationResult): VocalQualityReport {
-  if (vocal.source !== "lalalai") {
+  if (!isSeparatedStem(vocal.source)) {
     return report;
   }
   return {

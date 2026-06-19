@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     track,
-    isolateVocals: vi.fn(),
+    isolateVocalsWithDemucs: vi.fn(),
     transcribeLiveVocal: vi.fn(),
     transcribeRecallFragment: vi.fn(),
     identifyTrackFromLyrics: vi.fn(),
@@ -23,8 +23,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../adapters/lalal", () => ({
-  isolateVocals: mocks.isolateVocals
+vi.mock("../adapters/demucs", () => ({
+  isolateVocalsWithDemucs: mocks.isolateVocalsWithDemucs
 }));
 
 vi.mock("../adapters/asr", () => ({
@@ -46,14 +46,15 @@ describe("analysis vocal quality fallback", () => {
   afterEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
-  it("rejects a repetitive LALAL stem and completes with original-audio ASR", async () => {
-    mocks.isolateVocals.mockResolvedValue({
-      source: "lalalai",
+  it("rejects a repetitive Demucs stem and completes with original-audio ASR", async () => {
+    mocks.isolateVocalsWithDemucs.mockResolvedValue({
+      source: "demucs",
       confidence: 0.86,
-      detail: "Live LALAL.AI vocal isolation completed.",
-      vocalUrl: "https://cdn.example/lalal-vocals.mp3"
+      detail: "Replicate Demucs vocal stem isolation completed.",
+      vocalUrl: "https://cdn.example/demucs-vocals.mp3"
     });
     mocks.transcribeLiveVocal.mockImplementation(async (_file: Express.Multer.File | undefined, vocalUrl?: string) => ({
       source: "replicate",
@@ -103,11 +104,11 @@ describe("analysis vocal quality fallback", () => {
     expect(analyzed?.passport?.clip.vocalQuality).toMatchObject({
       status: "fallback_original",
       fallbackUsed: true,
-      rejectedSource: "lalalai"
+      rejectedSource: "demucs"
     });
     expect(analyzed?.passport?.clip.transcript[0]?.text).toContain("Talk to God");
     expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(2);
-    expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBe("https://cdn.example/lalal-vocals.mp3");
+    expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBe("https://cdn.example/demucs-vocals.mp3");
     expect(mocks.transcribeLiveVocal.mock.calls[1]?.[1]).toBeUndefined();
   });
 });

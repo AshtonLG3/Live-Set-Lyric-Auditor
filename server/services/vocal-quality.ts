@@ -64,8 +64,9 @@ export function assessVocalTranscript(
   };
 }
 
-export function shouldRejectLalalStem(report: VocalQualityReport): boolean {
-  return report.selectedSource === "lalalai" && (report.status === "failed" || report.repetitionRatio >= 0.35);
+export function shouldRejectSeparatedStem(report: VocalQualityReport): boolean {
+  const isSeparatedStem = report.selectedSource === "lalalai" || report.selectedSource === "demucs";
+  return isSeparatedStem && (report.status === "failed" || report.repetitionRatio >= 0.35);
 }
 
 export function buildFallbackQualityReport(
@@ -73,13 +74,14 @@ export function buildFallbackQualityReport(
   rejected: VocalQualityReport,
   reason: string
 ): VocalQualityReport {
+  const rejectedLabel = rejected.selectedSource === "demucs" ? "Demucs" : "LALAL.AI";
   return {
     ...selected,
     status: "fallback_original",
-    rejectedSource: "lalalai",
+    rejectedSource: rejected.selectedSource === "demucs" ? "demucs" : "lalalai",
     fallbackUsed: true,
-    issues: [`LALAL.AI stem not selected: ${reason}`, `Stem score was ${Math.round(rejected.score * 100)}%.`, ...selected.issues],
-    detail: `LALAL.AI stem was not selected; original audio transcript selected. ${reason}`
+    issues: [`${rejectedLabel} stem not selected: ${reason}`, `Stem score was ${Math.round(rejected.score * 100)}%.`, ...selected.issues],
+    detail: `${rejectedLabel} stem was not selected; original audio transcript selected. ${reason}`
   };
 }
 
@@ -108,7 +110,7 @@ function dominantNgramStats(tokens: string[], size: number): { phrase: string; r
 }
 
 function qualityDetail(source: VocalSource, status: VocalQualityReport["status"], score: number, issues: string[]): string {
-  const label = source === "lalalai" ? "LALAL.AI stem" : source === "original" ? "original audio" : "fixture vocal";
+  const label = source === "lalalai" ? "LALAL.AI stem" : source === "demucs" ? "Demucs stem" : source === "original" ? "original audio" : "fixture vocal";
   if (status === "passed") {
     return `${label} passed transcript quality gate (${Math.round(score * 100)}%).`;
   }

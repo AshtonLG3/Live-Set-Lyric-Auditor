@@ -13,6 +13,7 @@ export type AlignmentResult = {
 
 const LOW_ASR_CONFIDENCE = 0.7;
 const STRONG_ALIGNMENT = 0.72;
+const MATCH_FLOOR = 0.2;
 
 const citySignals = [
   "cape town",
@@ -74,27 +75,37 @@ function longestCommonSubsequenceLength(a: string[], b: string[]): number {
   return prev[cols];
 }
 
-export function alignTranscript(transcript: TranscriptSegment[], canonicalLines: CanonicalLine[]): AlignmentResult[] {
-  const rawAlignments = transcript.map((segment) => {
-    const scored = canonicalLines
-      .map((line) => ({
-        line,
-        similarity: tokenSimilarity(segment.text, line.text),
-        rawTimingDelta: Math.abs(segment.start - line.start)
-      }))
-      .sort((a, b) => b.similarity - a.similarity || a.rawTimingDelta - b.rawTimingDelta);
-
-    const best = scored[0];
-    const canonical = best && best.similarity >= 0.2 ? best.line : null;
+export function alignTranscript(
+  transcript: TranscriptSegment[],
+  canonicalLines: CanonicalLine[],
+  timingReliable = true
+): AlignmentResult[] {
+  const assignments = alignMonotonic(transcript, canonicalLines);
+  const rawAlignments = transcript.map((segment, index) => {
+    const canonical = assignments[index] >= 0 ? canonicalLines[assignments[index]] : null;
+    const similarity = canonical ? tokenSimilarity(segment.text, canonical.text) : 0;
+    const rawTimingDelta = canonical ? Math.abs(segment.start - canonical.start) : 0;
     return {
       transcript: segment,
       canonical,
-      similarity: best?.similarity ?? 0,
-      timingDelta: best?.rawTimingDelta ?? 0,
-      rawTimingDelta: best?.rawTimingDelta ?? 0,
+      similarity,
+      timingDelta: rawTimingDelta,
+      rawTimingDelta,
       clipOffset: 0
     };
   });
+
+  if (!timingReliable) {
+    // Canonical timestamps are fabricated (plain lyrics use index*4 spacing), so any
+    // drift or clip-offset number would be noise. Report no timing signal instead of
+    // a false one. Line matching itself is unaffected.
+    return rawAlignments.map((alignment) => ({
+      ...alignment,
+      timingDelta: 0,
+      rawTimingDelta: 0,
+      clipOffset: 0
+    }));
+  }
 
   const anchorOffsets = rawAlignments
     .filter((alignment) =>
@@ -115,6 +126,56 @@ export function alignTranscript(transcript: TranscriptSegment[], canonicalLines:
       clipOffset
     };
   });
+}
+
+// Global, order-preserving alignment of live segments onto canonical lines.
+// Each segment is matched to a canonical line whose index is non-decreasing across
+// the clip (a chorus reprise stays in song order instead of snapping back to an
+// earlier duplicate), repeats are allowed for sustained hooks, and weak matches are
+// left unanchored as ad-libs. Maximizes total token similarity via dynamic
+// programming rather than picking each segment's best line independently.
+function alignMonotonic(transcript: TranscriptSegment[], canonicalLines: CanonicalLine[]): number[] {
+  const segments = transcript.length;
+  const lines = canonicalLines.length;
+  if (segments === 0) return [];
+  if (lines === 0) return new Array<number>(segments).fill(-1);
+
+  const similarity = transcript.map((segment) =>
+    canonicalLines.map((line) => tokenSimilarity(segment.text, line.text))
+  );
+
+  // best[i][cursor]: best score aligning segments i.. when only canonical indices
+  // >= cursor remain available. choice[i][cursor]: canonical index chosen for
+  // segment i (-1 = leave it unanchored). Leaving a segment unanchored earns
+  // MATCH_FLOOR so a line is only claimed when its overlap clears the same bar the
+  // previous greedy threshold used.
+  const best: number[][] = Array.from({ length: segments + 1 }, () => new Array<number>(lines + 1).fill(0));
+  const choice: number[][] = Array.from({ length: segments }, () => new Array<number>(lines + 1).fill(-1));
+
+  for (let i = segments - 1; i >= 0; i -= 1) {
+    for (let cursor = lines; cursor >= 0; cursor -= 1) {
+      let bestScore = MATCH_FLOOR + best[i + 1][cursor];
+      let bestChoice = -1;
+      for (let line = cursor; line < lines; line += 1) {
+        const score = similarity[i][line] + best[i + 1][line];
+        if (score > bestScore) {
+          bestScore = score;
+          bestChoice = line;
+        }
+      }
+      best[i][cursor] = bestScore;
+      choice[i][cursor] = bestChoice;
+    }
+  }
+
+  const assignments: number[] = [];
+  let cursor = 0;
+  for (let i = 0; i < segments; i += 1) {
+    const line = choice[i][cursor];
+    assignments.push(line);
+    if (line >= 0) cursor = line;
+  }
+  return assignments;
 }
 
 export function classifyVariants(
@@ -372,7 +433,7 @@ export function buildPassport(input: {
   copyright?: string;
   trackingUrl?: string;
   matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
-  vocalIsolationSource: "lalalai" | "original" | "fixture";
+  vocalIsolationSource: "lalalai" | "demucs" | "original" | "fixture";
   vocalIsolationConfidence: number;
   vocalQuality?: VocalQualityReport;
   asrSource: "replicate" | "external" | "fixture";
@@ -381,7 +442,11 @@ export function buildPassport(input: {
   liveContext?: LiveContext | null;
   performanceContext?: PerformanceContext;
 }): LiveVariantPassport {
-  const alignments = alignTranscript(input.transcript, input.canonicalLines);
+  // Only richsync (real per-line ts) and LRC subtitles carry true performance
+  // timing; plain lyrics fabricate index*4 spacing, so timing drift is suppressed
+  // there to avoid reporting a confident number we know is invented.
+  const timingReliable = input.canonicalSource !== "lyrics" && input.canonicalSource !== "metadata-only";
+  const alignments = alignTranscript(input.transcript, input.canonicalLines, timingReliable);
   const averageAlignment = average(alignments.map((alignment) => alignment.similarity));
   const averageAsr = average(input.transcript.map((segment) => segment.confidence));
   const averageTimingDelta = average(alignments.filter((alignment) => alignment.canonical).map((alignment) => alignment.timingDelta));
@@ -478,9 +543,11 @@ export function buildPassport(input: {
         ? input.vocalQuality.detail
         : input.vocalIsolationSource === "lalalai"
           ? "Configured LALAL.AI vocal isolation supplied the transcription stem."
-          : input.vocalIsolationSource === "original"
-            ? "Vocal isolation was unavailable or rejected, so transcription used the original user-supplied audio."
-            : "Seeded demo isolation metadata was used for the fixture run."
+          : input.vocalIsolationSource === "demucs"
+            ? "Configured Replicate Demucs vocal isolation supplied the transcription stem."
+            : input.vocalIsolationSource === "original"
+              ? "Vocal isolation was unavailable or rejected, so transcription used the original user-supplied audio."
+              : "Seeded demo isolation metadata was used for the fixture run."
     ]
   };
 }

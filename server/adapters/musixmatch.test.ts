@@ -45,6 +45,18 @@ describe("Musixmatch identification", () => {
   });
 });
 
+describe("subtitle timing", () => {
+  it("parses real LRC timestamps instead of fabricating index*4 spacing", async () => {
+    const { parseLrcBody } = await import("./musixmatch");
+    const lines = parseLrcBody("[ar:Some Artist]\n[00:09.50]first line here\n[00:14.20]second line here\n[00:19.00]third line here");
+    expect(lines).toEqual([
+      { id: "L1", start: 9.5, end: 14.2, text: "first line here" },
+      { id: "L2", start: 14.2, end: 19, text: "second line here" },
+      { id: "L3", start: 19, end: 23, text: "third line here" }
+    ]);
+  });
+});
+
 function transcript(): TranscriptSegment[] {
   return [
     { id: "T1", start: 0, end: 4, text: "these are the first clear lyric words", confidence: 0.95 },

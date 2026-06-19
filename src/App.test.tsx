@@ -20,7 +20,7 @@ const health: HealthResponse = {
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
-    { name: "LALAL.AI", configured: false, mode: "fixture", detail: "fixture" },
+    { name: "Demucs", configured: false, mode: "fixture", detail: "fixture" },
     { name: "JamBase", configured: false, mode: "fixture", detail: "fixture" },
     { name: "Cyanite", configured: false, mode: "fixture", detail: "fixture" },
     { name: "ElevenLabs", configured: false, mode: "fixture", detail: "fixture" },
@@ -361,6 +361,24 @@ it("runs the seeded demo and renders a passport", async () => {
   expect(screen.getByText(/1 approved, 0 rejected, and 0 pending/i)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
+}, 60000);
+
+it("surfaces the Musixmatch identity chain including ISRC and version confidence", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
+
+  expect(screen.getByText(/Musixmatch Identity/i)).toBeInTheDocument();
+  expect(screen.getAllByText("FIK202600001").length).toBeGreaterThan(0);
+  expect(screen.getByText(/91% version confidence/i)).toBeInTheDocument();
+}, 60000);
+
+it("flags seeded demo passports so fixtures are never mistaken for a live run", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
+
+  expect(screen.getByText(/Seeded demo data/i)).toBeInTheDocument();
 }, 60000);
 
 it("adds a missed live moment via the inline insert button", async () => {
