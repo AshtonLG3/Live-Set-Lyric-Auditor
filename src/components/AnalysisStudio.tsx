@@ -38,11 +38,12 @@ import {
   formatSourceMode,
   formatRecordingId,
   formatTime,
+  formatSignedSeconds,
   formatSetlistPosition,
   manualVariantToComparison,
   summarizeComparisons,
   comparisonStatusOrder,
-  tokenizeLocal
+  wordDiffSummary
 } from "./studio-utils";
 
 export type { ReviewDecision, ReviewDecisions };
@@ -84,13 +85,8 @@ export function AnalysisStudio(props: Props) {
     return merged.map((row) => {
       const edited = props.editedTexts[row.id];
       if (!edited || edited === row.liveText) return row;
-      const canonical = tokenizeLocal(row.canonicalText ?? "");
-      const live = tokenizeLocal(edited);
-      const canonicalSet = new Set(canonical);
-      const liveSet = new Set(live);
-      const removed = canonical.filter((w) => !liveSet.has(w));
-      const added = live.filter((w) => !canonicalSet.has(w));
-      const hasChanges = removed.length > 0 || added.length > 0;
+      const changedWords = wordDiffSummary(row.canonicalText ?? "", edited);
+      const hasChanges = changedWords.removed.length > 0 || changedWords.added.length > 0;
       const newStatus = !row.canonicalText ? row.status
         : hasChanges ? "changed" as const
         : "matched" as const;
@@ -98,11 +94,7 @@ export function AnalysisStudio(props: Props) {
         ...row,
         liveText: edited,
         status: newStatus,
-        changedWords: {
-          kept: canonical.filter((w) => liveSet.has(w)),
-          removed,
-          added
-        }
+        changedWords
       };
     });
   }, [passport?.lineComparisons, props.manualVariants, props.editedTexts]);
@@ -123,6 +115,10 @@ export function AnalysisStudio(props: Props) {
   const displayDuration = mediaDuration || passport?.clip.durationSeconds || recovery?.durationSeconds || 0;
   const activeTranscriptId = transcript.find((segment) => currentTime >= segment.start && currentTime < segment.end)?.id;
   const overallConfidence = Math.round((passport?.confidenceOverview.overall ?? 0.81) * 100);
+  const asrUncertainCount = passport?.confidenceOverview.asrUncertainSegments ?? transcript.filter((segment) => segment.confidence < 0.7).length;
+  const timingOffsetSeconds = passport?.confidenceOverview.timingOffsetSeconds ?? comparisonRows.find((row) => typeof row.clipOffset === "number")?.clipOffset ?? 0;
+  const averageTimingDeltaSeconds = passport?.confidenceOverview.averageTimingDelta ?? average(comparisonRows.filter((row) => row.canonicalId).map((row) => row.timingDelta));
+  const pendingCount = Math.max(0, variants.length - approvedCount - rejectedCount);
 
   useEffect(() => {
     setManualOpen(false);
@@ -175,6 +171,16 @@ export function AnalysisStudio(props: Props) {
         {correctionOpen && (
           <CorrectionPanel track={track} onCorrectTrack={props.onCorrectTrack} onClose={() => setCorrectionOpen(false)} />
         )}
+
+        <EvidenceChainPanel
+          passport={passport}
+          recovery={recovery}
+          health={props.health}
+          asrUncertainCount={asrUncertainCount}
+          variantCount={variants.length}
+          timingOffsetSeconds={timingOffsetSeconds}
+          averageTimingDeltaSeconds={averageTimingDeltaSeconds}
+        />
 
         <section id="analysis-timeline" className="studio-rack-panel studio-analysis-rack">
           <header><span><Activity size={18} /> Analysis Timeline</span><small><i /> {active ? "Processing" : "Complete"}</small></header>
@@ -255,7 +261,7 @@ export function AnalysisStudio(props: Props) {
 
         <section className="studio-metric-strip" aria-label="Passport metrics">
           <MetricCard icon={<Gauge size={16} />} label="Divergence Score" value={`${divergence}%`} detail="Derived from alignment fit" tone="orange" />
-          <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={`+${Math.max(40, Math.round((1 - (passport?.confidenceOverview.alignment ?? 0.72)) * 420))}ms`} detail="Live timing against reference" tone="cyan" />
+          <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={formatCadenceDelta(averageTimingDeltaSeconds)} detail={`After ${formatSignedSeconds(timingOffsetSeconds)} clip offset`} tone={averageTimingDeltaSeconds >= 2.5 ? "orange" : "cyan"} />
           <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={`${energyLevel}%`} detail={`${formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}${performanceContext?.bpm ? ` · ${performanceContext.bpm} BPM` : ""}`} tone={energyLevel >= 78 ? "orange" : "cyan"} />
           <MetricCard icon={<BadgeCheck size={16} />} label="Passport Status" value={riskCount ? "Review" : "Valid"} detail={riskCount ? `${riskCount} risk candidate${riskCount === 1 ? "" : "s"}` : "Ready to export"} tone={riskCount ? "orange" : "cyan"} />
         </section>
@@ -271,8 +277,9 @@ export function AnalysisStudio(props: Props) {
               </div>
               <p className="mt-4 text-sm leading-6">{passport?.summary ?? "Run a session to replace the preview with derived Live Variant Passport data."}</p>
               <div className="mt-4 flex flex-wrap gap-2">{(passport?.structureMap.live ?? ["Live opening", "City shoutout", "Hook repeat"]).map((item, index) => <span key={`${item}-${index}`} className="studio-chip">{item}</span>)}</div>
+              {passport && <ExportPreview passport={passport} approvedCount={approvedCount} rejectedCount={rejectedCount} pendingCount={pendingCount} />}
               <button className="studio-secondary-button mt-4 w-full" type="button" onClick={() => void props.onNarrate()}><Sparkles size={16} /> Generate narration</button>
-              <p className="studio-export-note">Top-bar export includes {approvedCount} approved, {rejectedCount} rejected, and {variants.length - approvedCount - rejectedCount} pending decisions.</p>
+              <p className="studio-export-note">Top-bar export includes {approvedCount} approved, {rejectedCount} rejected, and {pendingCount} pending decisions.</p>
               {props.narration && <div className="studio-narration"><p className="studio-label">{props.narration.mode}</p><p className="mt-2 text-sm leading-6">{props.narration.text}</p>{props.narration.audioUrl && <audio className="mt-3 w-full" controls src={props.narration.audioUrl} />}</div>}
             </div>
           </article>
@@ -305,6 +312,60 @@ function ContextCard({ icon, label, status, tone = "active", children }: { icon:
   return <article className={`studio-context-card ${tone === "risk" ? "risk" : ""}`}><header><span>{icon}{label}</span><small><i />{status}</small></header><div>{children}</div></article>;
 }
 
+function EvidenceChainPanel({
+  passport,
+  recovery,
+  health,
+  asrUncertainCount,
+  variantCount,
+  timingOffsetSeconds,
+  averageTimingDeltaSeconds
+}: {
+  passport?: AnalysisJob["passport"];
+  recovery?: AnalysisJob["recovery"];
+  health: HealthResponse | null;
+  asrUncertainCount: number;
+  variantCount: number;
+  timingOffsetSeconds: number;
+  averageTimingDeltaSeconds: number;
+}) {
+  const source = passport?.clip.source ?? recovery?.source;
+  const asrSource = passport?.clip.asrSource ?? recovery?.asrSource ?? "fixture";
+  const canonicalSource = passport?.recordingIdentity.canonicalSource ?? "fixture";
+  const rightsStatus = passport?.rights.status ?? (health?.runtimeMode === "live" ? "pending" : "fixture");
+  const sourceDetail = source?.processingMode === "provider_excerpt"
+    ? "Provider excerpt analyzed and deleted"
+    : source?.processingMode === "authorized_excerpt"
+      ? "User-authorized excerpt"
+      : "Uploaded or recalled source";
+
+  return (
+    <section className="studio-evidence-chain" aria-label="Evidence chain">
+      <EvidenceStep label="Source" value={formatSourceMode(source?.processingMode ?? health?.runtimeMode ?? "fixture")} detail={sourceDetail} />
+      <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round((passport?.confidenceOverview.asr ?? 0) * 100)}%`} detail={asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"} tone={asrUncertainCount ? "risk" : "active"} />
+      <EvidenceStep label="Canonical" value={formatSourceMode(canonicalSource)} detail={passport?.track.title ?? "Track anchor pending"} />
+      <EvidenceStep label="Timing" value={formatCadenceDelta(averageTimingDeltaSeconds)} detail={`Clip offset ${formatSignedSeconds(timingOffsetSeconds)}`} tone={averageTimingDeltaSeconds >= 2.5 ? "risk" : "active"} />
+      <EvidenceStep label="Export" value={`${variantCount} candidate${variantCount === 1 ? "" : "s"}`} detail={formatSourceMode(rightsStatus)} tone={rightsStatus === "restricted" || rightsStatus === "metadata_only" ? "risk" : "active"} />
+    </section>
+  );
+}
+
+function EvidenceStep({ label, value, detail, tone = "active" }: { label: string; value: string; detail: string; tone?: "active" | "risk" }) {
+  return <article className={`studio-evidence-step ${tone === "risk" ? "risk" : ""}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
+}
+
+function ExportPreview({ passport, approvedCount, rejectedCount, pendingCount }: { passport: NonNullable<AnalysisJob["passport"]>; approvedCount: number; rejectedCount: number; pendingCount: number }) {
+  const firstVariant = passport.variants[0];
+  return (
+    <div className="studio-export-preview" aria-label="Export preview">
+      <div><span>Passport</span><strong>{passport.id} · v{passport.version}</strong></div>
+      <div><span>Decision state</span><strong>{approvedCount} approved · {rejectedCount} rejected · {pendingCount} pending</strong></div>
+      <div><span>Evidence</span><strong>ASR {Math.round(passport.confidenceOverview.asr * 100)}% · Align {Math.round(passport.confidenceOverview.alignment * 100)}%</strong></div>
+      <div><span>Lead candidate</span><strong>{firstVariant ? `${formatSourceMode(firstVariant.type)} · ${formatSourceMode(firstVariant.evidenceTier ?? "needs_review")}` : "No candidate"}</strong></div>
+    </div>
+  );
+}
+
 function MetricCard({ icon, label, value, detail, tone }: { icon: React.ReactNode; label: string; value: string; detail: string; tone?: "cyan" | "orange" }) {
   return <article className={`studio-analysis-metric ${tone ? `tone-${tone}` : ""}`}><p>{icon}{label}</p><strong>{value}</strong><small>{detail}</small><span><i /></span></article>;
 }
@@ -321,6 +382,16 @@ function StudioStep({ step }: { step: AnalysisStep }) {
 function DataLine({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
 function StudioMetric({ label, value }: { label: string; value: string }) { return <div className="studio-metric"><span>{label}</span><strong>{value}</strong></div>; }
 function ReadinessFlag({ label, active }: { label: string; active: boolean }) { return <span className={`studio-readiness ${active ? "studio-readiness-active" : ""}`}>{active ? <CheckCircle2 size={13} /> : <CircleAlert size={13} />}{label}</span>; }
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatCadenceDelta(seconds: number) {
+  if (seconds >= 1) return `${(Math.round(seconds * 10) / 10).toFixed(1)}s`;
+  return `${Math.round(seconds * 1000)}ms`;
+}
 
 const defaultSteps: AnalysisStep[] = [
   { id: "ingest", label: "Validate source", status: "complete" },

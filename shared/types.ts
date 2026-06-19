@@ -142,6 +142,13 @@ export type VariantType =
   | "timing_drift"
   | "uncertain";
 
+export type EvidenceTier =
+  | "aligned"
+  | "likely_change"
+  | "needs_review"
+  | "asr_uncertain"
+  | "source_gap";
+
 export type VariantCandidate = {
   id: string;
   type: VariantType;
@@ -156,6 +163,7 @@ export type VariantCandidate = {
   translationRisk: "low" | "medium" | "high";
   severity: "low" | "medium" | "high";
   evidenceSource?: "asr_alignment" | "manual_entry";
+  evidenceTier?: EvidenceTier;
   reviewerNote?: string;
 };
 
@@ -185,8 +193,11 @@ export type LineComparison = {
   liveText: string;
   similarity: number;
   timingDelta: number;
+  rawTimingDelta?: number;
+  clipOffset?: number;
   status: LineComparisonStatus;
   changedWords: WordDiff;
+  evidenceTier?: EvidenceTier;
   variantId?: string;
 };
 
@@ -220,6 +231,9 @@ export type ConfidenceOverview = {
   asr: number;
   alignment: number;
   sourceCoverage: number;
+  asrUncertainSegments?: number;
+  timingOffsetSeconds?: number;
+  averageTimingDelta?: number;
 };
 
 export type LiveVariantPassport = {

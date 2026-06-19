@@ -16,6 +16,7 @@ import {
   type ReviewDecision,
   type ReviewDecisions,
   computeInlineWordDiff,
+  formatEvidenceTier,
   formatComparisonStatus,
   formatTime
 } from "./studio-utils";
@@ -97,6 +98,7 @@ export function DiffView(props: Props) {
                   </button>
                   <span className={`studio-lyric-status status-${comparison.status}`}>{formatComparisonStatus(comparison.status)}</span>
                   {variant && <span className="studio-lyric-type">{variant.type.replaceAll("_", " ")}</span>}
+                  {comparison.evidenceTier && <span className={`studio-evidence-tier tier-${comparison.evidenceTier}`}>{formatEvidenceTier(comparison.evidenceTier)}</span>}
                 </div>
 
                 {comparison.canonicalText && hasChanges && !isSkipped && (
@@ -165,6 +167,7 @@ export function DiffView(props: Props) {
                     {decision === "approved" ? "Approved" : "Rejected"}
                   </p>
                 )}
+                {variant?.reviewerNote && <p className="studio-lyric-review-note">{variant.reviewerNote}</p>}
               </div>
             </div>
           );

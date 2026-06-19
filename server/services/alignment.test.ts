@@ -80,13 +80,57 @@ describe("alignment pipeline", () => {
     expect(alignments).toHaveLength(1);
   });
 
-  it("classifies timing_drift when similarity is high but timing offset is large", () => {
+  it("normalizes clip offset before calling timing drift", () => {
     const segments = [
       { id: "T1", start: 30, end: 34, text: fixtureCanonicalLines[0].text, confidence: 0.95 }
     ];
     const alignments = alignTranscript(segments, fixtureCanonicalLines);
     const variants = classifyVariants(alignments, fixtureCanonicalLines, 0.9);
+    expect(alignments[0]).toMatchObject({ rawTimingDelta: 30, timingDelta: 0, clipOffset: -30 });
+    expect(variants.some((v) => v.type === "timing_drift")).toBe(false);
+  });
+
+  it("still classifies residual timing drift after the clip offset is anchored", () => {
+    const segments = [
+      { id: "T1", start: 30, end: 34, text: fixtureCanonicalLines[0].text, confidence: 0.95 },
+      { id: "T2", start: 34, end: 38, text: fixtureCanonicalLines[1].text, confidence: 0.95 },
+      { id: "T3", start: 44, end: 48, text: fixtureCanonicalLines[2].text, confidence: 0.95 }
+    ];
+    const alignments = alignTranscript(segments, fixtureCanonicalLines);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 0.9);
+    expect(alignments[0].clipOffset).toBe(-30);
+    expect(alignments[2].timingDelta).toBeGreaterThanOrEqual(2.5);
     expect(variants.some((v) => v.type === "timing_drift")).toBe(true);
+  });
+
+  it("keeps reordered words out of the export diff kept bucket", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 3, text: "you love me" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 3, text: "me love you", confidence: 0.95 }
+    ], canonicalLines);
+    const comparisons = buildLineComparisons(alignments, canonicalLines);
+    expect(comparisons[0].changedWords).toEqual({
+      kept: ["me"],
+      removed: ["you", "love"],
+      added: ["love", "you"]
+    });
+  });
+
+  it("marks low-confidence ASR as uncertain instead of a confirmed lyric change", () => {
+    const alignments = alignTranscript([
+      { id: "T1", start: 4, end: 8, text: "Cape Town carry this chorus", confidence: 0.52 }
+    ], fixtureCanonicalLines);
+    const variants = classifyVariants(alignments, fixtureCanonicalLines, 1, "Cape Town");
+    const comparisons = buildLineComparisons(alignments, fixtureCanonicalLines, variants);
+    expect(variants[0]).toMatchObject({
+      type: "uncertain",
+      evidenceTier: "asr_uncertain"
+    });
+    expect(variants[0].reviewerNote).toContain("ASR confidence");
+    expect(comparisons[0]).toMatchObject({
+      status: "uncertain",
+      evidenceTier: "asr_uncertain"
+    });
   });
 
   it("builds a passport with cached review excerpts but without storing canonicalLines", () => {

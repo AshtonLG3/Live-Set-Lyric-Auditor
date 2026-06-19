@@ -1,4 +1,4 @@
-import type { LineComparison, LineComparisonStatus, VariantCandidate, VariantType } from "../../shared/types";
+import type { EvidenceTier, LineComparison, LineComparisonStatus, VariantCandidate, VariantType, WordDiff } from "../../shared/types";
 
 export type FilterMode = "all" | "performance" | "risk";
 export type ReviewDecision = "approved" | "rejected";
@@ -40,6 +40,12 @@ export function formatOffset(value: number) {
   return `00:${formatTime(value)}`;
 }
 
+export function formatSignedSeconds(value?: number) {
+  const normalized = value ?? 0;
+  if (Math.abs(normalized) < 0.05) return "0.0s";
+  return `${normalized > 0 ? "+" : ""}${(Math.round(normalized * 10) / 10).toFixed(1)}s`;
+}
+
 export function formatSetlistPosition(position?: number, songCount?: number) {
   return position ? `${position}${songCount ? ` of ${songCount}` : ""}` : "Not confirmed";
 }
@@ -78,6 +84,7 @@ export function manualVariantToComparison(variant: VariantCandidate): LineCompar
       removed: tokenizeLocal(variant.canonicalExcerpt ?? ""),
       added: tokenizeLocal(variant.liveText)
     },
+    evidenceTier: variant.evidenceTier ?? "needs_review",
     variantId: variant.id
   };
 }
@@ -108,6 +115,7 @@ export function formatComparisonStatus(status: LineComparisonStatus) {
 }
 
 export function differenceSummary(comparison: LineComparison) {
+  if (comparison.evidenceTier === "asr_uncertain") return "ASR confidence needs review";
   if (comparison.status === "matched") return "No lyric difference";
   if (comparison.status === "skipped") return "Studio line not detected live";
   if (comparison.status === "live_only") return "Live phrase has no stable studio anchor";
@@ -121,6 +129,7 @@ export function differenceSummary(comparison: LineComparison) {
 }
 
 export function comparisonExplanation(comparison: LineComparison) {
+  if (comparison.evidenceTier === "asr_uncertain") return "ASR confidence is too low to call this a confirmed lyric change without listening review.";
   if (comparison.status === "matched") return "The live line matches the studio reference closely, so it proves alignment rather than a variant.";
   if (comparison.status === "changed") return "The live wording differs from the studio reference and should be reviewed as a possible live lyric variant.";
   if (comparison.status === "skipped") return "A studio line inside the anchored window was not detected in the live vocal.";
@@ -132,6 +141,26 @@ export function comparisonExplanation(comparison: LineComparison) {
 
 export function variantBadgeLabel(type: VariantType) {
   return type.replaceAll("_", " ");
+}
+
+export function formatEvidenceTier(tier?: EvidenceTier) {
+  const labels: Record<EvidenceTier, string> = {
+    aligned: "Aligned evidence",
+    likely_change: "Likely change",
+    needs_review: "Needs review",
+    asr_uncertain: "ASR uncertain",
+    source_gap: "Source gap"
+  };
+  return tier ? labels[tier] : "Needs review";
+}
+
+export function wordDiffSummary(canonicalText: string, liveText: string): WordDiff {
+  const diff = computeInlineWordDiff(canonicalText, liveText);
+  return {
+    kept: diff.studio.filter((word) => word.type === "kept").flatMap((word) => tokenizeLocal(word.word)),
+    removed: diff.studio.filter((word) => word.type === "removed").flatMap((word) => tokenizeLocal(word.word)),
+    added: diff.live.filter((word) => word.type === "added").flatMap((word) => tokenizeLocal(word.word))
+  };
 }
 
 export type DiffWord = { word: string; type: "kept" | "removed" | "added" };

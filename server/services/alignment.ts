@@ -1,4 +1,4 @@
-import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, WordDiff } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, EvidenceTier, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, WordDiff } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -7,7 +7,12 @@ export type AlignmentResult = {
   canonical: CanonicalLine | null;
   similarity: number;
   timingDelta: number;
+  rawTimingDelta: number;
+  clipOffset: number;
 };
+
+const LOW_ASR_CONFIDENCE = 0.7;
+const STRONG_ALIGNMENT = 0.72;
 
 const citySignals = [
   "cape town",
@@ -70,21 +75,44 @@ function longestCommonSubsequenceLength(a: string[], b: string[]): number {
 }
 
 export function alignTranscript(transcript: TranscriptSegment[], canonicalLines: CanonicalLine[]): AlignmentResult[] {
-  return transcript.map((segment) => {
+  const rawAlignments = transcript.map((segment) => {
     const scored = canonicalLines
       .map((line) => ({
         line,
         similarity: tokenSimilarity(segment.text, line.text),
-        timingDelta: Math.abs(segment.start - line.start)
+        rawTimingDelta: Math.abs(segment.start - line.start)
       }))
-      .sort((a, b) => b.similarity - a.similarity || a.timingDelta - b.timingDelta);
+      .sort((a, b) => b.similarity - a.similarity || a.rawTimingDelta - b.rawTimingDelta);
 
     const best = scored[0];
+    const canonical = best && best.similarity >= 0.2 ? best.line : null;
     return {
       transcript: segment,
-      canonical: best && best.similarity >= 0.2 ? best.line : null,
+      canonical,
       similarity: best?.similarity ?? 0,
-      timingDelta: best?.timingDelta ?? 0
+      timingDelta: best?.rawTimingDelta ?? 0,
+      rawTimingDelta: best?.rawTimingDelta ?? 0,
+      clipOffset: 0
+    };
+  });
+
+  const anchorOffsets = rawAlignments
+    .filter((alignment) =>
+      alignment.canonical &&
+      alignment.similarity >= STRONG_ALIGNMENT &&
+      alignment.transcript.confidence >= LOW_ASR_CONFIDENCE
+    )
+    .map((alignment) => (alignment.canonical?.start ?? 0) - alignment.transcript.start);
+  const clipOffset = round(anchorOffsets.length ? median(anchorOffsets) : 0);
+
+  return rawAlignments.map((alignment) => {
+    const timingDelta = alignment.canonical
+      ? Math.abs(alignment.transcript.start + clipOffset - alignment.canonical.start)
+      : 0;
+    return {
+      ...alignment,
+      timingDelta: round(timingDelta),
+      clipOffset
     };
   });
 }
@@ -92,7 +120,8 @@ export function alignTranscript(transcript: TranscriptSegment[], canonicalLines:
 export function classifyVariants(
   alignments: AlignmentResult[],
   canonicalLines: CanonicalLine[],
-  sourceCoverage: number
+  sourceCoverage: number,
+  eventCity?: string
 ): VariantCandidate[] {
   const variants: VariantCandidate[] = [];
   const matchedCanonicalIds = new Set<string>();
@@ -103,12 +132,13 @@ export function classifyVariants(
       matchedCanonicalIds.add(alignment.canonical.id);
     }
 
-    const type = classifyAlignment(alignment, alignments[index - 1]);
+    const type = classifyAlignment(alignment, alignments[index - 1], eventCity);
     if (!type) {
       return;
     }
 
     const confidence = scoreVariantConfidence(alignment.transcript.confidence, alignment.similarity, sourceCoverage, type);
+    const evidenceTier = variantEvidenceTier(alignment, type, sourceCoverage);
     variants.push({
       id: `V${variants.length + 1}`,
       type,
@@ -124,7 +154,9 @@ export function classifyVariants(
       recommendedAction: recommendedAction(type),
       translationRisk: translationRisk(type),
       severity: confidence >= 0.78 ? "high" : confidence >= 0.58 ? "medium" : "low",
-      evidenceSource: "asr_alignment"
+      evidenceSource: "asr_alignment",
+      evidenceTier,
+      reviewerNote: reviewerNoteForVariant(alignment, type, evidenceTier)
     });
   });
 
@@ -143,7 +175,9 @@ export function classifyVariants(
       recommendedAction: "Review live-only caption coverage and confirm the omission.",
       translationRisk: "high",
       severity: "medium",
-      evidenceSource: "asr_alignment"
+      evidenceSource: "asr_alignment",
+      evidenceTier: sourceCoverage < 0.5 ? "source_gap" : "needs_review",
+      reviewerNote: "The line sits inside matched anchors, but it was not heard in the live ASR. Confirm by listening before marking it as a true omission."
     });
   });
 
@@ -204,8 +238,11 @@ export function buildLineComparisons(
       liveText: alignment.transcript.text,
       similarity: alignment.similarity,
       timingDelta: alignment.timingDelta,
+      rawTimingDelta: alignment.rawTimingDelta,
+      clipOffset: alignment.clipOffset,
       status,
       changedWords: wordDiff(alignment.canonical?.text ?? "", alignment.transcript.text),
+      evidenceTier: lineEvidenceTier(alignment, status),
       variantId: variantByLiveKey.get(variantKey(alignment.transcript.start, alignment.transcript.end, trimSnippet(alignment.transcript.text)))
     };
   });
@@ -224,8 +261,11 @@ export function buildLineComparisons(
       liveText: "[not detected in live vocal]",
       similarity: 0,
       timingDelta: 0,
+      rawTimingDelta: 0,
+      clipOffset: alignments[0]?.clipOffset ?? 0,
       status: "skipped",
       changedWords: wordDiff(line.text, ""),
+      evidenceTier: "needs_review",
       variantId: skippedVariantByCanonicalId.get(line.id)
     };
   });
@@ -234,6 +274,9 @@ export function buildLineComparisons(
 }
 
 function lineComparisonStatus(alignment: AlignmentResult, previous?: AlignmentResult): LineComparisonStatus {
+  if (alignment.transcript.confidence < LOW_ASR_CONFIDENCE && alignment.similarity < 0.9) {
+    return "uncertain";
+  }
   if (!alignment.canonical) {
     return alignment.similarity >= 0.18 ? "uncertain" : "live_only";
   }
@@ -255,13 +298,46 @@ function lineComparisonStatus(alignment: AlignmentResult, previous?: AlignmentRe
 function wordDiff(canonicalText: string, liveText: string): WordDiff {
   const canonicalTokens = tokenize(canonicalText);
   const liveTokens = tokenize(liveText);
-  const liveSet = new Set(liveTokens);
-  const canonicalSet = new Set(canonicalTokens);
+  const table = lcsTable(canonicalTokens, liveTokens);
+  const kept: string[] = [];
+  const removed: string[] = [];
+  const added: string[] = [];
+  let i = canonicalTokens.length;
+  let j = liveTokens.length;
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && canonicalTokens[i - 1] === liveTokens[j - 1]) {
+      kept.push(canonicalTokens[i - 1]);
+      i -= 1;
+      j -= 1;
+    } else if (j > 0 && (i === 0 || table[i][j - 1] >= table[i - 1][j])) {
+      added.push(liveTokens[j - 1]);
+      j -= 1;
+    } else {
+      removed.push(canonicalTokens[i - 1]);
+      i -= 1;
+    }
+  }
+
   return {
-    kept: canonicalTokens.filter((token) => liveSet.has(token)),
-    removed: canonicalTokens.filter((token) => !liveSet.has(token)),
-    added: liveTokens.filter((token) => !canonicalSet.has(token))
+    kept: kept.reverse(),
+    removed: removed.reverse(),
+    added: added.reverse()
   };
+}
+
+function lcsTable(a: string[], b: string[]): number[][] {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const table: number[][] = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
+  for (let row = 1; row < rows; row += 1) {
+    for (let col = 1; col < cols; col += 1) {
+      table[row][col] = a[row - 1] === b[col - 1]
+        ? table[row - 1][col - 1] + 1
+        : Math.max(table[row - 1][col], table[row][col - 1]);
+    }
+  }
+  return table;
 }
 
 function variantKey(start: number, end: number, liveText: string): string {
@@ -306,14 +382,18 @@ export function buildPassport(input: {
   const alignments = alignTranscript(input.transcript, input.canonicalLines);
   const averageAlignment = average(alignments.map((alignment) => alignment.similarity));
   const averageAsr = average(input.transcript.map((segment) => segment.confidence));
+  const averageTimingDelta = average(alignments.filter((alignment) => alignment.canonical).map((alignment) => alignment.timingDelta));
   const confidenceOverview: ConfidenceOverview = {
     overall: round((averageAlignment * 0.4 + averageAsr * 0.3 + input.vocalIsolationConfidence * 0.15 + input.sourceCoverage * 0.15) || 0),
     asr: round(averageAsr),
     alignment: round(averageAlignment),
-    sourceCoverage: round(input.sourceCoverage)
+    sourceCoverage: round(input.sourceCoverage),
+    asrUncertainSegments: input.transcript.filter((segment) => segment.confidence < LOW_ASR_CONFIDENCE).length,
+    timingOffsetSeconds: alignments[0]?.clipOffset ?? 0,
+    averageTimingDelta: round(averageTimingDelta)
   };
 
-  const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage);
+  const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage, input.event?.city);
   const lineComparisons = buildLineComparisons(alignments, input.canonicalLines, variants);
   const summary = summarizePassport(variants, confidenceOverview.overall);
   const syncFitScore = round(averageAlignment * 0.72 + input.sourceCoverage * 0.28);
@@ -396,14 +476,17 @@ export function buildPassport(input: {
   };
 }
 
-function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResult): VariantType | null {
+function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResult, eventCity?: string): VariantType | null {
   const normalized = normalizeText(alignment.transcript.text);
   const tokens = tokenize(alignment.transcript.text);
   const canonicalTokens = alignment.canonical ? tokenize(alignment.canonical.text) : [];
   const extraTokens = tokens.filter((token) => !canonicalTokens.includes(token));
   const duration = alignment.transcript.end - alignment.transcript.start;
 
-  if (citySignals.some((city) => normalized.includes(city))) {
+  if (alignment.transcript.confidence < LOW_ASR_CONFIDENCE && alignment.similarity < 0.9) {
+    return "uncertain";
+  }
+  if (citySignalSet(eventCity).some((city) => normalized.includes(city))) {
     return "city_shoutout";
   }
   if (!alignment.canonical || alignment.similarity < 0.28) {
@@ -425,6 +508,53 @@ function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResul
     return "extension";
   }
   return null;
+}
+
+function citySignalSet(eventCity?: string): string[] {
+  const eventSignal = eventCity ? normalizeText(eventCity) : "";
+  return [...new Set([...citySignals, eventSignal].filter(Boolean))];
+}
+
+function variantEvidenceTier(alignment: AlignmentResult, type: VariantType, sourceCoverage: number): EvidenceTier {
+  if (sourceCoverage < 0.45 || (!alignment.canonical && alignment.similarity < 0.18)) {
+    return "source_gap";
+  }
+  if (alignment.transcript.confidence < LOW_ASR_CONFIDENCE || type === "uncertain") {
+    return "asr_uncertain";
+  }
+  if (alignment.similarity >= STRONG_ALIGNMENT && alignment.transcript.confidence >= 0.76) {
+    return "likely_change";
+  }
+  return "needs_review";
+}
+
+function lineEvidenceTier(alignment: AlignmentResult, status: LineComparisonStatus): EvidenceTier {
+  if (status === "matched") {
+    return "aligned";
+  }
+  if (alignment.transcript.confidence < LOW_ASR_CONFIDENCE || status === "uncertain") {
+    return "asr_uncertain";
+  }
+  if (!alignment.canonical && status === "live_only") {
+    return "source_gap";
+  }
+  if (status === "changed" || status === "timing_drift" || status === "repeated") {
+    return "likely_change";
+  }
+  return "needs_review";
+}
+
+function reviewerNoteForVariant(alignment: AlignmentResult, type: VariantType, evidenceTier: EvidenceTier): string | undefined {
+  if (evidenceTier === "asr_uncertain") {
+    return `ASR confidence is ${Math.round(alignment.transcript.confidence * 100)}%; do not treat this as a confirmed lyric change until a reviewer hears the clip.`;
+  }
+  if (type === "timing_drift") {
+    return `Timing drift is measured after applying a ${formatSignedSeconds(alignment.clipOffset)} clip offset from aligned anchors.`;
+  }
+  if (evidenceTier === "source_gap") {
+    return "Source coverage is thin here; keep this as an evidence gap until a stronger anchor is available.";
+  }
+  return undefined;
 }
 
 function scoreVariantConfidence(asr: number, similarity: number, sourceCoverage: number, type: VariantType): number {
@@ -527,10 +657,11 @@ function summarizePassport(variants: VariantCandidate[], overall: number): strin
   const prominent = summarizeVariantTypes(variants
     .filter((variant) => variant.confidence >= 0.58)
     .slice(0, 6));
+  const asrUncertain = variants.filter((variant) => variant.evidenceTier === "asr_uncertain").length;
   if (!prominent) {
     return `No strong live lyric variants detected. Overall confidence ${Math.round(overall * 100)}%.`;
   }
-  return `Detected ${variants.length} live variant candidates, led by ${prominent}. Overall confidence ${Math.round(overall * 100)}%.`;
+  return `Detected ${variants.length} live variant candidates, led by ${prominent}. Overall confidence ${Math.round(overall * 100)}%.${asrUncertain ? ` ${asrUncertain} held as ASR-uncertain.` : ""}`;
 }
 
 function summarizeVariantTypes(variants: VariantCandidate[]): string {
@@ -566,6 +697,25 @@ function average(values: number[]): number {
     return 0;
   }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[middle];
+  }
+  return (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function formatSignedSeconds(value: number): string {
+  if (value === 0) {
+    return "0.0s";
+  }
+  return `${value > 0 ? "+" : ""}${Math.round(value * 10) / 10}s`;
 }
 
 function round(value: number): number {
