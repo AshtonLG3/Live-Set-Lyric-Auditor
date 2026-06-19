@@ -2,7 +2,7 @@
 
 ## 0-15 seconds
 
-Open Dashboard. Point out `v0.11.5`, the cinematic Start a Live Variant Passport hero, partner readiness including Cyanite, and the two intake modes: Upload clip with Browse files / Record live, and Recall lyric fragment.
+Open Dashboard. Point out `v0.11.6`, the cinematic Start a Live Variant Passport hero, partner readiness including Cyanite, and the two intake modes: Upload clip with Browse files / Record live, and Recall lyric fragment.
 
 ## 15-35 seconds
 

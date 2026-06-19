@@ -19,6 +19,18 @@ type ExternalSegment = {
   avg_logprob?: number;
 };
 
+type ReplicateAudioInput = string | Blob | Buffer;
+
+type ReplicateCandidate = {
+  version: string;
+  index: number;
+  segments: TranscriptSegment[];
+  score: number;
+  status: ReturnType<typeof assessVocalTranscript>["status"];
+};
+
+const replicateVersionCooldowns = new Map<string, number>();
+
 export async function transcribeLiveVocal(file?: Express.Multer.File, vocalUrl?: string): Promise<TranscriptionResult> {
   return transcribe(file, fixtureTranscript, vocalUrl);
 }
@@ -101,74 +113,66 @@ async function transcribeWithReplicate(
   file: Express.Multer.File | undefined,
   vocalUrl?: string
 ): Promise<{ segments: TranscriptSegment[]; engine?: string }> {
-  const audio = vocalUrl || file?.buffer;
+  const audio = await initialReplicateAudioInput(file, vocalUrl);
   if (!audio || !env.replicateToken) {
     return { segments: [] };
   }
 
-  const replicate = new Replicate({ auth: env.replicateToken });
+  const replicate = new Replicate({ auth: env.replicateToken, fileEncodingStrategy: "upload" });
   const versions = [env.replicateWhisperVersion, env.replicateWhisperFallbackVersion]
     .map((version) => version.trim())
     .filter((version, index, values) => version && values.indexOf(version) === index);
 
-  const errors = await runReplicateVersions(replicate, versions, audio);
-  if (errors.segments.length > 0) {
-    return { segments: errors.segments, engine: errors.engine };
+  const firstPass = await runReplicateVersions(replicate, versions, audio);
+  if (firstPass.segments.length > 0) {
+    return { segments: firstPass.segments, engine: firstPass.engine };
   }
 
-  if (vocalUrl && shouldRetryByDownloading(errors.messages)) {
+  if (vocalUrl && typeof audio === "string" && shouldRetryByDownloading(firstPass.messages)) {
     try {
-      const downloaded = await downloadAudioBuffer(vocalUrl);
+      const downloaded = await downloadAudioFile(vocalUrl);
       const downloadedResult = await runReplicateVersions(replicate, versions, downloaded);
       if (downloadedResult.segments.length > 0) {
         return { segments: downloadedResult.segments, engine: downloadedResult.engine };
       }
-      errors.messages.push(...downloadedResult.messages.map((message) => `downloaded stem: ${message}`));
+      firstPass.messages.push(...downloadedResult.messages.map((message) => `downloaded stem: ${message}`));
     } catch (error) {
-      errors.messages.push(`downloaded stem retry failed: ${error instanceof Error ? error.message : "request failed"}`);
+      firstPass.messages.push(`downloaded stem retry failed: ${error instanceof Error ? error.message : "request failed"}`);
     }
   }
 
-  throw new Error(`Replicate Whisper failed: ${errors.messages.join("; ")}`);
+  throw new Error(`Replicate Whisper failed: ${firstPass.messages.join("; ")}`);
 }
 
 async function runReplicateVersions(
   replicate: Replicate,
   versions: string[],
-  audio: string | Buffer
+  audio: ReplicateAudioInput
 ): Promise<{ segments: TranscriptSegment[]; engine?: string; messages: string[] }> {
   const messages: string[] = [];
-  const candidates: Array<{ version: string; index: number; segments: TranscriptSegment[]; score: number; failed: boolean }> = [];
+  const candidates: ReplicateCandidate[] = [];
 
   for (const [index, version] of versions.entries()) {
-    try {
-      const output = await replicate.run(version as `${string}/${string}:${string}`, {
-        input: replicateInput(version, audio)
-      });
-      const segments = parseReplicateOutput(output);
-      if (segments.length > 0) {
-        const quality = assessVocalTranscript(segments, "original");
-        candidates.push({
-          version,
-          index,
-          segments,
-          score: quality.score,
-          failed: quality.status === "failed"
-        });
-        messages.push(`${version} scored ${Math.round(quality.score * 100)}%`);
-        continue;
-      }
-      messages.push(`${version} returned no transcript`);
-    } catch (error) {
-      messages.push(`${version}: ${error instanceof Error ? error.message : "request failed"}`);
+    const bestPrimary = chooseBestCandidate(candidates);
+    if (index > 0 && bestPrimary?.index === 0 && bestPrimary.status === "passed") {
+      messages.push(`${version} skipped because the primary transcript passed quality checks`);
+      continue;
+    }
+
+    const cooldownUntil = replicateVersionCooldowns.get(version) ?? 0;
+    if (Date.now() < cooldownUntil) {
+      messages.push(`${version} skipped during temporary Replicate rate-limit cooldown`);
+      continue;
+    }
+
+    const outcome = await runReplicateVersion(replicate, version, index, audio);
+    messages.push(outcome.message);
+    if (outcome.candidate) {
+      candidates.push(outcome.candidate);
     }
   }
 
-  const best = candidates.sort((a, b) =>
-    Number(a.failed) - Number(b.failed) ||
-    b.score - a.score ||
-    a.index - b.index
-  )[0];
+  const best = chooseBestCandidate(candidates);
   if (best) {
     return { segments: best.segments, engine: best.version, messages };
   }
@@ -176,11 +180,72 @@ async function runReplicateVersions(
   return { segments: [], messages };
 }
 
+async function runReplicateVersion(
+  replicate: Replicate,
+  version: string,
+  index: number,
+  audio: ReplicateAudioInput
+): Promise<{ candidate?: ReplicateCandidate; message: string }> {
+  try {
+    const output = await replicate.run(version as `${string}/${string}:${string}`, {
+      input: replicateInput(version, audio)
+    });
+    const segments = parseReplicateOutput(output);
+    if (segments.length === 0) {
+      return { message: `${version} returned no transcript` };
+    }
+    const quality = assessVocalTranscript(segments, "original");
+    return {
+      candidate: {
+        version,
+        index,
+        segments,
+        score: quality.score,
+        status: quality.status
+      },
+      message: `${version} scored ${Math.round(quality.score * 100)}%`
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "request failed";
+    if (isRateLimitMessage(detail)) {
+      replicateVersionCooldowns.set(version, Date.now() + retryDelayMs(detail));
+    }
+    return { message: `${version}: ${detail}` };
+  }
+}
+
+function chooseBestCandidate(candidates: ReplicateCandidate[]): ReplicateCandidate | undefined {
+  return [...candidates].sort((a, b) =>
+    Number(a.status === "failed") - Number(b.status === "failed") ||
+    b.score - a.score ||
+    a.index - b.index
+  )[0];
+}
+
 function shouldRetryByDownloading(errors: string[]): boolean {
   return errors.some((message) => /soundfile|malformed|download|ffmpeg|valid audio|correct format/i.test(message));
 }
 
-async function downloadAudioBuffer(url: string): Promise<Buffer> {
+async function initialReplicateAudioInput(
+  file: Express.Multer.File | undefined,
+  vocalUrl?: string
+): Promise<ReplicateAudioInput | undefined> {
+  if (vocalUrl) {
+    return shouldDownloadBeforeReplicate(vocalUrl) ? downloadAudioFile(vocalUrl) : vocalUrl;
+  }
+  return file ? namedAudioFile(file.buffer, file.originalname, file.mimetype) : undefined;
+}
+
+function shouldDownloadBeforeReplicate(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return !/\.(mp3|wav|flac|m4a|aac|ogg|opus|webm|mp4|mov)(?:$|\?)/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function downloadAudioFile(url: string): Promise<Blob> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`audio download failed with ${response.status}`);
@@ -189,10 +254,11 @@ async function downloadAudioBuffer(url: string): Promise<Buffer> {
   if (bytes.length === 0) {
     throw new Error("audio download returned an empty file");
   }
-  return bytes;
+  const contentType = response.headers.get("Content-Type") ?? "audio/mpeg";
+  return namedAudioFile(bytes, filenameFromUrl(url, contentType), contentType);
 }
 
-function replicateInput(version: string, audio: string | Buffer): Record<string, unknown> {
+function replicateInput(version: string, audio: ReplicateAudioInput): Record<string, unknown> {
   if (version.startsWith("openai/whisper:")) {
     return {
       audio,
@@ -210,6 +276,70 @@ function replicateInput(version: string, audio: string | Buffer): Record<string,
     batch_size: 24,
     diarise_audio: false
   };
+}
+
+function namedAudioFile(buffer: Buffer, filename: string, mimetype?: string): Blob {
+  const name = ensureAudioFilename(filename, mimetype);
+  const bytes = toBlobPart(buffer);
+  if (typeof File !== "undefined") {
+    return new File([bytes], name, { type: mimetype || mimeTypeFromFilename(name) });
+  }
+  const blob = new Blob([bytes], { type: mimetype || mimeTypeFromFilename(name) }) as Blob & { name?: string };
+  Object.defineProperty(blob, "name", { value: name });
+  return blob;
+}
+
+function ensureAudioFilename(filename: string, mimetype?: string): string {
+  const sanitized = (filename || "live-vocal").replace(/[\\/:*?"<>|\r\n]/g, "_");
+  if (/\.(mp3|wav|flac|m4a|aac|ogg|opus|webm|mp4|mov)$/i.test(sanitized)) {
+    return sanitized;
+  }
+  return `${sanitized.replace(/\.+$/, "") || "live-vocal"}${extensionFromMimeType(mimetype)}`;
+}
+
+function filenameFromUrl(url: string, contentType?: string): string {
+  try {
+    const leaf = new URL(url).pathname.split("/").filter(Boolean).at(-1) ?? "lalal-vocals";
+    return ensureAudioFilename(leaf, contentType);
+  } catch {
+    return ensureAudioFilename("lalal-vocals", contentType);
+  }
+}
+
+function extensionFromMimeType(mimetype?: string): string {
+  const normalized = mimetype?.split(";")[0]?.trim().toLowerCase();
+  if (normalized === "audio/wav" || normalized === "audio/x-wav") return ".wav";
+  if (normalized === "audio/flac") return ".flac";
+  if (normalized === "audio/mp4" || normalized === "audio/m4a") return ".m4a";
+  if (normalized === "audio/aac") return ".aac";
+  if (normalized === "audio/ogg" || normalized === "video/ogg") return ".ogg";
+  if (normalized === "audio/webm" || normalized === "video/webm") return ".webm";
+  if (normalized === "video/mp4") return ".mp4";
+  if (normalized === "video/quicktime") return ".mov";
+  return ".mp3";
+}
+
+function mimeTypeFromFilename(filename: string): string {
+  if (/\.wav$/i.test(filename)) return "audio/wav";
+  if (/\.flac$/i.test(filename)) return "audio/flac";
+  if (/\.m4a$/i.test(filename)) return "audio/m4a";
+  if (/\.aac$/i.test(filename)) return "audio/aac";
+  if (/\.ogg$/i.test(filename)) return "audio/ogg";
+  if (/\.opus$/i.test(filename)) return "audio/ogg";
+  if (/\.webm$/i.test(filename)) return "audio/webm";
+  if (/\.mp4$/i.test(filename)) return "video/mp4";
+  if (/\.mov$/i.test(filename)) return "video/quicktime";
+  return "audio/mpeg";
+}
+
+function isRateLimitMessage(message: string): boolean {
+  return /429|too many requests|rate limit|throttled|less than \$5 in credit/i.test(message);
+}
+
+function retryDelayMs(message: string): number {
+  const retryAfter = /retry_after["']?\s*:\s*(\d+)/i.exec(message)?.[1];
+  const seconds = retryAfter ? Number(retryAfter) : 30;
+  return Math.max(2_000, Math.min(60_000, (Number.isFinite(seconds) ? seconds : 30) * 1_000));
 }
 
 function parseReplicateOutput(output: object): TranscriptSegment[] {

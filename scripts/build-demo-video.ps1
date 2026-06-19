@@ -1,6 +1,6 @@
 param(
   [string]$BaseUrl = $(if ($env:DEMO_BASE_URL) { $env:DEMO_BASE_URL } else { "http://127.0.0.1:4244" }),
-  [string]$Version = $(if ($env:DEMO_APP_VERSION) { $env:DEMO_APP_VERSION } else { "0.11.5" }),
+  [string]$Version = $(if ($env:DEMO_APP_VERSION) { $env:DEMO_APP_VERSION } else { "0.11.6" }),
   [string]$Output = $(if ($env:DEMO_OUTPUT) { $env:DEMO_OUTPUT } else { "" }),
   [switch]$SkipCapture
 )

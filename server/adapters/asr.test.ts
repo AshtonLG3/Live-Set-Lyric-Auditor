@@ -42,7 +42,7 @@ describe("ASR adapter", () => {
       "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
       {
         input: expect.objectContaining({
-          audio: expect.any(Buffer),
+          audio: expect.any(Blob),
           task: "transcribe",
           timestamp: "chunk",
           batch_size: 24,
@@ -50,6 +50,9 @@ describe("ASR adapter", () => {
         })
       }
     );
+    expect(runMock).toHaveBeenCalledTimes(1);
+    const uploaded = runMock.mock.calls[0]?.[1]?.input.audio as File;
+    expect(uploaded.name).toBe("stage-clip.mp3");
   });
 
   it("falls back to the shared openai whisper version", async () => {
@@ -97,15 +100,28 @@ describe("ASR adapter", () => {
     expect(result.segments.map((segment) => segment.text).join(" ")).toContain("Talk to God");
   });
 
+  it("does not let a rate-limited fallback model fail a usable fast transcript", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    runMock.mockResolvedValueOnce({
+      chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
+    });
+
+    const { transcribeLiveVocal } = await import("./asr");
+    const result = await transcribeLiveVocal(audioFile());
+
+    expect(result).toMatchObject({
+      source: "replicate",
+      engine: "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c"
+    });
+    expect(runMock).toHaveBeenCalledTimes(1);
+  });
+
   it("downloads a vocal URL and retries when Replicate rejects the remote file handoff", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
     runMock
-      .mockRejectedValueOnce(new Error("Soundfile is either not in the correct format or is malformed"))
-      .mockRejectedValueOnce(new Error("remote URL was not a full download address"))
       .mockResolvedValueOnce({
         chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad" }]
-      })
-      .mockResolvedValueOnce({ chunks: [] });
+      });
     const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([9, 8, 7, 6]), {
       status: 200,
       headers: { "Content-Type": "audio/mpeg" }
@@ -117,7 +133,9 @@ describe("ASR adapter", () => {
 
     expect(result.segments.map((segment) => segment.text)).toEqual(["talk to god wonder if he is mad"]);
     expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/lalal-vocals");
-    expect(runMock.mock.calls[2]?.[1]?.input.audio).toBeInstanceOf(Buffer);
+    const audio = runMock.mock.calls[0]?.[1]?.input.audio as File;
+    expect(audio).toBeInstanceOf(Blob);
+    expect(audio.name).toBe("lalal-vocals.mp3");
   });
 
   it("drops common low-confidence Whisper filler from live transcripts", async () => {

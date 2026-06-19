@@ -59,6 +59,27 @@ describe("analysis recovery", () => {
     ]);
     expect(analyzed?.progress.find((step) => step.id === "isolate")?.detail).toContain("no vocal isolation needed");
   });
+
+  it("fails selected-track analysis when the transcript does not fit the chosen canonical song", async () => {
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      track: fixtureTracks[0],
+      autoMatch: false,
+      source: { kind: "recall_recording", processingMode: "recall_recording" },
+      recallSegments: [
+        { id: "R1", start: 0, end: 3, text: "satellite engines over cold neon water", confidence: 0.92 },
+        { id: "R2", start: 3, end: 7, text: "broken traffic lights counting backwards", confidence: 0.91 },
+        { id: "R3", start: 7, end: 11, text: "paper windows folding under thunder", confidence: 0.9 },
+        { id: "R4", start: 11, end: 15, text: "silver ladders vanish into static", confidence: 0.89 }
+      ]
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("failed");
+    expect(analyzed?.error).toContain("does not fit this live transcript");
+    expect(analyzed?.passport).toBeUndefined();
+  });
 });
 
 function manualTrack(): TrackCandidate {

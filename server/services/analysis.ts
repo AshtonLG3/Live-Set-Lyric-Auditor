@@ -1,4 +1,4 @@
-import type { AnalysisJob, ClipSource, EventCandidate, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
 import { formatBytes } from "../../shared/format";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
@@ -190,6 +190,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       liveContext,
       performanceContext
     });
+    assertSelectedTrackFitsTranscript(passport);
 
     updateJob(jobId, (job) => ({
       ...job,
@@ -490,6 +491,36 @@ function transcriptionDetail(selection: VocalTranscriptionSelection): string {
       ? "original audio"
       : "fixture vocal";
   return `${selection.transcription.segments.length} vocal segments from ${selection.transcription.source} via ${sourceLabel}. ${selection.vocalQuality.detail}`;
+}
+
+function assertSelectedTrackFitsTranscript(passport: LiveVariantPassport): void {
+  if (passport.recordingIdentity.matchMethod !== "selected_track") {
+    return;
+  }
+  if (
+    passport.rights.status === "restricted" ||
+    passport.recordingIdentity.canonicalSource === "metadata-only" ||
+    passport.clip.transcript.length < 4 ||
+    passport.lineComparisons.length < 4
+  ) {
+    return;
+  }
+
+  const strongMatches = passport.lineComparisons.filter((line) => line.similarity >= 0.72).length;
+  const plausibleMatches = passport.lineComparisons.filter((line) => line.similarity >= 0.48).length;
+  const plausibleRatio = plausibleMatches / passport.lineComparisons.length;
+  const sourceGapRatio = passport.variants.length
+    ? passport.variants.filter((variant) => variant.evidenceTier === "source_gap").length / passport.variants.length
+    : 0;
+
+  if (
+    (passport.confidenceOverview.alignment < 0.35 && strongMatches < 2 && plausibleRatio < 0.35) ||
+    (passport.confidenceOverview.alignment < 0.45 && strongMatches < 2 && sourceGapRatio >= 0.6)
+  ) {
+    throw new Error(
+      `Selected track "${passport.track.title}" by ${passport.track.artist} does not fit this live transcript. Use Auto Match or choose the matching recording before exporting a Live Variant Passport.`
+    );
+  }
 }
 
 function addIsolationDetail(report: VocalQualityReport, vocal: VocalIsolationResult): VocalQualityReport {
