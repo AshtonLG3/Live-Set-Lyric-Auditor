@@ -14,7 +14,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.4`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.5`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -26,11 +26,11 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 ## API Surfaces
 
 - **Musixmatch:** `track.search`, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
-- **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. Purchased minutes are the API processing balance.
+- **LALAL.AI:** raw `/upload/`, `/split/stem_separator/`, `/check/`, and `/limits/minutes_left/` requests using the activation key in the `X-License-Key` header. The live path requests lead/back vocal separation by default, prefers the lead vocal track when returned, enables dereverb, and uses clear-cut extraction for transcription clarity. Purchased minutes are the API processing balance.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied.
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
-- **ASR:** Replicate `incredibly-fast-whisper` with the pinned `openai/whisper` version as fallback; a custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is transcribed instead of the original noisy stage clip. Common low-confidence Whisper filler phrases are removed before alignment.
+- **ASR:** Replicate `incredibly-fast-whisper` and the pinned `openai/whisper` version are both scored for transcript quality when configured; the cleaner candidate wins instead of the first response. A custom Whisper-style endpoint remains available through `ASR_API_URL`. When LALAL.AI succeeds, the separated vocal stem is compared against original-audio ASR, and repeated/low-variety stem transcripts fall back to the raw audio path. Common low-confidence Whisper filler phrases are removed before alignment.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, recorded, or recalled sources.
@@ -89,6 +89,11 @@ LALAL_LICENSE_KEY=
 LALAL_API_BASE_URL=https://www.lalal.ai/api/v1
 LALAL_POLL_INTERVAL_MS=3000
 LALAL_POLL_TIMEOUT_MS=180000
+LALAL_LEAD_BACK_ENABLED=true
+LALAL_DEREVERB_ENABLED=true
+LALAL_EXTRACTION_LEVEL=clear_cut
+LALAL_ENCODER_FORMAT=mp3
+LALAL_SPLITTER=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
 ASR_API_URL=
@@ -112,7 +117,7 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 | Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL` |
 | JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
 | Cyanite | `CYANITE_API_TOKEN` | `CYANITE_API_BASE_URL`, `CYANITE_WEBHOOK_URL` |
-| LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL` |
+| LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL`, `LALAL_LEAD_BACK_ENABLED`, `LALAL_DEREVERB_ENABLED`, `LALAL_EXTRACTION_LEVEL`, `LALAL_ENCODER_FORMAT`, `LALAL_SPLITTER` |
 | ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID` |
 | Replicate ASR | `REPLICATE_API_TOKEN` | `REPLICATE_WHISPER_VERSION`, `REPLICATE_WHISPER_FALLBACK_VERSION` |
 | External ASR | `ASR_API_URL` | `ASR_API_KEY` |

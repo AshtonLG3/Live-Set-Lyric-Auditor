@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("LALAL.AI adapter", () => {
@@ -24,7 +25,7 @@ describe("LALAL.AI adapter", () => {
     );
   });
 
-  it("uploads raw media, requests a vocal split, and waits for the vocal URL", async () => {
+  it("uploads raw media, requests lead/back vocal separation, and waits for the lead vocal URL", async () => {
     vi.stubEnv("LALAL_LICENSE_KEY", "lalal-test-key");
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ id: "source-1" }))
@@ -35,7 +36,8 @@ describe("LALAL.AI adapter", () => {
             status: "success",
             result: {
               tracks: [
-                { type: "back", label: "instrumental", url: "https://cdn.example/back.mp3" },
+                { type: "stem", label: "vocals@1", url: "https://cdn.example/backing.mp3" },
+                { type: "stem", label: "vocals@0", url: "https://cdn.example/lead.mp3" },
                 { type: "stem", label: "vocals", url: "https://cdn.example/vocals.mp3" }
               ]
             }
@@ -47,10 +49,7 @@ describe("LALAL.AI adapter", () => {
     const { isolateVocals } = await import("./lalal");
     const result = await isolateVocals(audioFile());
 
-    expect(result).toMatchObject({
-      source: "lalalai",
-      vocalUrl: "https://cdn.example/vocals.mp3"
-    });
+    const splitBody = JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://www.lalal.ai/api/v1/upload/");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
@@ -63,16 +62,22 @@ describe("LALAL.AI adapter", () => {
     });
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(Blob);
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://www.lalal.ai/api/v1/split/stem_separator/");
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
-      source_id: "source-1",
-      presets: {
-        stem: "vocals",
-        splitter: "phoenix",
-        encoder_format: "mp3",
-        extraction_level: "deep_extraction"
-      }
-    });
     expect(fetchMock.mock.calls[2]?.[0]).toBe("https://www.lalal.ai/api/v1/check/");
+    expect(splitBody).toMatchObject({ source_id: "source-1" });
+    expect(splitBody.presets).toMatchObject({
+      stem: "vocals",
+      dereverb_enabled: true,
+      encoder_format: "mp3",
+      extraction_level: "clear_cut",
+      multivocal: "lead_back"
+    });
+    expect(splitBody.presets).not.toHaveProperty("splitter");
+    expect(result).toMatchObject({
+      source: "lalalai",
+      confidence: 0.9,
+      vocalUrl: "https://cdn.example/lead.mp3"
+    });
+    expect(result.detail).toContain("lead vocal");
   });
 
   it("uses original audio transparently when no activation key is configured", async () => {

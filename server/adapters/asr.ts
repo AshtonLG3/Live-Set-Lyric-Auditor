@@ -2,9 +2,11 @@ import Replicate from "replicate";
 import type { TranscriptSegment } from "../../shared/types";
 import { env } from "../config";
 import { fixtureRecallTranscript, fixtureTranscript } from "../data/fixtures";
+import { assessVocalTranscript } from "../services/vocal-quality";
 
 export type TranscriptionResult = {
   source: "replicate" | "external" | "fixture";
+  engine?: string;
   segments: TranscriptSegment[];
 };
 
@@ -41,7 +43,8 @@ async function transcribe(
   const errors: string[] = [];
   if (env.replicateToken) {
     try {
-      return { source: "replicate", segments: await transcribeWithReplicate(file, vocalUrl) };
+      const result = await transcribeWithReplicate(file, vocalUrl);
+      return { source: "replicate", engine: result.engine, segments: result.segments };
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Replicate transcription failed");
     }
@@ -97,10 +100,10 @@ async function transcribe(
 async function transcribeWithReplicate(
   file: Express.Multer.File | undefined,
   vocalUrl?: string
-): Promise<TranscriptSegment[]> {
+): Promise<{ segments: TranscriptSegment[]; engine?: string }> {
   const audio = vocalUrl || file?.buffer;
   if (!audio || !env.replicateToken) {
-    return [];
+    return { segments: [] };
   }
 
   const replicate = new Replicate({ auth: env.replicateToken });
@@ -108,23 +111,85 @@ async function transcribeWithReplicate(
     .map((version) => version.trim())
     .filter((version, index, values) => version && values.indexOf(version) === index);
 
-  const errors: string[] = [];
-  for (const version of versions) {
+  const errors = await runReplicateVersions(replicate, versions, audio);
+  if (errors.segments.length > 0) {
+    return { segments: errors.segments, engine: errors.engine };
+  }
+
+  if (vocalUrl && shouldRetryByDownloading(errors.messages)) {
+    try {
+      const downloaded = await downloadAudioBuffer(vocalUrl);
+      const downloadedResult = await runReplicateVersions(replicate, versions, downloaded);
+      if (downloadedResult.segments.length > 0) {
+        return { segments: downloadedResult.segments, engine: downloadedResult.engine };
+      }
+      errors.messages.push(...downloadedResult.messages.map((message) => `downloaded stem: ${message}`));
+    } catch (error) {
+      errors.messages.push(`downloaded stem retry failed: ${error instanceof Error ? error.message : "request failed"}`);
+    }
+  }
+
+  throw new Error(`Replicate Whisper failed: ${errors.messages.join("; ")}`);
+}
+
+async function runReplicateVersions(
+  replicate: Replicate,
+  versions: string[],
+  audio: string | Buffer
+): Promise<{ segments: TranscriptSegment[]; engine?: string; messages: string[] }> {
+  const messages: string[] = [];
+  const candidates: Array<{ version: string; index: number; segments: TranscriptSegment[]; score: number; failed: boolean }> = [];
+
+  for (const [index, version] of versions.entries()) {
     try {
       const output = await replicate.run(version as `${string}/${string}:${string}`, {
         input: replicateInput(version, audio)
       });
       const segments = parseReplicateOutput(output);
       if (segments.length > 0) {
-        return segments;
+        const quality = assessVocalTranscript(segments, "original");
+        candidates.push({
+          version,
+          index,
+          segments,
+          score: quality.score,
+          failed: quality.status === "failed"
+        });
+        messages.push(`${version} scored ${Math.round(quality.score * 100)}%`);
+        continue;
       }
-      errors.push(`${version} returned no transcript`);
+      messages.push(`${version} returned no transcript`);
     } catch (error) {
-      errors.push(`${version}: ${error instanceof Error ? error.message : "request failed"}`);
+      messages.push(`${version}: ${error instanceof Error ? error.message : "request failed"}`);
     }
   }
 
-  throw new Error(`Replicate Whisper failed: ${errors.join("; ")}`);
+  const best = candidates.sort((a, b) =>
+    Number(a.failed) - Number(b.failed) ||
+    b.score - a.score ||
+    a.index - b.index
+  )[0];
+  if (best) {
+    return { segments: best.segments, engine: best.version, messages };
+  }
+
+  return { segments: [], messages };
+}
+
+function shouldRetryByDownloading(errors: string[]): boolean {
+  return errors.some((message) => /soundfile|malformed|download|ffmpeg|valid audio|correct format/i.test(message));
+}
+
+async function downloadAudioBuffer(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`audio download failed with ${response.status}`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0) {
+    throw new Error("audio download returned an empty file");
+  }
+  return bytes;
 }
 
 function replicateInput(version: string, audio: string | Buffer): Record<string, unknown> {

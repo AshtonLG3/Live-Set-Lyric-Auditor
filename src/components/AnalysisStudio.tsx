@@ -23,7 +23,8 @@ import type {
   HealthResponse,
   NarrationResponse,
   TrackCandidate,
-  VariantCandidate
+  VariantCandidate,
+  VocalQualityReport
 } from "../../shared/types";
 import { formatEventDate } from "../../shared/format";
 import { MediaPlayerBar, type MediaPlayerHandle } from "./MediaPlayerBar";
@@ -176,6 +177,8 @@ export function AnalysisStudio(props: Props) {
           passport={passport}
           recovery={recovery}
           health={props.health}
+          vocalQuality={passport?.clip.vocalQuality ?? recovery?.vocalQuality}
+          asrEngine={passport?.clip.asrEngine ?? recovery?.asrEngine}
           asrUncertainCount={asrUncertainCount}
           variantCount={variants.length}
           timingOffsetSeconds={timingOffsetSeconds}
@@ -293,6 +296,7 @@ export function AnalysisStudio(props: Props) {
                 <DataLine label="Attribution" value={passport?.rights.attribution ?? "Lyrics powered by Musixmatch"} />
                 <DataLine label="Language" value={passport?.rights.language?.toUpperCase() ?? track?.language?.toUpperCase() ?? "EN"} />
                 <DataLine label="Performance profile" value={performanceContext?.source === "cyanite" ? "Cyanite live analysis" : "Demo-safe fallback"} />
+                <DataLine label="Vocal quality" value={formatVocalQuality(passport?.clip.vocalQuality ?? recovery?.vocalQuality)} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <ReadinessFlag label="Lyrics" active={track?.hasLyrics ?? true} />
@@ -316,6 +320,8 @@ function EvidenceChainPanel({
   passport,
   recovery,
   health,
+  vocalQuality,
+  asrEngine,
   asrUncertainCount,
   variantCount,
   timingOffsetSeconds,
@@ -324,6 +330,8 @@ function EvidenceChainPanel({
   passport?: AnalysisJob["passport"];
   recovery?: AnalysisJob["recovery"];
   health: HealthResponse | null;
+  vocalQuality?: VocalQualityReport;
+  asrEngine?: string;
   asrUncertainCount: number;
   variantCount: number;
   timingOffsetSeconds: number;
@@ -342,7 +350,8 @@ function EvidenceChainPanel({
   return (
     <section className="studio-evidence-chain" aria-label="Evidence chain">
       <EvidenceStep label="Source" value={formatSourceMode(source?.processingMode ?? health?.runtimeMode ?? "fixture")} detail={sourceDetail} />
-      <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round((passport?.confidenceOverview.asr ?? 0) * 100)}%`} detail={asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"} tone={asrUncertainCount ? "risk" : "active"} />
+      <EvidenceStep label="Vocal" value={formatVocalSource(vocalQuality)} detail={vocalQuality?.detail ?? "Stem quality gate pending"} tone={vocalQuality && vocalQuality.status !== "passed" ? "risk" : "active"} />
+      <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round((passport?.confidenceOverview.asr ?? 0) * 100)}%`} detail={`${formatAsrEngine(asrEngine)} · ${asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"}`} tone={asrUncertainCount ? "risk" : "active"} />
       <EvidenceStep label="Canonical" value={formatSourceMode(canonicalSource)} detail={passport?.track.title ?? "Track anchor pending"} />
       <EvidenceStep label="Timing" value={formatCadenceDelta(averageTimingDeltaSeconds)} detail={`Clip offset ${formatSignedSeconds(timingOffsetSeconds)}`} tone={averageTimingDeltaSeconds >= 2.5 ? "risk" : "active"} />
       <EvidenceStep label="Export" value={`${variantCount} candidate${variantCount === 1 ? "" : "s"}`} detail={formatSourceMode(rightsStatus)} tone={rightsStatus === "restricted" || rightsStatus === "metadata_only" ? "risk" : "active"} />
@@ -360,7 +369,8 @@ function ExportPreview({ passport, approvedCount, rejectedCount, pendingCount }:
     <div className="studio-export-preview" aria-label="Export preview">
       <div><span>Passport</span><strong>{passport.id} · v{passport.version}</strong></div>
       <div><span>Decision state</span><strong>{approvedCount} approved · {rejectedCount} rejected · {pendingCount} pending</strong></div>
-      <div><span>Evidence</span><strong>ASR {Math.round(passport.confidenceOverview.asr * 100)}% · Align {Math.round(passport.confidenceOverview.alignment * 100)}%</strong></div>
+      <div><span>Evidence</span><strong>ASR {Math.round(passport.confidenceOverview.asr * 100)}% · {formatAsrEngine(passport.clip.asrEngine)}</strong></div>
+      <div><span>Vocal gate</span><strong>{formatVocalQuality(passport.clip.vocalQuality)}</strong></div>
       <div><span>Lead candidate</span><strong>{firstVariant ? `${formatSourceMode(firstVariant.type)} · ${formatSourceMode(firstVariant.evidenceTier ?? "needs_review")}` : "No candidate"}</strong></div>
     </div>
   );
@@ -391,6 +401,26 @@ function average(values: number[]) {
 function formatCadenceDelta(seconds: number) {
   if (seconds >= 1) return `${(Math.round(seconds * 10) / 10).toFixed(1)}s`;
   return `${Math.round(seconds * 1000)}ms`;
+}
+
+function formatVocalSource(report?: VocalQualityReport) {
+  if (!report) return "Pending";
+  const source = report.selectedSource === "lalalai" ? "LALAL.AI" : report.selectedSource === "original" ? "Original audio" : "Fixture";
+  return report.fallbackUsed ? "Original fallback" : source;
+}
+
+function formatVocalQuality(report?: VocalQualityReport) {
+  if (!report) return "Pending";
+  const score = `${Math.round(report.score * 100)}%`;
+  if (report.fallbackUsed) return `Fallback used · ${score}`;
+  return `${formatSourceMode(report.status)} · ${score}`;
+}
+
+function formatAsrEngine(engine?: string) {
+  if (!engine) return "Engine pending";
+  if (engine.startsWith("openai/whisper:")) return "OpenAI Whisper large-v2";
+  if (engine.startsWith("vaibhavs10/incredibly-fast-whisper:")) return "Fast Whisper";
+  return engine.split(":")[0] ?? engine;
 }
 
 const defaultSteps: AnalysisStep[] = [

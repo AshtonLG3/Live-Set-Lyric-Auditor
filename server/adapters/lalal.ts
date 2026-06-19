@@ -26,6 +26,15 @@ type LalalCheckResponse = {
   result?: Record<string, LalalTaskResult>;
 };
 
+type LalalVocalPreset = {
+  stem: "vocals";
+  splitter?: string;
+  dereverb_enabled: boolean;
+  encoder_format: string;
+  extraction_level: string;
+  multivocal?: "lead_back";
+};
+
 export type VocalIsolationResult = {
   source: "lalalai" | "original" | "fixture";
   confidence: number;
@@ -89,6 +98,7 @@ export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIs
       throw new Error("LALAL upload did not return an id");
     }
 
+    const presets = buildVocalPreset();
     const split = await fetch(`${env.lalalBaseUrl}/split/stem_separator/`, {
       method: "POST",
       headers: {
@@ -97,13 +107,7 @@ export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIs
       },
       body: JSON.stringify({
         source_id: sourceId,
-        presets: {
-          stem: "vocals",
-          splitter: "phoenix",
-          dereverb_enabled: false,
-          encoder_format: "mp3",
-          extraction_level: "deep_extraction"
-        }
+        presets
       })
     });
     if (!split.ok) {
@@ -115,15 +119,15 @@ export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIs
     }
 
     const completed = await waitForSplit(splitPayload.task_id);
-    const vocalTrack = completed.result?.tracks?.find((track) => track.type === "stem" && track.label === "vocals");
+    const vocalTrack = selectVocalTrack(completed.result?.tracks ?? []);
     if (!vocalTrack?.url) {
       throw new Error("LALAL split completed without a vocal stem URL");
     }
 
     return {
       source: "lalalai",
-      confidence: 0.86,
-      detail: "Live LALAL.AI vocal isolation completed.",
+      confidence: vocalTrack.label === "vocals@0" ? 0.9 : 0.86,
+      detail: lalalDetail(presets, vocalTrack),
       vocalUrl: vocalTrack.url
     };
   } catch (error) {
@@ -168,6 +172,40 @@ async function waitForSplit(taskId: string): Promise<LalalTaskResult> {
 
 function lalalHeaders(): Record<string, string> {
   return { "X-License-Key": env.lalalKey ?? "" };
+}
+
+function buildVocalPreset(): LalalVocalPreset {
+  const presets: LalalVocalPreset = {
+    stem: "vocals",
+    dereverb_enabled: env.lalalDereverbEnabled,
+    encoder_format: env.lalalEncoderFormat,
+    extraction_level: env.lalalExtractionLevel
+  };
+  if (env.lalalSplitter) {
+    presets.splitter = env.lalalSplitter;
+  }
+  if (env.lalalLeadBackEnabled) {
+    presets.multivocal = "lead_back";
+  }
+  return presets;
+}
+
+function selectVocalTrack(tracks: LalalTrack[]): LalalTrack | undefined {
+  return tracks.find((track) => track.type === "stem" && track.label === "vocals@0")
+    ?? tracks.find((track) => track.type === "stem" && track.label === "vocals")
+    ?? tracks.find((track) => track.type === "stem" && track.label?.startsWith("vocals@"))
+    ?? tracks.find((track) => track.type === "stem");
+}
+
+function lalalDetail(presets: LalalVocalPreset, track: LalalTrack): string {
+  const splitter = presets.splitter ? `${presets.splitter} splitter` : "default/latest splitter";
+  const vocalMode = presets.multivocal === "lead_back"
+    ? track.label === "vocals@0"
+      ? "lead vocal"
+      : "lead/back request"
+    : "vocal stem";
+  const dereverb = presets.dereverb_enabled ? "dereverb on" : "dereverb off";
+  return `Live LALAL.AI ${vocalMode} isolation completed (${splitter}, ${dereverb}, ${presets.extraction_level.replaceAll("_", " ")}).`;
 }
 
 function safeFilename(filename: string): string {

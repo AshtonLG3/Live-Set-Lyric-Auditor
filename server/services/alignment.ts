@@ -1,4 +1,4 @@
-import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, EvidenceTier, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, WordDiff } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, EvidenceTier, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, VocalQualityReport, WordDiff } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -374,7 +374,9 @@ export function buildPassport(input: {
   matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
   vocalIsolationSource: "lalalai" | "original" | "fixture";
   vocalIsolationConfidence: number;
+  vocalQuality?: VocalQualityReport;
   asrSource: "replicate" | "external" | "fixture";
+  asrEngine?: string;
   source: ClipSource;
   liveContext?: LiveContext | null;
   performanceContext?: PerformanceContext;
@@ -410,7 +412,9 @@ export function buildPassport(input: {
       durationSeconds: input.durationSeconds,
       vocalIsolationSource: input.vocalIsolationSource,
       vocalIsolationConfidence: input.vocalIsolationConfidence,
+      vocalQuality: input.vocalQuality,
       asrSource: input.asrSource,
+      asrEngine: input.asrEngine,
       transcript: input.transcript,
       source: input.source
     },
@@ -467,11 +471,16 @@ export function buildPassport(input: {
       input.performanceContext?.source === "cyanite"
         ? "Configured Cyanite analysis contributes derived energy, mood, BPM, and arrangement metadata."
         : "Performance context uses seeded demo metadata when Cyanite analysis is unavailable.",
-      input.vocalIsolationSource === "lalalai"
-        ? "Configured LALAL.AI vocal isolation supplied the transcription stem."
-        : input.vocalIsolationSource === "original"
-          ? "Vocal isolation was unavailable, so transcription used the original user-supplied audio."
-          : "Seeded demo isolation metadata was used for the fixture run."
+      input.asrEngine
+        ? `ASR engine selected by transcript quality gate: ${input.asrEngine}.`
+        : "ASR engine was not reported by the configured transcription provider.",
+      input.vocalQuality?.fallbackUsed
+        ? input.vocalQuality.detail
+        : input.vocalIsolationSource === "lalalai"
+          ? "Configured LALAL.AI vocal isolation supplied the transcription stem."
+          : input.vocalIsolationSource === "original"
+            ? "Vocal isolation was unavailable or rejected, so transcription used the original user-supplied audio."
+            : "Seeded demo isolation metadata was used for the fixture run."
     ]
   };
 }

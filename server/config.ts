@@ -22,6 +22,11 @@ export const env = {
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
   lalalPollIntervalMs: Math.max(2_000, Number(process.env.LALAL_POLL_INTERVAL_MS ?? 3_000)),
   lalalPollTimeoutMs: Math.max(10_000, Number(process.env.LALAL_POLL_TIMEOUT_MS ?? 180_000)),
+  lalalSplitter: process.env.LALAL_SPLITTER?.trim(),
+  lalalDereverbEnabled: parseBoolean(process.env.LALAL_DEREVERB_ENABLED) ?? true,
+  lalalLeadBackEnabled: parseBoolean(process.env.LALAL_LEAD_BACK_ENABLED) ?? true,
+  lalalExtractionLevel: process.env.LALAL_EXTRACTION_LEVEL?.trim() || "clear_cut",
+  lalalEncoderFormat: process.env.LALAL_ENCODER_FORMAT?.trim() || "mp3",
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
   elevenlabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
   replicateToken: process.env.REPLICATE_API_TOKEN,
@@ -57,7 +62,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configured("LALAL_LICENSE_KEY"),
       mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
       detail: configured("LALAL_LICENSE_KEY")
-        ? "Activation key configured; upload, vocal splitting, and result polling enabled."
+        ? "Activation key configured; lead-vocal splitting, dereverb settings, and result polling enabled."
         : "Real uploads use original audio; seeded demos use fixture isolation."
     },
     {
@@ -91,7 +96,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL"),
       mode: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL") ? "live" : "fixture",
       detail: configured("REPLICATE_API_TOKEN")
-        ? "Replicate Whisper transcription configured with a pinned fallback model."
+        ? "Replicate Whisper transcription ranks the fast and pinned OpenAI candidates by transcript quality."
         : configured("ASR_API_URL")
           ? "External Whisper-style ASR endpoint configured."
         : "Using seeded transcript for demo resilience."

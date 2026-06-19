@@ -105,11 +105,31 @@ export type AnalysisRecovery = {
   durationSeconds: number;
   vocalIsolationSource: "lalalai" | "original" | "fixture";
   vocalIsolationConfidence: number;
+  vocalQuality?: VocalQualityReport;
   asrSource: "replicate" | "external" | "fixture";
+  asrEngine?: string;
   transcript: TranscriptSegment[];
   source: ClipSource;
   performanceContext: PerformanceContext;
   event: EventCandidate | null;
+};
+
+export type VocalQualityStatus = "passed" | "warning" | "failed" | "fallback_original";
+
+export type VocalQualityReport = {
+  selectedSource: "lalalai" | "original" | "fixture";
+  rejectedSource?: "lalalai";
+  status: VocalQualityStatus;
+  score: number;
+  segmentCount: number;
+  tokenCount: number;
+  uniqueTokenRatio: number;
+  repetitionRatio: number;
+  averageConfidence: number;
+  dominantPhrase?: string;
+  issues: string[];
+  fallbackUsed: boolean;
+  detail: string;
 };
 
 export type TranscriptSegment = {
@@ -247,7 +267,9 @@ export type LiveVariantPassport = {
     durationSeconds: number;
     vocalIsolationSource: "lalalai" | "original" | "fixture";
     vocalIsolationConfidence: number;
+    vocalQuality?: VocalQualityReport;
     asrSource: "replicate" | "external" | "fixture";
+    asrEngine?: string;
     transcript: TranscriptSegment[];
     source: ClipSource;
   };
