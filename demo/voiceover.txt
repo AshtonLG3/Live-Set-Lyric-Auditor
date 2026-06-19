@@ -1,15 +1,15 @@
-Every lyrics database knows the studio version of a song. Almost none of them know what the artist actually sang on stage last night. Live-Set Lyric Auditor closes that gap.
+Studio lyrics are easy to find. Live lyrics are harder. Artists skip lines, change words, repeat hooks, and call out the city. Live-Set Lyric Auditor turns those moments into reviewable evidence.
 
-The app starts from an authorized concert clip, a phone recording, or a remembered lyric fragment. It turns that evidence into a Live Variant Passport: a timestamped review file for lyric QA, captions, archives, artist teams, and fan experiences.
+Start with an authorized concert clip, a phone recording, or even a lyric fragment someone remembers after the show. The app builds a Live Variant Passport: a timestamped record of how the live performance compares with the canonical song.
 
-For the judges, the important part is visible on screen: the app is running in API mode. Musixmatch Pro anchors the exact recording with track search, common-track metadata, ISRC, lyric availability, subtitles, and RichSync where available.
+Here the app is running in API mode. Musixmatch Pro anchors the recording with track search, common-track metadata, ISRC, lyric availability, subtitles, and RichSync when it is available.
 
-Recall Rescue handles the messy real-world case where someone only remembers a line. A spoken, sung, or typed fragment can still resolve a defensible Musixmatch track anchor before analysis continues.
+Recall Rescue covers the messy case where the reviewer does not know the track. A typed, spoken, or sung fragment can still resolve a defensible Musixmatch anchor before analysis continues.
 
-When analysis runs, the pipeline validates the source, isolates the live vocal, profiles the performance, transcribes the clip, matches the recording, compares timing, and assembles the Passport.
+Once analysis starts, the pipeline validates the source, isolates the live vocal, profiles the arrangement, transcribes the clip, matches the recording, compares timing, and assembles the Passport.
 
-The centerpiece is the Live vs Studio comparison. Each live line sits beside the studio reference. Reviewers can see matched lines, changed lines, skipped studio moments, live-only ad libs, timing drift, and word-level additions or removals.
+The main review surface is Live vs Studio. Each live line sits beside its studio reference, with changed words, skipped lines, live-only ad libs, timing drift, and approve or reject decisions in one place.
 
-The Passport is not just a diff. JamBase ties the result to a real event, venue, lineup, and setlist position. Cyanite adds arrangement evidence such as energy, tempo, mood, and instrumentation, so the lyric change is grounded in performance context.
+The Passport also carries context. JamBase ties the result to the event, venue, lineup, and setlist position. Cyanite adds performance signals like energy, tempo, mood, and instrumentation.
 
-Finally, the reviewer can generate a narration summary and export the full Passport as JSON: variants, timestamps, confidence, source mode, rights notes, and review decisions. Studio databases capture the canonical lyric. Live-Set Lyric Auditor captures what fans actually heard.
+At the end, the reviewer exports JSON with variants, timestamps, confidence, source mode, rights notes, and review decisions. The studio lyric says what was written. Live-Set Lyric Auditor shows what was actually heard.

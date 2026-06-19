@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import wave
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -120,9 +119,14 @@ def closing_slide(version: str) -> Image.Image:
     return image.convert("RGB")
 
 
-def wav_duration(path: Path) -> float:
-    with wave.open(str(path), "rb") as handle:
-        return handle.getnframes() / float(handle.getframerate())
+def audio_duration(path: Path) -> float:
+    result = subprocess.run([
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(path)
+    ], cwd=ROOT, check=True, capture_output=True, text=True)
+    return float(result.stdout.strip())
 
 
 def pick(path: str, fallback: str) -> Path:
@@ -207,7 +211,7 @@ def render_video(version: str, voiceover: Path, output: Path) -> None:
         ("09-close", closing_slide(version), 10),
     ]
 
-    duration = wav_duration(voiceover)
+    duration = audio_duration(voiceover)
     base_total = sum(weight for *_slide, weight in definitions)
     scaled = [max(4.0, duration * weight / base_total) for *_slide, weight in definitions]
     scale_total = sum(scaled)

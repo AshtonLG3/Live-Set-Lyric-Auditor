@@ -19,15 +19,23 @@ if (-not $SkipCapture) {
   npm run demo:capture
 }
 
-Add-Type -AssemblyName System.Speech
 $voiceoverText = Join-Path $root "demo/voiceover.txt"
-$voiceoverWav = Join-Path $root "demo/tmp/voiceover.wav"
-$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$synth.Rate = -1
-$synth.Volume = 100
-try { $synth.SelectVoice("Microsoft Zira Desktop") } catch { }
-$synth.SetOutputToWaveFile($voiceoverWav)
-$synth.Speak([System.IO.File]::ReadAllText($voiceoverText))
-$synth.Dispose()
+$voiceoverMp3 = Join-Path $root "demo/tmp/voiceover-elevenlabs.mp3"
+$voiceoverWav = Join-Path $root "demo/tmp/voiceover-fallback.wav"
 
-python scripts/render-demo-video.py --version $Version --voiceover $voiceoverWav --output $Output
+node scripts/generate-demo-voiceover.mjs $voiceoverText $voiceoverMp3
+if ($LASTEXITCODE -eq 0 -and (Test-Path $voiceoverMp3)) {
+  $voiceoverAudio = $voiceoverMp3
+} else {
+  Add-Type -AssemblyName System.Speech
+  $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+  $synth.Rate = 0
+  $synth.Volume = 100
+  try { $synth.SelectVoice("Microsoft David Desktop") } catch { }
+  $synth.SetOutputToWaveFile($voiceoverWav)
+  $synth.Speak([System.IO.File]::ReadAllText($voiceoverText))
+  $synth.Dispose()
+  $voiceoverAudio = $voiceoverWav
+}
+
+python scripts/render-demo-video.py --version $Version --voiceover $voiceoverAudio --output $Output
