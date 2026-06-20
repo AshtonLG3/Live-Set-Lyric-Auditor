@@ -34,8 +34,8 @@ describe("ASR adapter", () => {
       source: "replicate",
       engine: "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
       segments: [
-        { start: 0, end: 2.4, text: "we keep the signal" },
-        { start: 2.4, end: 4.8, text: "alive" }
+        { start: 0, end: 2.4, text: "we keep the signal", confidence: 0.62 },
+        { start: 2.4, end: 4.8, text: "alive", confidence: 0.62 }
       ]
     });
     expect(runMock).toHaveBeenCalledWith(
@@ -50,7 +50,7 @@ describe("ASR adapter", () => {
         })
       }
     );
-    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(runMock).toHaveBeenCalledTimes(2);
     const uploaded = runMock.mock.calls[0]?.[1]?.input.audio as File;
     expect(uploaded.name).toBe("stage-clip.mp3");
   });
@@ -102,9 +102,11 @@ describe("ASR adapter", () => {
 
   it("does not let a rate-limited fallback model fail a usable fast transcript", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
-    runMock.mockResolvedValueOnce({
-      chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
-    });
+    runMock
+      .mockResolvedValueOnce({
+        chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
+      })
+      .mockRejectedValueOnce(new Error("429 too many requests"));
 
     const { transcribeLiveVocal } = await import("./asr");
     const result = await transcribeLiveVocal(audioFile());
@@ -113,7 +115,7 @@ describe("ASR adapter", () => {
       source: "replicate",
       engine: "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c"
     });
-    expect(runMock).toHaveBeenCalledTimes(1);
+    expect(runMock).toHaveBeenCalledTimes(2);
   });
 
   it("downloads a vocal URL and retries when Replicate rejects the remote file handoff", async () => {

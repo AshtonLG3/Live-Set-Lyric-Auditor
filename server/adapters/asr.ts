@@ -30,6 +30,7 @@ type ReplicateCandidate = {
 };
 
 const replicateVersionCooldowns = new Map<string, number>();
+const ESTIMATED_SEGMENT_CONFIDENCE = 0.62;
 
 export async function transcribeLiveVocal(file?: Express.Multer.File, vocalUrl?: string): Promise<TranscriptionResult> {
   return transcribe(file, fixtureTranscript, vocalUrl);
@@ -153,12 +154,6 @@ async function runReplicateVersions(
   const candidates: ReplicateCandidate[] = [];
 
   for (const [index, version] of versions.entries()) {
-    const bestPrimary = chooseBestCandidate(candidates);
-    if (index > 0 && bestPrimary?.index === 0 && bestPrimary.status === "passed") {
-      messages.push(`${version} skipped because the primary transcript passed quality checks`);
-      continue;
-    }
-
     const cooldownUntil = replicateVersionCooldowns.get(version) ?? 0;
     if (Date.now() < cooldownUntil) {
       messages.push(`${version} skipped during temporary Replicate rate-limit cooldown`);
@@ -378,7 +373,7 @@ function parseReplicateOutput(output: object): TranscriptSegment[] {
   const text = [record.text, record.transcription]
     .find((value): value is string => typeof value === "string" && Boolean(value.trim()));
   return text
-    ? [{ id: "R1", start: 0, end: 4, text: text.trim(), confidence: 0.78 }]
+    ? [{ id: "R1", start: 0, end: 4, text: text.trim(), confidence: ESTIMATED_SEGMENT_CONFIDENCE }]
     : [];
 }
 
@@ -430,5 +425,5 @@ function normalizeConfidence(confidence?: number, avgLogprob?: number): number {
   if (typeof avgLogprob === "number") {
     return Math.max(0.1, Math.min(0.99, 1 + avgLogprob));
   }
-  return 0.72;
+  return ESTIMATED_SEGMENT_CONFIDENCE;
 }
