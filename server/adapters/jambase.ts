@@ -1,6 +1,5 @@
 import type { EventCandidate, LiveContext, TrackCandidate } from "../../shared/types";
 import { env } from "../config";
-import { fixtureEvents } from "../data/fixtures";
 
 type JamBaseEntity = {
   id?: string | number;
@@ -31,6 +30,16 @@ type JamBaseEvent = {
   setlist?: unknown;
 };
 
+type JamBaseEventsResponse = {
+  events?: JamBaseEvent[];
+  results?: JamBaseEvent[];
+  pagination?: {
+    nextPage?: string | null;
+  };
+};
+
+const MAX_HINTED_EVENT_PAGES = 3;
+
 export async function searchEvents(input: {
   artist?: string;
   city?: string;
@@ -41,15 +50,29 @@ export async function searchEvents(input: {
   }
 
   const params = new URLSearchParams();
-  if (input.artist) params.set("artistName", input.artist);
-  if (input.city) params.set("city", input.city);
-  if (input.date) {
-    params.set("dateFrom", input.date.slice(0, 10));
-    params.set("dateTo", input.date.slice(0, 10));
+  if (!input.artist?.trim()) {
+    return [];
   }
+  params.set("artistName", input.artist);
 
   try {
-    const response = await fetch(`${env.jambaseBaseUrl}/events?${params.toString()}`, {
+    const events = await fetchEventPages(`${env.jambaseBaseUrl}/events?${params.toString()}`, hasEventHint(input));
+    const mapped = events.map((event, index) => mapEvent(event, input, index));
+    return filterByEventHints(mapped, input).slice(0, 6);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown JamBase error";
+    console.warn(`JamBase search unavailable. ${detail}`);
+    return [];
+  }
+}
+
+async function fetchEventPages(firstUrl: string, followPages: boolean): Promise<JamBaseEvent[]> {
+  const events: JamBaseEvent[] = [];
+  let nextUrl: string | null | undefined = firstUrl;
+  let page = 0;
+
+  while (nextUrl && page < (followPages ? MAX_HINTED_EVENT_PAGES : 1)) {
+    const response = await fetch(nextUrl, {
       headers: {
         Authorization: `Bearer ${env.jambaseKey}`,
         Accept: "application/json"
@@ -58,15 +81,31 @@ export async function searchEvents(input: {
     if (!response.ok) {
       throw new Error(`JamBase search failed with ${response.status}`);
     }
-    const json = await response.json() as { events?: JamBaseEvent[]; results?: JamBaseEvent[] };
-    const events = json.events ?? json.results ?? [];
-    const mapped = events.slice(0, 6).map((event, index) => mapEvent(event, input, index));
-    return mapped;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "unknown JamBase error";
-    console.warn(`JamBase search unavailable; falling back to fixture events. ${detail}`);
-    return filterFixtureEvents(input);
+    const json = await response.json() as JamBaseEventsResponse;
+    events.push(...(json.events ?? json.results ?? []));
+    nextUrl = json.pagination?.nextPage;
+    page += 1;
   }
+
+  return events;
+}
+
+function hasEventHint(input: { city?: string; date?: string }): boolean {
+  return Boolean(input.city?.trim() || input.date?.trim());
+}
+
+function filterByEventHints(events: EventCandidate[], input: { city?: string; date?: string }): EventCandidate[] {
+  const city = normalize(input.city ?? "");
+  const date = input.date?.trim().slice(0, 10);
+  if (!city && !date) {
+    return events;
+  }
+  return events.filter((event) => {
+    const eventCity = normalize(event.city);
+    const cityMatches = !city || eventCity.includes(city) || city.includes(eventCity);
+    const dateMatches = !date || event.date.slice(0, 10) === date;
+    return cityMatches && dateMatches;
+  });
 }
 
 export function buildLiveContext(event: EventCandidate | null, track: TrackCandidate): LiveContext | null {
@@ -111,7 +150,7 @@ function mapEvent(event: JamBaseEvent, input: { artist?: string; city?: string; 
   const artistEntity = performers[0];
   const artist = entityName(artistEntity) ?? input.artist ?? "Unknown artist";
   const venue = entityName(event.venue) ?? event.location?.name ?? "Unknown venue";
-  const city = event.venue?.city ?? event.location?.address?.addressLocality ?? input.city ?? "Unknown city";
+  const city = event.venue?.city ?? event.location?.address?.addressLocality ?? "Unknown city";
   const setlist = mapSetlist(event.setlist, event.url);
 
   return {
@@ -122,7 +161,7 @@ function mapEvent(event: JamBaseEvent, input: { artist?: string; city?: string; 
     venue,
     venueId: entityId(event.venue) ?? entityId(event.location),
     city,
-    date: event.startDate ?? input.date ?? new Date().toISOString(),
+    date: event.startDate ?? new Date().toISOString(),
     tourName: entityName(event.tour),
     festivalName: entityName(event.festival),
     lineup: lineup.map(entityName).filter((name): name is string => Boolean(name)),
@@ -168,16 +207,6 @@ function entityId(value: JamBaseEntity | JamBaseEvent["location"] | JamBaseEvent
 function entityName(value: JamBaseEntity | string | undefined): string | undefined {
   if (typeof value === "string") return value;
   return value?.name ?? value?.title;
-}
-
-function filterFixtureEvents(input: { artist?: string; city?: string }): EventCandidate[] {
-  const artist = input.artist?.toLowerCase();
-  const city = input.city?.toLowerCase();
-  return fixtureEvents.filter((event) => {
-    const artistMatch = !artist || event.artist.toLowerCase().includes(artist);
-    const cityMatch = !city || event.city.toLowerCase().includes(city);
-    return artistMatch && cityMatch;
-  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

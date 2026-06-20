@@ -164,6 +164,9 @@ async function runReplicateVersions(
     messages.push(outcome.message);
     if (outcome.candidate) {
       candidates.push(outcome.candidate);
+      if (!env.asrCompareAllModels && outcome.candidate.status !== "failed") {
+        return { segments: outcome.candidate.segments, engine: outcome.candidate.version, messages };
+      }
     }
   }
 
@@ -182,7 +185,7 @@ async function runReplicateVersion(
   audio: ReplicateAudioInput
 ): Promise<{ candidate?: ReplicateCandidate; message: string }> {
   try {
-    const output = await replicate.run(version as `${string}/${string}:${string}`, {
+    const output = await replicate.run(version as `${string}/${string}` | `${string}/${string}:${string}`, {
       input: replicateInput(version, audio)
     });
     const segments = parseReplicateOutput(output);
@@ -254,7 +257,7 @@ async function downloadAudioFile(url: string): Promise<Blob> {
 }
 
 function replicateInput(version: string, audio: ReplicateAudioInput): Record<string, unknown> {
-  if (version.startsWith("openai/whisper:")) {
+  if (version.startsWith("openai/whisper")) {
     return {
       audio,
       model: "large-v2",

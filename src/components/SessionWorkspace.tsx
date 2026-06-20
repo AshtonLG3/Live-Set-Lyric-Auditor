@@ -109,7 +109,7 @@ export function SessionWorkspace(props: Props) {
           </RackPanel>
 
           <RackPanel id="event-anchor" title="Event Anchor" icon={<CalendarDays size={18} />} status={props.selectedEvent ? "Event Found" : "Optional"}>
-            <p className="studio-panel-intro">City, date, venue, and JamBase concert evidence.</p>
+            <p className="studio-panel-intro">City or date also auto-finds JamBase context after track identification.</p>
             <div className="studio-event-fields">
               <input className="field" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" />
               <input className="field" type="date" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} aria-label="Event date" />
@@ -151,9 +151,10 @@ function RackPanel({ id, title, icon, status, children }: { id: string; title: s
 function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolean, hasEvent: boolean) {
   if (name === "Musixmatch") return hasTrack ? "Track Ready" : "Catalog Ready";
   if (name === "Audio ID") return busy ? "Listening" : "Grace Route";
+  if (name === "LALAL.AI") return busy ? "Rescue Split" : "Rescue Ready";
   if (name === "JamBase") return hasEvent ? "Event Found" : "Search Ready";
-  if (name === "ASR") return busy ? "Processing" : "Transcript Ready";
-  if (name === "Demucs") return busy ? "Isolating Vocal" : "Vocal Ready";
+  if (name === "ASR") return busy ? "Fast Whisper" : "Transcript Ready";
+  if (name === "Demucs") return busy ? "Last Resort" : "Slow Fallback";
   if (name === "Cyanite") return busy ? "Profiling Live Energy" : "Context Ready";
   return "Narration Ready";
 }

@@ -19,12 +19,17 @@ const mocks = vi.hoisted(() => {
     transcribeRecallFragment: vi.fn(),
     identifyTrackFromLyrics: vi.fn(),
     getCanonicalReference: vi.fn(),
-    analyzePerformance: vi.fn()
+    analyzePerformance: vi.fn(),
+    isolateVocalsWithLalal: vi.fn()
   };
 });
 
 vi.mock("../adapters/demucs", () => ({
   isolateVocalsWithDemucs: mocks.isolateVocalsWithDemucs
+}));
+
+vi.mock("../adapters/lalal", () => ({
+  isolateVocals: mocks.isolateVocalsWithLalal
 }));
 
 vi.mock("../adapters/asr", () => ({
@@ -49,13 +54,7 @@ describe("analysis vocal quality fallback", () => {
     vi.unstubAllEnvs();
   });
 
-  it("rejects a repetitive Demucs stem and completes with original-audio ASR", async () => {
-    mocks.isolateVocalsWithDemucs.mockResolvedValue({
-      source: "demucs",
-      confidence: 0.86,
-      detail: "Replicate Demucs vocal stem isolation completed.",
-      vocalUrl: "https://cdn.example/demucs-vocals.mp3"
-    });
+  it("uses original-audio ASR first without spending time on a split when it is strong", async () => {
     mocks.transcribeLiveVocal.mockImplementation(async (_file: Express.Multer.File | undefined, vocalUrl?: string) => ({
       source: "replicate",
       segments: vocalUrl ? repeatedStemSegments() : originalAudioSegments()
@@ -101,15 +100,67 @@ describe("analysis vocal quality fallback", () => {
     const analyzed = jobs.get(job.id);
     expect(analyzed?.status).toBe("complete");
     expect(analyzed?.passport?.clip.vocalIsolationSource).toBe("original");
-    expect(analyzed?.passport?.clip.vocalQuality).toMatchObject({
-      status: "fallback_original",
-      fallbackUsed: true,
-      rejectedSource: "demucs"
-    });
+    expect(analyzed?.passport?.clip.vocalQuality).toMatchObject({ status: "passed", fallbackUsed: false });
     expect(analyzed?.passport?.clip.transcript[0]?.text).toContain("Talk to God");
-    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(2);
-    expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBe("https://cdn.example/demucs-vocals.mp3");
-    expect(mocks.transcribeLiveVocal.mock.calls[1]?.[1]).toBeUndefined();
+    expect(mocks.isolateVocalsWithLalal).not.toHaveBeenCalled();
+    expect(mocks.isolateVocalsWithDemucs).not.toHaveBeenCalled();
+    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBeUndefined();
+  });
+
+  it("rescues weak original-audio ASR with LALAL before trying slow Demucs", async () => {
+    vi.stubEnv("LALAL_LICENSE_KEY", "lalal-test-key");
+    mocks.isolateVocalsWithLalal.mockResolvedValue({
+      source: "lalalai",
+      confidence: 0.9,
+      detail: "Live LALAL.AI lead vocal isolation completed.",
+      vocalUrl: "https://cdn.example/lalal-vocals.mp3"
+    });
+    mocks.transcribeLiveVocal.mockImplementation(async (_file: Express.Multer.File | undefined, vocalUrl?: string) => ({
+      source: "replicate",
+      segments: vocalUrl ? originalAudioSegments() : weakOriginalSegments()
+    }));
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobs } = await import("../store");
+    const { runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.passport?.clip.vocalIsolationSource).toBe("lalalai");
+    expect(analyzed?.passport?.clip.transcript[0]?.text).toContain("Talk to God");
+    expect(mocks.isolateVocalsWithLalal).toHaveBeenCalledTimes(1);
+    expect(mocks.isolateVocalsWithDemucs).not.toHaveBeenCalled();
+    expect(mocks.transcribeLiveVocal.mock.calls.map((call) => call[1])).toEqual([undefined, "https://cdn.example/lalal-vocals.mp3"]);
   });
 });
 
@@ -127,6 +178,13 @@ function originalAudioSegments() {
   return [
     { id: "O1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry", confidence: 0.84 },
     { id: "O2", start: 4, end: 8, text: "Listen God I know I've been sinning lately", confidence: 0.82 }
+  ];
+}
+
+function weakOriginalSegments() {
+  return [
+    { id: "W1", start: 0, end: 4, text: "satellite engines over cold neon water", confidence: 0.62 },
+    { id: "W2", start: 4, end: 8, text: "broken traffic lights counting backwards", confidence: 0.62 }
   ];
 }
 

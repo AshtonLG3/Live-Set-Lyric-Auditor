@@ -7,7 +7,7 @@ import { analyzePerformance } from "../adapters/cyanite";
 import { narratePassport } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocalsWithDemucs } from "../adapters/demucs";
-import type { VocalIsolationResult } from "../adapters/demucs";
+import { isolateVocals as isolateVocalsWithLalal } from "../adapters/lalal";
 import { identifyTrackFromAudio } from "../adapters/audio-id";
 import type { AudioIdentityMatch } from "../adapters/audio-id";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
@@ -29,6 +29,13 @@ export type AnalyzeInput = {
   useFixture?: boolean;
   source?: ClipSource;
   recallSegments?: TranscriptSegment[];
+};
+
+type VocalIsolationResult = {
+  source: "lalalai" | "demucs" | "original" | "fixture";
+  confidence: number;
+  detail: string;
+  vocalUrl?: string;
 };
 
 export async function runRecallRescue(file?: Express.Multer.File, phrase?: string): Promise<RecallRescueResponse> {
@@ -91,7 +98,17 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
           confidence: 1,
           detail: "Recall text supplied; no vocal isolation needed."
         }
-      : await isolateVocalsWithDemucs(analysisFile);
+      : analysisFile
+        ? {
+            source: "original",
+            confidence: 0.58,
+            detail: "Fast mode: original audio goes to ASR first; LALAL.AI or Demucs split runs only if the first passport needs rescue."
+          }
+        : {
+            source: "fixture",
+            confidence: 0.74,
+            detail: "Fixture vocal isolation used for stable demo playback."
+          };
     setStep(jobId, "isolate", "complete", initialVocal.detail);
 
     setStep(jobId, "profile", "running");
@@ -166,34 +183,39 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     );
 
     setStep(jobId, "passport", "running");
-    const passport = buildPassport({
-      id: jobId,
+    let passport = buildPassportForSelection({
+      jobId,
+      input,
+      analysisFile,
+      effectiveSource,
       track,
       event,
-      filename: analysisFile?.originalname ?? sourceFilename(input.source),
-      durationSeconds: input.durationSeconds ?? fixtureClipDuration,
-      canonicalLines: canonical.lines,
-      transcript: selected.transcription.segments,
-      sourceCoverage: canonical.sourceCoverage,
-      canonicalSource: canonical.source,
-      restricted: canonical.restricted,
-      language: canonical.language,
-      copyright: canonical.copyright,
-      trackingUrl: canonical.trackingUrl,
-      matchMethod: resolved.matchMethod,
-      vocalIsolationSource: selected.vocal.source,
-      vocalIsolationConfidence: selected.vocal.confidence,
-      vocalQuality: selected.vocalQuality,
-      asrSource: selected.transcription.source,
-      asrEngine: selected.transcription.engine,
-      source: effectiveSource ?? {
-        kind: analysisFile ? "upload" : "fixture",
-        processingMode: analysisFile ? "uploaded_media" : "fixture"
-      },
+      canonical,
       liveContext,
-      performanceContext
+      performanceContext,
+      resolved,
+      selected
     });
     assertSelectedTrackFitsTranscript(passport);
+
+    const rescue = await maybeImproveWeakPassport({
+      jobId,
+      input,
+      analysisFile,
+      effectiveSource,
+      track,
+      event,
+      canonical,
+      liveContext,
+      performanceContext,
+      resolved,
+      current: { selected, passport }
+    });
+    if (rescue) {
+      selected = rescue.selected;
+      passport = rescue.passport;
+      persistRecovery();
+    }
 
     updateJob(jobId, (job) => ({
       ...job,
@@ -318,11 +340,11 @@ type VocalTranscriptionSelection = {
 };
 
 function isSeparatedStem(source: VocalIsolationResult["source"]): boolean {
-  return source === "demucs";
+  return source === "demucs" || source === "lalalai";
 }
 
 function stemSourceLabel(source: VocalIsolationResult["source"]): string {
-  return source === "demucs" ? "Demucs" : "Separated-audio";
+  return source === "lalalai" ? "LALAL.AI" : source === "demucs" ? "Demucs" : "Separated-audio";
 }
 
 async function selectVocalTranscription(
@@ -499,7 +521,9 @@ function selectOriginalFallback(
 }
 
 function transcriptionDetail(selection: VocalTranscriptionSelection): string {
-  const sourceLabel = selection.vocal.source === "demucs"
+  const sourceLabel = selection.vocal.source === "lalalai"
+    ? "LALAL.AI stem"
+    : selection.vocal.source === "demucs"
     ? "Demucs stem"
     : selection.vocal.source === "original"
       ? "original audio"
@@ -544,6 +568,135 @@ function addIsolationDetail(report: VocalQualityReport, vocal: VocalIsolationRes
   return {
     ...report,
     detail: `${report.detail} ${vocal.detail}`
+  };
+}
+
+type PassportBuildArgs = {
+  jobId: string;
+  input: AnalyzeInput;
+  analysisFile?: Express.Multer.File;
+  effectiveSource?: ClipSource;
+  track: TrackCandidate;
+  event: EventCandidate | null;
+  canonical: Awaited<ReturnType<typeof getCanonicalReference>>;
+  liveContext: ReturnType<typeof buildLiveContext>;
+  performanceContext: Awaited<ReturnType<typeof analyzePerformance>>;
+  resolved: Awaited<ReturnType<typeof resolveTrack>>;
+  selected: VocalTranscriptionSelection;
+};
+
+function buildPassportForSelection(args: PassportBuildArgs): LiveVariantPassport {
+  return buildPassport({
+    id: args.jobId,
+    track: args.track,
+    event: args.event,
+    filename: args.analysisFile?.originalname ?? sourceFilename(args.input.source),
+    durationSeconds: args.input.durationSeconds ?? fixtureClipDuration,
+    canonicalLines: args.canonical.lines,
+    transcript: args.selected.transcription.segments,
+    sourceCoverage: args.canonical.sourceCoverage,
+    canonicalSource: args.canonical.source,
+    restricted: args.canonical.restricted,
+    language: args.canonical.language,
+    copyright: args.canonical.copyright,
+    trackingUrl: args.canonical.trackingUrl,
+    matchMethod: args.resolved.matchMethod,
+    vocalIsolationSource: args.selected.vocal.source,
+    vocalIsolationConfidence: args.selected.vocal.confidence,
+    vocalQuality: args.selected.vocalQuality,
+    asrSource: args.selected.transcription.source,
+    asrEngine: args.selected.transcription.engine,
+    source: args.effectiveSource ?? {
+      kind: args.analysisFile ? "upload" : "fixture",
+      processingMode: args.analysisFile ? "uploaded_media" : "fixture"
+    },
+    liveContext: args.liveContext,
+    performanceContext: args.performanceContext
+  });
+}
+
+async function maybeImproveWeakPassport(
+  args: Omit<PassportBuildArgs, "selected"> & { current: { selected: VocalTranscriptionSelection; passport: LiveVariantPassport } }
+): Promise<{ selected: VocalTranscriptionSelection; passport: LiveVariantPassport } | null> {
+  if (!shouldAttemptStemRescue(args.current.passport, args.analysisFile, args.input)) {
+    return null;
+  }
+
+  const providers: Array<{
+    label: "LALAL.AI" | "Demucs";
+    available: boolean;
+    isolate: (file: Express.Multer.File) => Promise<VocalIsolationResult>;
+  }> = [
+    { label: "LALAL.AI", available: Boolean(env.lalalKey), isolate: isolateVocalsWithLalal },
+    { label: "Demucs", available: Boolean(env.replicateToken), isolate: isolateVocalsWithDemucs }
+  ];
+
+  for (const provider of providers) {
+    if (!args.analysisFile || !provider.available) {
+      continue;
+    }
+    try {
+      setStep(args.jobId, "isolate", "running", `Initial ASR/alignment is weak; trying ${provider.label} vocal split.`);
+      const vocal = await provider.isolate(args.analysisFile);
+      if (!isSeparatedStem(vocal.source) || !vocal.vocalUrl) {
+        continue;
+      }
+      setStep(args.jobId, "isolate", "complete", vocal.detail);
+      setStep(args.jobId, "transcribe", "running", `Transcribing ${stemSourceLabel(vocal.source)} rescue stem.`);
+      const selected = await transcribeSeparatedVocal(args.analysisFile, vocal);
+      setStep(args.jobId, "transcribe", "complete", transcriptionDetail(selected));
+      const passport = buildPassportForSelection({ ...args, selected });
+      if (isBetterPassport(args.current.passport, passport)) {
+        setStep(args.jobId, "passport", "running", `${provider.label} rescue improved ASR/alignment; using stem transcript.`);
+        return { selected, passport };
+      }
+      setStep(args.jobId, "passport", "running", `${provider.label} rescue did not improve the passport; keeping original-audio ASR.`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : `${provider.label} rescue failed`;
+      setStep(args.jobId, "passport", "running", `${provider.label} rescue unavailable: ${detail}`);
+    }
+  }
+
+  return null;
+}
+
+function shouldAttemptStemRescue(passport: LiveVariantPassport, analysisFile: Express.Multer.File | undefined, input: AnalyzeInput): boolean {
+  if (!analysisFile || input.useFixture || input.source?.kind === "recall_recording") {
+    return false;
+  }
+  if (passport.recordingIdentity.canonicalSource === "metadata-only" || passport.lineComparisons.length === 0) {
+    return false;
+  }
+  return passport.confidenceOverview.alignment < 0.55
+    || passport.confidenceOverview.asr < 0.66
+    || passport.confidenceOverview.overall < 0.6
+    || (passport.confidenceOverview.asrUncertainSegments ?? 0) > 0;
+}
+
+function isBetterPassport(current: LiveVariantPassport, candidate: LiveVariantPassport): boolean {
+  const currentUncertain = current.confidenceOverview.asrUncertainSegments ?? 0;
+  const candidateUncertain = candidate.confidenceOverview.asrUncertainSegments ?? 0;
+  return (
+    candidate.confidenceOverview.alignment >= current.confidenceOverview.alignment + 0.08
+    && candidate.confidenceOverview.overall >= current.confidenceOverview.overall - 0.03
+  ) || (
+    candidate.confidenceOverview.asr >= current.confidenceOverview.asr + 0.08
+    && candidate.confidenceOverview.alignment >= current.confidenceOverview.alignment - 0.02
+  ) || (
+    candidateUncertain < currentUncertain
+    && candidate.confidenceOverview.alignment >= current.confidenceOverview.alignment
+  );
+}
+
+async function transcribeSeparatedVocal(
+  analysisFile: Express.Multer.File,
+  vocal: VocalIsolationResult
+): Promise<VocalTranscriptionSelection> {
+  const transcription = await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
+  return {
+    transcription,
+    vocal,
+    vocalQuality: addIsolationDetail(assessVocalTranscript(transcription.segments, vocal.source), vocal)
   };
 }
 
@@ -623,8 +776,12 @@ async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise
   if (input.useFixture) {
     return fixtureEvents[0];
   }
-  if (input.event !== undefined) {
+  if (input.event) {
     return input.event;
+  }
+  const hasEventHint = Boolean(input.eventCity?.trim() || input.eventDate?.trim());
+  if (!hasEventHint) {
+    return null;
   }
   const events = await searchEvents({
     artist: track.artist,

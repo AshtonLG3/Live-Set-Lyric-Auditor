@@ -50,7 +50,7 @@ describe("ASR adapter", () => {
         })
       }
     );
-    expect(runMock).toHaveBeenCalledTimes(2);
+    expect(runMock).toHaveBeenCalledTimes(1);
     const uploaded = runMock.mock.calls[0]?.[1]?.input.audio as File;
     expect(uploaded.name).toBe("stage-clip.mp3");
   });
@@ -66,12 +66,10 @@ describe("ASR adapter", () => {
 
     expect(result).toMatchObject({
       source: "replicate",
-      engine: "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
+      engine: "openai/whisper",
       segments: [{ text: "fallback transcript" }]
     });
-    expect(runMock.mock.calls[1]?.[0]).toBe(
-      "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7"
-    );
+    expect(runMock.mock.calls[1]?.[0]).toBe("openai/whisper");
     expect(runMock.mock.calls[1]?.[1]?.input).toMatchObject({
       audio: "https://cdn.example/vocals.mp3",
       model: "large-v2",
@@ -96,17 +94,15 @@ describe("ASR adapter", () => {
     const { transcribeLiveVocal } = await import("./asr");
     const result = await transcribeLiveVocal(undefined, "https://cdn.example/demucs-vocals.mp3");
 
-    expect(result.engine).toBe("openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7");
+    expect(result.engine).toBe("openai/whisper");
     expect(result.segments.map((segment) => segment.text).join(" ")).toContain("Talk to God");
   });
 
-  it("does not let a rate-limited fallback model fail a usable fast transcript", async () => {
+  it("does not spend fallback time on a usable fast transcript by default", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
-    runMock
-      .mockResolvedValueOnce({
-        chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
-      })
-      .mockRejectedValueOnce(new Error("429 too many requests"));
+    runMock.mockResolvedValueOnce({
+      chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
+    });
 
     const { transcribeLiveVocal } = await import("./asr");
     const result = await transcribeLiveVocal(audioFile());
@@ -115,6 +111,22 @@ describe("ASR adapter", () => {
       source: "replicate",
       engine: "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c"
     });
+    expect(runMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("can compare every configured Whisper candidate for high-quality review mode", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    vi.stubEnv("ASR_COMPARE_ALL_MODELS", "true");
+    runMock
+      .mockResolvedValueOnce({
+        chunks: [{ timestamp: [0, 3], text: "talk to god wonder if he is mad or angry" }]
+      })
+      .mockResolvedValueOnce({ transcription: "talk to god wonder if he is mad or angry listen god I know I have been sinning lately" });
+
+    const { transcribeLiveVocal } = await import("./asr");
+    const result = await transcribeLiveVocal(audioFile());
+
+    expect(result.engine).toBeTruthy();
     expect(runMock).toHaveBeenCalledTimes(2);
   });
 

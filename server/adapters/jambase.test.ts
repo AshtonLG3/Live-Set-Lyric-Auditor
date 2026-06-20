@@ -38,7 +38,32 @@ describe("JamBase adapter", () => {
     expect(events[0]).toMatchObject({ id: "event-42", artistId: "artist-7", venueId: "venue-9", tourName: "City Voltage Tour" });
     expect(context?.setlist.position).toBe(2);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer jambase-test-key" });
-    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain("apikey");
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0]);
+    expect(requestedUrl).toContain("artistName=The+Signal+Keeps");
+    expect(requestedUrl).not.toContain("city=");
+    expect(requestedUrl).not.toContain("dateFrom=");
+    expect(requestedUrl).not.toContain("dateTo=");
+    expect(requestedUrl).not.toContain("apikey");
+  });
+
+  it("filters live results by user event hints instead of attaching arbitrary dates", async () => {
+    vi.stubEnv("JAMBASE_API_KEY", "jambase-test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      events: [{
+        identifier: "event-42",
+        name: "The Signal Keeps at Civic Hall",
+        startDate: "2026-06-18T20:00:00+02:00",
+        performers: [{ identifier: "artist-7", name: "The Signal Keeps" }],
+        venue: { identifier: "venue-9", name: "Civic Hall", city: "Cape Town" }
+      }]
+    })));
+
+    const { searchEvents } = await import("./jambase");
+
+    await expect(searchEvents({ artist: "The Signal Keeps", city: "Cape Town", date: "2026-06-18" }))
+      .resolves.toHaveLength(1);
+    await expect(searchEvents({ artist: "The Signal Keeps", city: "London", date: "2026-06-18" }))
+      .resolves.toEqual([]);
   });
 });
 

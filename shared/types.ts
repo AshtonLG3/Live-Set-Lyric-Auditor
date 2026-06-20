@@ -5,6 +5,7 @@ export type RuntimeMode = "live" | "fixture" | "mixed";
 export type IntegrationName =
   | "Musixmatch"
   | "Audio ID"
+  | "LALAL.AI"
   | "Demucs"
   | "JamBase"
   | "Cyanite"

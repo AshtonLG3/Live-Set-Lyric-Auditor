@@ -38,7 +38,8 @@ export const env = {
   replicateWhisperVersion: process.env.REPLICATE_WHISPER_VERSION
     ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
   replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
-    ?? "openai/whisper:91ee9c0c3df30478510ff8c8a3a545add1ad0259ad3a9f78fba57fbc05ee64f7",
+    ?? "openai/whisper",
+  asrCompareAllModels: parseBoolean(process.env.ASR_COMPARE_ALL_MODELS) ?? false,
   replicateDemucsRef: process.env.REPLICATE_DEMUCS_REF?.trim()
     || "cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81158fa03836d953",
   replicateDemucsModel: process.env.REPLICATE_DEMUCS_MODEL?.trim() || undefined,
@@ -94,11 +95,19 @@ export function getIntegrationStatus(): IntegrationStatus[] {
         : "Audio fingerprint grace route disabled; Auto Match falls back to ASR lyric rescue."
     },
     {
+      name: "LALAL.AI",
+      configured: configured("LALAL_LICENSE_KEY"),
+      mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
+      detail: configured("LALAL_LICENSE_KEY")
+        ? "Fast vocal-split rescue runs only when original-audio ASR/alignment is weak."
+        : "LALAL split rescue disabled; slow Demucs remains the last-resort fallback."
+    },
+    {
       name: "Demucs",
       configured: configured("REPLICATE_API_TOKEN"),
       mode: configured("REPLICATE_API_TOKEN") ? "live" : "fixture",
       detail: configured("REPLICATE_API_TOKEN")
-        ? "Replicate Demucs is the active vocal isolation provider for uploaded clips."
+        ? "Replicate Demucs stays available as the slow quality fallback after original ASR and LALAL rescue."
         : "Uploads fall back to original audio; seeded demos use fixture isolation."
     },
     {
@@ -132,7 +141,9 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL"),
       mode: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL") ? "live" : "fixture",
       detail: configured("REPLICATE_API_TOKEN")
-        ? "Replicate Whisper transcription ranks the fast and pinned OpenAI candidates by transcript quality."
+        ? env.asrCompareAllModels
+          ? "Replicate Whisper compares every configured candidate for quality review mode."
+          : "Replicate fast Whisper runs first; openai/whisper fallback runs only if fast ASR fails."
         : configured("ASR_API_URL")
           ? "External Whisper-style ASR endpoint configured."
         : "Using seeded transcript for demo resilience."
