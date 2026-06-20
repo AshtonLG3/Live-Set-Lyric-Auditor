@@ -39,14 +39,24 @@ type MusixmatchTrackSearchItem = { track?: RawTrack };
 type MusixmatchFingerprintItem = { similarity?: number; track?: RawTrack };
 
 export async function searchTracks(query: string): Promise<TrackCandidate[]> {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = query.trim();
+  const queryKey = normalizeSearchText(normalizedQuery);
+  if (!queryKey) {
+    return [];
+  }
   if (!env.musixmatchKey) {
     return fixtureTracks.filter((track) =>
-      `${track.title} ${track.artist} ${track.album ?? ""}`.toLowerCase().includes(normalizedQuery)
+      normalizeSearchText(`${track.title} ${track.artist} ${track.album ?? ""}`).includes(queryKey)
     );
   }
 
-  return searchMusixmatch(new URLSearchParams({ q: query, f_has_lyrics: "1" }));
+  const resultSets = await Promise.all([
+    searchMusixmatch(new URLSearchParams({ q: normalizedQuery, f_has_lyrics: "1", page_size: "10" })),
+    searchMusixmatch(new URLSearchParams({ q_artist: normalizedQuery, f_has_lyrics: "1", s_track_rating: "desc", page_size: "10" })),
+    searchMusixmatch(new URLSearchParams({ q_track: normalizedQuery, f_has_lyrics: "1", s_track_rating: "desc", page_size: "10" }))
+  ]);
+
+  return rankSearchResults(normalizedQuery, resultSets).slice(0, 12);
 }
 
 export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Promise<TrackCandidate | undefined> {
@@ -303,6 +313,78 @@ function baseTitle(title: string): string {
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function rankSearchResults(query: string, resultSets: TrackCandidate[][]): TrackCandidate[] {
+  const ranked = new Map<string, { track: TrackCandidate; score: number; occurrences: number; firstSeen: number }>();
+  let seen = 0;
+
+  resultSets.forEach((tracks, setIndex) => {
+    tracks.forEach((track, index) => {
+      const current = ranked.get(track.id) ?? { track, score: 0, occurrences: 0, firstSeen: seen++ };
+      current.occurrences += 1;
+      current.score += scoreTrackSearchMatch(query, track);
+      current.score += Math.max(0, 12 - index);
+      current.score += setIndex === 1 ? 18 : setIndex === 2 ? 8 : 0;
+      ranked.set(track.id, current);
+    });
+  });
+
+  return [...ranked.values()]
+    .sort((left, right) =>
+      right.score - left.score
+      || right.occurrences - left.occurrences
+      || (right.track.rating ?? 0) - (left.track.rating ?? 0)
+      || left.firstSeen - right.firstSeen
+    )
+    .map((item) => item.track);
+}
+
+function scoreTrackSearchMatch(query: string, track: TrackCandidate): number {
+  const q = normalizeSearchText(query);
+  const title = normalizeSearchText(track.title);
+  const artist = normalizeSearchText(track.artist);
+  const primaryArtist = normalizePrimaryArtist(track.artist);
+  const album = normalizeSearchText(track.album ?? "");
+  const shortArtistIntent = q.length <= 4 && q.split(" ").length === 1;
+  let score = 0;
+
+  score += fieldMatchScore(q, primaryArtist, shortArtistIntent ? 170 : 120);
+  score += fieldMatchScore(q, artist, shortArtistIntent ? 42 : 36);
+  score += fieldMatchScore(q, title, shortArtistIntent ? 42 : 88);
+  score += fieldMatchScore(q, album, 18);
+  score += (track.rating ?? 0) / 12;
+  if (track.hasRichSync) score += 8;
+  if (track.hasSubtitles) score += 5;
+  if (track.hasLyrics) score += 3;
+  if (track.instrumental) score -= 12;
+  return score;
+}
+
+function fieldMatchScore(query: string, value: string, weight: number): number {
+  if (!query || !value) return 0;
+  if (value === query) {
+    return query.length <= 3 && value.split(" ").length === 1 ? weight * 0.76 : weight;
+  }
+  if (value.startsWith(`${query} `) || value.startsWith(query)) return weight * 0.82;
+  if (value.split(" ").some((token) => token === query || token.startsWith(query))) return weight * 0.62;
+  if (value.includes(query)) return weight * 0.38;
+  return 0;
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePrimaryArtist(value: string): string {
+  return normalizeSearchText(value.split(/\s+(?:feat|ft|featuring|with)\.?\s+/i)[0] ?? value);
 }
 
 export function buildFingerprintText(segments: TranscriptSegment[]): string {

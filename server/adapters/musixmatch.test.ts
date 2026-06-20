@@ -8,6 +8,40 @@ describe("Musixmatch identification", () => {
     vi.resetModules();
   });
 
+  it("reranks short artist-intent searches above title-only hits", async () => {
+    vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("q_artist=dua")) {
+        return searchResponse([
+          track(25, "Seiya", "DUA :)", 15),
+          track(24, "One Kiss", "Calvin Harris feat. Dua Lipa", 99),
+          track(22, "Levitating", "Dua Lipa", 92),
+          track(23, "New Rules", "Dua Lipa", 88)
+        ]);
+      }
+      if (url.includes("q_track=dua")) {
+        return searchResponse([
+          track(11, "Dua Lipa", "Jack Harlow", 99),
+          track(12, "Dua", "Mansyr S", 15)
+        ]);
+      }
+      return searchResponse([
+        track(11, "Dua Lipa", "Jack Harlow", 99),
+        track(22, "Levitating", "Dua Lipa", 92)
+      ]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { searchTracks } = await import("./musixmatch");
+    const results = await searchTracks("dua");
+
+    expect(results[0]).toMatchObject({ title: "Levitating", artist: "Dua Lipa" });
+    expect(results[1]).toMatchObject({ title: "New Rules", artist: "Dua Lipa" });
+    expect(results.findIndex((result) => result.title === "One Kiss" && result.artist.includes("Dua Lipa"))).toBeGreaterThan(1);
+    expect(results.findIndex((result) => result.artist === "DUA :)")).toBeGreaterThan(1);
+    expect(results.findIndex((result) => result.title === "Dua Lipa" && result.artist === "Jack Harlow")).toBeGreaterThan(0);
+  });
+
   it("prefers the ranked lyric fingerprint result", async () => {
     vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
     const fetchMock = vi.fn()
