@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.9",
+  version: "0.11.10",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.9",
+    version: "0.11.10",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.9/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.10/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -407,7 +407,7 @@ it("does not present a failed run as a valid high-confidence passport", async ()
         ...completeJob,
         status: "failed",
         passport: undefined,
-        error: "The live transcript did not produce a confident Musixmatch track match. Select the track manually or use a clearer vocal excerpt."
+        error: "Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip."
       });
     }
     return baseFetch(url, init);
@@ -416,10 +416,86 @@ it("does not present a failed run as a valid high-confidence passport", async ()
   render(<App />);
   fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
 
-  expect(await screen.findByText(/did not produce a confident Musixmatch/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Auto-match could not confirm/i)).toBeInTheDocument();
   // A failed run must not borrow the preview placeholders to look like a valid passport.
   expect(screen.queryByText("Valid")).not.toBeInTheDocument();
   expect(screen.queryByText("81%")).not.toBeInTheDocument();
+}, 40000);
+
+it("opens saved-transcript recovery when auto-match fails after Demucs and raw ASR", async () => {
+  const baseFetch = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      return jsonResponse({
+        ...completeJob,
+        status: "failed",
+        passport: undefined,
+        error: "Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.",
+        recovery: {
+          filename: "phone-stage-clip.mp4",
+          durationSeconds: 18,
+          vocalIsolationSource: "original",
+          vocalIsolationConfidence: 0.78,
+          vocalQuality: {
+            selectedSource: "original",
+            status: "fallback_original",
+            score: 0.78,
+            segmentCount: 2,
+            tokenCount: 14,
+            uniqueTokenRatio: 0.9,
+            repetitionRatio: 0.04,
+            averageConfidence: 0.75,
+            issues: ["Demucs stem did not anchor confidently."],
+            fallbackUsed: true,
+            detail: "Original audio transcript selected after Demucs comparison."
+          },
+          asrSource: "replicate",
+          asrEngine: "incredibly-fast-whisper",
+          transcript: [
+            { id: "T1", start: 0, end: 4, text: "You can wake up all alone", confidence: 0.72 },
+            { id: "T2", start: 4, end: 8, text: "So tonight I'll give you something to remember", confidence: 0.72 }
+          ],
+          source: { kind: "upload", processingMode: "uploaded_media" },
+          performanceContext: completeJob.passport!.performanceContext,
+          event: null
+        }
+      });
+    }
+    if (url === "/api/analyze/job-1/reanchor") {
+      return jsonResponse({
+        ...completeJob,
+        status: "complete",
+        error: undefined,
+        recovery: undefined,
+        passport: {
+          ...completeJob.passport!,
+          track: {
+            id: "manual-correct-song-correct-artist",
+            title: "Correct Song",
+            artist: "Correct Artist",
+            hasLyrics: false,
+            hasSubtitles: false,
+            source: "manual"
+          }
+        }
+      });
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+
+  const recoveryPanel = await screen.findByRole("region", { name: /Choose track anchor/i });
+  expect(within(recoveryPanel).getByText(/Transcript saved/i)).toBeInTheDocument();
+  expect(within(recoveryPanel).getByText(/without rerunning the clip/i)).toBeInTheDocument();
+
+  fireEvent.change(within(recoveryPanel).getByLabelText("Correct track title"), { target: { value: "Correct Song" } });
+  fireEvent.change(within(recoveryPanel).getByLabelText("Correct track artist"), { target: { value: "Correct Artist" } });
+  fireEvent.click(within(recoveryPanel).getByRole("button", { name: /Use manual labels/i }));
+
+  expect((await screen.findAllByText("Correct Song")).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/Auto-match could not confirm/i)).not.toBeInTheDocument();
 }, 40000);
 
 it("surfaces a polling failure instead of leaving analysis busy", async () => {

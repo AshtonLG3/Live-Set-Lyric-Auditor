@@ -138,7 +138,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
       persistRecovery();
       resolved = await resolveTrack(input, selected.transcription.segments).catch(() => {
-        throw new Error("Neither the Demucs stem nor the original-audio fallback produced a confident Musixmatch track match. Select the track manually or use a cleaner vocal excerpt.");
+        throw new Error("Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
       });
     }
     const track = resolved.track;

@@ -6,11 +6,12 @@ import { slugify } from "./studio-utils";
 
 type Props = {
   track?: TrackCandidate;
+  recovery?: boolean;
   onCorrectTrack: (track: TrackCandidate) => Promise<void> | void;
   onClose: () => void;
 };
 
-export function CorrectionPanel({ track, onCorrectTrack, onClose }: Props) {
+export function CorrectionPanel({ track, recovery = false, onCorrectTrack, onClose }: Props) {
   const [title, setTitle] = useState(track?.title ?? "");
   const [artist, setArtist] = useState(track?.artist ?? "");
   const [results, setResults] = useState<TrackCandidate[]>([]);
@@ -71,10 +72,10 @@ export function CorrectionPanel({ track, onCorrectTrack, onClose }: Props) {
   }
 
   return (
-    <section className="studio-rack-panel studio-correction-panel" aria-label="Correct track match">
-      <header><span><Pencil size={17} /> Correct Track Anchor</span><small><i /> No audio reprocessing</small></header>
+    <section className="studio-rack-panel studio-correction-panel" aria-label={recovery ? "Choose track anchor" : "Correct track match"}>
+      <header><span><Pencil size={17} /> {recovery ? "Choose Track Anchor" : "Correct Track Anchor"}</span><small><i /> {recovery ? "Transcript saved" : "No audio reprocessing"}</small></header>
       <div className="studio-rack-body">
-        <p className="studio-panel-intro">Search for the correct Musixmatch recording, or preserve your own title and artist labels when the catalog match is wrong.</p>
+        <p className="studio-panel-intro">{recovery ? "Auto-match failed, but the ASR transcript is preserved. Choose a Musixmatch recording or manual labels to generate the passport without rerunning the clip." : "Search for the correct Musixmatch recording, or preserve your own title and artist labels when the catalog match is wrong."}</p>
         <div className="studio-correction-fields">
           <label><span>Track title</span><input className="field" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Correct track title" /></label>
           <label><span>Artist</span><input className="field" value={artist} onChange={(e) => setArtist(e.target.value)} aria-label="Correct track artist" /></label>

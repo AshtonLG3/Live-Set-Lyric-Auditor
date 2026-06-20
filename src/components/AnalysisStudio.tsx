@@ -121,6 +121,7 @@ export function AnalysisStudio(props: Props) {
   const averageTimingDeltaSeconds = passport?.confidenceOverview.averageTimingDelta ?? average(comparisonRows.filter((row) => row.canonicalId).map((row) => row.timingDelta));
   const pendingCount = Math.max(0, variants.length - approvedCount - rejectedCount);
   const hasPassport = Boolean(passport);
+  const needsTrackRecovery = Boolean(recovery && !passport);
   // A run that finished without a passport (e.g. failed track-match) must not borrow
   // the marketing-preview numbers and read as a valid high-confidence passport. Preview
   // defaults are only honest before any run (no job yet).
@@ -131,6 +132,12 @@ export function AnalysisStudio(props: Props) {
     setManualOpen(false);
     setCorrectionOpen(false);
   }, [props.job?.id]);
+
+  useEffect(() => {
+    if (props.job?.status === "failed" && needsTrackRecovery) {
+      setCorrectionOpen(true);
+    }
+  }, [needsTrackRecovery, props.job?.id, props.job?.status]);
 
   function handleInsertMoment(afterStart: number) {
     setInsertAfterTime(afterStart);
@@ -178,7 +185,7 @@ export function AnalysisStudio(props: Props) {
         </div>
 
         {correctionOpen && (
-          <CorrectionPanel track={track} onCorrectTrack={props.onCorrectTrack} onClose={() => setCorrectionOpen(false)} />
+          <CorrectionPanel track={track} recovery={needsTrackRecovery} onCorrectTrack={props.onCorrectTrack} onClose={() => setCorrectionOpen(false)} />
         )}
 
         <EvidenceChainPanel
