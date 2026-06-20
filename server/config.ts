@@ -6,6 +6,11 @@ const configuredAny = (...names: string[]) => names.some(configured);
 const defaultDevAllowedHosts = [".replit.dev", ".picard.replit.dev"];
 const youtubeExtractionFlag = parseBoolean(process.env.YOUTUBE_EXTRACTION_ENABLED);
 const youtubeCookiesConfigured = configuredAny("YOUTUBE_COOKIES_FILE", "YOUTUBE_COOKIES_PATH", "YOUTUBE_COOKIES_BASE64", "YOUTUBE_COOKIES");
+const audioIdProvider = normalizeAudioIdProvider(process.env.AUDIO_ID_PROVIDER);
+const customAudioIdConfigured = configuredAny("AUDIO_ID_API_URL", "MUSIXMATCH_AUDIO_ID_API_URL");
+const acrCloudConfigured = configuredAny("ACRCLOUD_HOST")
+  && configuredAny("ACRCLOUD_ACCESS_KEY")
+  && configuredAny("ACRCLOUD_ACCESS_SECRET");
 
 export const env = {
   host: process.env.HOST?.trim() || "0.0.0.0",
@@ -45,11 +50,30 @@ export const env = {
   youtubeCookiesBase64: process.env.YOUTUBE_COOKIES_BASE64?.trim(),
   youtubeCookies: process.env.YOUTUBE_COOKIES?.trim(),
   youtubeExtractionEnabled: youtubeExtractionFlag ?? youtubeCookiesConfigured,
+  audioIdProvider: audioIdProvider
+    ?? (acrCloudConfigured ? "acrcloud" : customAudioIdConfigured ? "custom" : undefined),
+  audioIdApiUrl: process.env.AUDIO_ID_API_URL?.trim() || process.env.MUSIXMATCH_AUDIO_ID_API_URL?.trim(),
+  audioIdApiKey: process.env.AUDIO_ID_API_KEY?.trim() || process.env.MUSIXMATCH_AUDIO_ID_API_KEY?.trim(),
+  audioIdFileField: process.env.AUDIO_ID_FILE_FIELD?.trim() || "clip",
+  audioIdTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.AUDIO_ID_TIMEOUT_MS ?? 12_000))),
+  acrCloudHost: process.env.ACRCLOUD_HOST?.trim(),
+  acrCloudAccessKey: process.env.ACRCLOUD_ACCESS_KEY?.trim(),
+  acrCloudAccessSecret: process.env.ACRCLOUD_ACCESS_SECRET?.trim(),
   cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
   cyanitePollTimeoutMs: Math.max(30_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 180_000)),
   asrApiUrl: process.env.ASR_API_URL,
   asrApiKey: process.env.ASR_API_KEY
 };
+
+export function isAudioIdConfigured(): boolean {
+  if (env.audioIdProvider === "acrcloud") {
+    return Boolean(env.acrCloudHost && env.acrCloudAccessKey && env.acrCloudAccessSecret);
+  }
+  if (env.audioIdProvider === "custom") {
+    return Boolean(env.audioIdApiUrl);
+  }
+  return false;
+}
 
 export function getIntegrationStatus(): IntegrationStatus[] {
   return [
@@ -60,6 +84,14 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       detail: configured("MUSIXMATCH_API_KEY")
         ? "Search, metadata, lyrics, and subtitles adapters enabled."
         : "Using seeded track and canonical reference fixtures."
+    },
+    {
+      name: "Audio ID",
+      configured: isAudioIdConfigured(),
+      mode: isAudioIdConfigured() ? "live" : "fixture",
+      detail: isAudioIdConfigured()
+        ? `${env.audioIdProvider === "acrcloud" ? "ACRCloud" : "Configured"} audio fingerprinting runs before ASR lyric rescue in Auto Match.`
+        : "Audio fingerprint grace route disabled; Auto Match falls back to ASR lyric rescue."
     },
     {
       name: "Demucs",
@@ -140,5 +172,13 @@ function parseBoolean(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
   if (/^(1|true|yes|on)$/i.test(value.trim())) return true;
   if (/^(0|false|no|off)$/i.test(value.trim())) return false;
+  return undefined;
+}
+
+function normalizeAudioIdProvider(value: string | undefined): "acrcloud" | "custom" | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "acrcloud" || normalized === "acr") return "acrcloud";
+  if (normalized === "custom" || normalized === "musixmatch") return "custom";
   return undefined;
 }

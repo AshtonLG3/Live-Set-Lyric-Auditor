@@ -1,4 +1,4 @@
-import type { AnalysisJob, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
+import type { AnalysisJob, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
 import { formatBytes } from "../../shared/format";
 import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
@@ -8,6 +8,8 @@ import { narratePassport } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocalsWithDemucs } from "../adapters/demucs";
 import type { VocalIsolationResult } from "../adapters/demucs";
+import { identifyTrackFromAudio } from "../adapters/audio-id";
+import type { AudioIdentityMatch } from "../adapters/audio-id";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
 import { env } from "../config";
@@ -68,6 +70,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
         filename: analysisFile.originalname
       });
     }
+    const audioIdentity = input.autoMatch ? identifyTrackFromAudio(analysisFile) : Promise.resolve(undefined);
     setStep(
       jobId,
       "ingest",
@@ -128,7 +131,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     setStep(jobId, "anchor", "running");
     let resolved: Awaited<ReturnType<typeof resolveTrack>>;
     try {
-      resolved = await resolveTrack(input, selected.transcription.segments);
+      resolved = await resolveTrack(input, selected.transcription.segments, await audioIdentity);
     } catch (error) {
       const fallback = await maybeRetryOriginalForAnchor(jobId, input, analysisFile, selected, error);
       if (!fallback) {
@@ -137,7 +140,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       selected = fallback;
       setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
       persistRecovery();
-      resolved = await resolveTrack(input, selected.transcription.segments).catch(() => {
+      resolved = await resolveTrack(input, selected.transcription.segments, await audioIdentity).catch(() => {
         throw new Error("Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
       });
     }
@@ -148,7 +151,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       jobId,
       "anchor",
       "complete",
-      `${track.title} by ${track.artist} · ${resolved.matchMethod.replaceAll("_", " ")}${event ? ` · ${event.venue}` : ""}`
+      `${track.title} by ${track.artist} · ${resolved.matchMethod.replaceAll("_", " ")}${resolved.detail ? ` · ${resolved.detail}` : ""}${event ? ` · ${event.venue}` : ""}`
     );
 
     setStep(jobId, "compare", "running");
@@ -546,10 +549,12 @@ function addIsolationDetail(report: VocalQualityReport, vocal: VocalIsolationRes
 
 async function resolveTrack(
   input: AnalyzeInput,
-  transcript: TranscriptSegment[]
+  transcript: TranscriptSegment[],
+  audioIdentity?: AudioIdentityMatch
 ): Promise<{
   track: TrackCandidate;
-  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
+  matchMethod: RecordingMatchMethod;
+  detail?: string;
 }> {
   if (input.useFixture) {
     return { track: fixtureTracks[0], matchMethod: "fixture_rescue" };
@@ -558,6 +563,13 @@ async function resolveTrack(
     return { track: input.track, matchMethod: "selected_track" };
   }
   if (input.autoMatch) {
+    if (audioIdentity) {
+      return {
+        track: audioIdentity.track,
+        matchMethod: "audio_identify",
+        detail: audioIdentity.detail
+      };
+    }
     const rescued = await identifyTrackFromLyrics(transcript);
     if (rescued) {
       return {

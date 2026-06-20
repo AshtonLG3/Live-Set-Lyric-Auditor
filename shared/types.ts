@@ -4,6 +4,7 @@ export type RuntimeMode = "live" | "fixture" | "mixed";
 
 export type IntegrationName =
   | "Musixmatch"
+  | "Audio ID"
   | "Demucs"
   | "JamBase"
   | "Cyanite"
@@ -223,11 +224,13 @@ export type LineComparison = {
 
 export type CanonicalSource = "richsync" | "subtitles" | "lyrics" | "metadata-only" | "fixture";
 
+export type RecordingMatchMethod = "selected_track" | "audio_identify" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
+
 export type RecordingIdentity = {
   trackId: string;
   commonTrackId?: string;
   isrc?: string;
-  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
+  matchMethod: RecordingMatchMethod;
   versionConfidence: number;
   syncFitScore: number;
   canonicalSource: CanonicalSource;

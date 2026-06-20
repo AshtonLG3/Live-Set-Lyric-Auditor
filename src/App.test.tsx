@@ -16,10 +16,11 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.12",
+  version: "0.11.13",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
+    { name: "Audio ID", configured: false, mode: "fixture", detail: "fixture" },
     { name: "Demucs", configured: false, mode: "fixture", detail: "fixture" },
     { name: "JamBase", configured: false, mode: "fixture", detail: "fixture" },
     { name: "Cyanite", configured: false, mode: "fixture", detail: "fixture" },
@@ -41,10 +42,10 @@ const completeJob: AnalysisJob = {
     { id: "compare", label: "Align to canonical reference", status: "complete" },
     { id: "passport", label: "Generate Live Variant Passport", status: "complete" }
   ],
-  passport: {
+    passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.12",
+    version: "0.11.13",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +260,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.12/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.13/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();

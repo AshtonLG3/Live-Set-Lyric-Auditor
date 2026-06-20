@@ -1,4 +1,4 @@
-import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, EvidenceTier, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, VocalQualityReport, WordDiff } from "../../shared/types";
+import type { CanonicalSource, ClipSource, ConfidenceOverview, EventCandidate, EvidenceTier, LineComparison, LineComparisonStatus, LiveContext, LiveVariantPassport, PerformanceContext, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VariantType, VocalQualityReport, WordDiff } from "../../shared/types";
 import { APP_VERSION } from "../../shared/version";
 import type { CanonicalLine } from "../data/fixtures";
 
@@ -432,7 +432,7 @@ export function buildPassport(input: {
   language?: string;
   copyright?: string;
   trackingUrl?: string;
-  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
+  matchMethod: RecordingMatchMethod;
   vocalIsolationSource: "lalalai" | "demucs" | "original" | "fixture";
   vocalIsolationConfidence: number;
   vocalQuality?: VocalQualityReport;
@@ -688,18 +688,20 @@ function translationRisk(type: VariantType): VariantCandidate["translationRisk"]
 
 function scoreVersionConfidence(
   track: TrackCandidate,
-  matchMethod: "selected_track" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue",
+  matchMethod: RecordingMatchMethod,
   canonicalSource: CanonicalSource
 ): number {
   const identitySignals = [track.id, track.commonTrackId, track.isrc, track.album].filter(Boolean).length / 4;
   const sourceBoost = canonicalSource === "richsync" ? 1 : canonicalSource === "subtitles" ? 0.88 : canonicalSource === "lyrics" ? 0.72 : 0.48;
   const methodBoost = matchMethod === "selected_track"
     ? 0.94
-    : matchMethod === "recall_rescue"
-      ? 0.86
-      : matchMethod === "lyrics_rescue"
-        ? 0.82
-        : 0.78;
+    : matchMethod === "audio_identify"
+      ? 0.91
+      : matchMethod === "recall_rescue"
+        ? 0.86
+        : matchMethod === "lyrics_rescue"
+          ? 0.82
+          : 0.78;
   return round(identitySignals * 0.38 + sourceBoost * 0.34 + methodBoost * 0.28);
 }
 
