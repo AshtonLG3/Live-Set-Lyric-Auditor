@@ -56,10 +56,13 @@ export async function identifyTrackFromLyrics(segments: TranscriptSegment[]): Pr
 
   const text = buildFingerprintText(segments);
   if (wordCount(text) >= 10) {
-    const fingerprinted = await prioritizeCanonicalRecordings(text, await fingerprintLyrics(text));
-    const best = confidentFingerprintMatch(fingerprinted);
-    if (best) {
-      return best;
+    const fingerprinted = await fingerprintLyrics(text);
+    if (isConfidentFingerprint(fingerprinted)) {
+      const prioritized = await prioritizeCanonicalRecordings(text, fingerprinted);
+      const best = prioritized[0] ?? fingerprinted[0];
+      if (best) {
+        return best;
+      }
     }
   }
 
@@ -245,7 +248,7 @@ async function prioritizeCanonicalRecordings(text: string, fingerprinted: TrackC
   }
 
   const catalog = await searchMusixmatch(new URLSearchParams({
-    q_track: fingerprintLeader.title,
+    q_track: baseTitle(fingerprintLeader.title) || fingerprintLeader.title,
     q_lyrics: text.split(/\s+/).slice(0, 30).join(" "),
     f_has_lyrics: "1",
     g_commontrack: "1",
@@ -262,26 +265,54 @@ async function prioritizeCanonicalRecordings(text: string, fingerprinted: TrackC
   return [...rankedCatalog, ...fingerprinted.filter((track) => !catalogIds.has(track.id))];
 }
 
-function confidentFingerprintMatch(tracks: TrackCandidate[]): TrackCandidate | undefined {
+// A faithful live performance only reaches ~70-75% similarity against studio lyrics, so
+// demanding 80%+ rejected every real live clip — the exact case this app exists for.
+// Accept a clear leader that dominates the best *different* song; versions of the same
+// song (live / extended / "Live From Mexico" / etc.) cluster together at near-identical
+// scores and must not be counted as competing matches.
+const FINGERPRINT_MIN_SIMILARITY = 65;
+const FINGERPRINT_STRONG_SIMILARITY = 90;
+const FINGERPRINT_DIFFERENT_SONG_GAP = 12;
+
+function isConfidentFingerprint(tracks: TrackCandidate[]): boolean {
   const best = tracks[0];
-  if (!best || (best.lyricSimilarity ?? 0) < 80) {
-    return undefined;
+  const bestSimilarity = best?.lyricSimilarity ?? 0;
+  if (!best || bestSimilarity < FINGERPRINT_MIN_SIMILARITY) {
+    return false;
   }
-  const runnerUp = tracks[1];
-  if (runnerUp && (best.lyricSimilarity ?? 0) < 95 && (best.lyricSimilarity ?? 0) - (runnerUp.lyricSimilarity ?? 0) < 8) {
-    return undefined;
+  if (bestSimilarity >= FINGERPRINT_STRONG_SIMILARITY) {
+    return true;
   }
-  return best;
+  const competingSong = tracks.slice(1).find((track) => !isSameSong(track, best));
+  if (competingSong && bestSimilarity - (competingSong.lyricSimilarity ?? 0) < FINGERPRINT_DIFFERENT_SONG_GAP) {
+    return false;
+  }
+  return true;
 }
 
-function buildFingerprintText(segments: TranscriptSegment[]): string {
-  return segments
-    .map((segment) => segment.text.trim())
-    .filter(Boolean)
-    .join(" ")
-    .split(/\s+/)
-    .slice(0, 120)
-    .join(" ");
+function isSameSong(a: TrackCandidate, b: TrackCandidate): boolean {
+  return baseTitle(a.title) === baseTitle(b.title)
+    && a.artist.trim().toLowerCase() === b.artist.trim().toLowerCase();
+}
+
+function baseTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\((?:live|extended|remix|acoustic|edit|version|from|feat|with|deluxe|mix|remaster|radio|single)\b[^)]*\)/g, "")
+    .replace(/\s*-\s*(?:live|extended|remix|acoustic|edit|remaster|radio edit|single version)\b.*$/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function buildFingerprintText(segments: TranscriptSegment[]): string {
+  const lines = segments.map((segment) => segment.text.trim()).filter(Boolean);
+  // Short ASR fragments ("so small", "how long") are mostly filler or mishears, and
+  // they crater Musixmatch fingerprint similarity (76% -> 24% in live testing).
+  // Identify from the content-rich lines; fall back to everything if too little remains.
+  const substantial = lines.filter((line) => line.split(/\s+/).filter(Boolean).length >= 4);
+  const source = substantial.join(" ").split(/\s+/).filter(Boolean).length >= 10 ? substantial : lines;
+  return source.join(" ").split(/\s+/).slice(0, 120).join(" ");
 }
 
 function wordCount(value: string): number {

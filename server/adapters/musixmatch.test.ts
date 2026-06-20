@@ -31,6 +31,26 @@ describe("Musixmatch identification", () => {
     );
   });
 
+  it("accepts a strong live-performance fingerprint that clears the studio-lyrics bar", async () => {
+    vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
+    const fetchMock = vi.fn()
+      .mockResolvedValue(searchResponse([]))
+      .mockResolvedValueOnce(fingerprintResponse([
+        { similarity: 73.2, ...track(101, "Falling Forever (Live from the Royal Albert Hall)", "Dua Lipa", 43) },
+        { similarity: 72.8, ...track(102, "Falling Forever", "Dua Lipa", 51) },
+        { similarity: 72.8, ...track(103, "Falling Forever (Live From Mexico)", "Dua Lipa", 11) },
+        { similarity: 35.3, ...track(900, "Need", "Lamu", 3) }
+      ]))
+      .mockResolvedValueOnce(searchResponse([track(102, "Falling Forever", "Dua Lipa", 51)]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { identifyTrackFromLyrics } = await import("./musixmatch");
+    await expect(identifyTrackFromLyrics(transcript())).resolves.toMatchObject({
+      title: "Falling Forever",
+      artist: "Dua Lipa"
+    });
+  });
+
   it("falls back to repeated lyric search when fingerprint access is unavailable", async () => {
     vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
     const fetchMock = vi.fn()
@@ -54,6 +74,38 @@ describe("subtitle timing", () => {
       { id: "L2", start: 14.2, end: 19, text: "second line here" },
       { id: "L3", start: 19, end: 23, text: "third line here" }
     ]);
+  });
+});
+
+describe("fingerprint text", () => {
+  it("drops short noisy ASR fragments before fingerprinting", async () => {
+    const { buildFingerprintText } = await import("./musixmatch");
+    const text = buildFingerprintText([
+      { id: "T1", start: 0, end: 3, text: "You can wake up all alone", confidence: 0.77 },
+      { id: "T2", start: 3, end: 6, text: "So tonight I'll give you something to remember", confidence: 0.78 },
+      { id: "T3", start: 6, end: 9, text: "So small", confidence: 0.72 },
+      { id: "T4", start: 9, end: 12, text: "In the air", confidence: 0.7 },
+      { id: "T5", start: 12, end: 15, text: "How long?", confidence: 0.66 },
+      { id: "T6", start: 15, end: 18, text: "Can we keep falling forever?", confidence: 0.8 }
+    ]);
+
+    expect(text).toContain("You can wake up all alone");
+    expect(text).toContain("So tonight I'll give you something to remember");
+    expect(text).toContain("Can we keep falling forever?");
+    expect(text).not.toContain("So small");
+    expect(text).not.toContain("In the air");
+    expect(text).not.toContain("How long?");
+  });
+
+  it("keeps short fragments when there is not enough substantial lyric text", async () => {
+    const { buildFingerprintText } = await import("./musixmatch");
+    const text = buildFingerprintText([
+      { id: "T1", start: 0, end: 2, text: "Keep me close", confidence: 0.75 },
+      { id: "T2", start: 2, end: 4, text: "Falling forever", confidence: 0.76 },
+      { id: "T3", start: 4, end: 6, text: "In your arms", confidence: 0.77 }
+    ]);
+
+    expect(text).toBe("Keep me close Falling forever In your arms");
   });
 });
 

@@ -120,6 +120,12 @@ export function AnalysisStudio(props: Props) {
   const timingOffsetSeconds = passport?.confidenceOverview.timingOffsetSeconds ?? comparisonRows.find((row) => typeof row.clipOffset === "number")?.clipOffset ?? 0;
   const averageTimingDeltaSeconds = passport?.confidenceOverview.averageTimingDelta ?? average(comparisonRows.filter((row) => row.canonicalId).map((row) => row.timingDelta));
   const pendingCount = Math.max(0, variants.length - approvedCount - rejectedCount);
+  const hasPassport = Boolean(passport);
+  // A run that finished without a passport (e.g. failed track-match) must not borrow
+  // the marketing-preview numbers and read as a valid high-confidence passport. Preview
+  // defaults are only honest before any run (no job yet).
+  const ranWithoutResult = Boolean(props.job) && !hasPassport;
+  const metricValue = (value: number) => (ranWithoutResult ? "—" : `${value}%`);
 
   useEffect(() => {
     setManualOpen(false);
@@ -190,7 +196,7 @@ export function AnalysisStudio(props: Props) {
         <MusixmatchIdentityChain passport={passport} track={track} />
 
         <section id="analysis-timeline" className="studio-rack-panel studio-analysis-rack">
-          <header><span><Activity size={18} /> Analysis Timeline</span><small><i /> {active ? "Processing" : "Complete"}</small></header>
+          <header><span><Activity size={18} /> Analysis Timeline</span><small><i /> {active ? "Processing" : props.job?.status === "failed" ? "Failed" : "Complete"}</small></header>
           <div className="studio-rack-body">
             <div className="studio-timeline" aria-label="Analysis timeline">
               {steps.map((step) => <StudioStep key={step.id} step={step} />)}
@@ -267,23 +273,23 @@ export function AnalysisStudio(props: Props) {
         </section>
 
         <section className="studio-metric-strip" aria-label="Passport metrics">
-          <MetricCard icon={<Gauge size={16} />} label="Divergence Score" value={`${divergence}%`} detail="Derived from alignment fit" tone="orange" />
-          <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={formatCadenceDelta(averageTimingDeltaSeconds)} detail={`After ${formatSignedSeconds(timingOffsetSeconds)} clip offset`} tone={averageTimingDeltaSeconds >= 2.5 ? "orange" : "cyan"} />
-          <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={`${energyLevel}%`} detail={`${formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}${performanceContext?.bpm ? ` · ${performanceContext.bpm} BPM` : ""}`} tone={energyLevel >= 78 ? "orange" : "cyan"} />
-          <MetricCard icon={<BadgeCheck size={16} />} label="Passport Status" value={riskCount ? "Review" : "Valid"} detail={riskCount ? `${riskCount} risk candidate${riskCount === 1 ? "" : "s"}` : "Ready to export"} tone={riskCount ? "orange" : "cyan"} />
+          <MetricCard icon={<Gauge size={16} />} label="Divergence Score" value={metricValue(divergence)} detail="Derived from alignment fit" tone="orange" />
+          <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={ranWithoutResult ? "—" : formatCadenceDelta(averageTimingDeltaSeconds)} detail={`After ${formatSignedSeconds(timingOffsetSeconds)} clip offset`} tone={averageTimingDeltaSeconds >= 2.5 ? "orange" : "cyan"} />
+          <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={metricValue(energyLevel)} detail={`${formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}${performanceContext?.bpm ? ` · ${performanceContext.bpm} BPM` : ""}`} tone={energyLevel >= 78 ? "orange" : "cyan"} />
+          <MetricCard icon={<BadgeCheck size={16} />} label="Passport Status" value={ranWithoutResult ? (props.job?.status === "failed" ? "Failed" : "Pending") : riskCount ? "Review" : "Valid"} detail={ranWithoutResult ? (props.job?.status === "failed" ? "No passport generated" : "Analysis running") : riskCount ? `${riskCount} risk candidate${riskCount === 1 ? "" : "s"}` : "Ready to export"} tone={(ranWithoutResult && props.job?.status === "failed") || riskCount ? "orange" : "cyan"} />
         </section>
 
         <section className="studio-lower-grid">
           <article className="studio-panel">
-            <div className="studio-panel-heading"><span><BadgeCheck size={17} /> Passport Summary</span><span className="studio-status-dot studio-status-dot-active" /></div>
+            <div className="studio-panel-heading"><span><BadgeCheck size={17} /> Passport Summary</span><span className={`studio-status-dot ${ranWithoutResult ? "" : "studio-status-dot-active"}`} /></div>
             <div className="p-4 md:p-5">
               <div className="grid gap-3 sm:grid-cols-3">
-                <StudioMetric label="Overall" value={`${overallConfidence}%`} />
-                <StudioMetric label="ASR" value={`${Math.round((passport?.confidenceOverview.asr ?? 0.88) * 100)}%`} />
-                <StudioMetric label="Alignment" value={`${Math.round((passport?.confidenceOverview.alignment ?? 0.72) * 100)}%`} />
+                <StudioMetric label="Overall" value={metricValue(overallConfidence)} />
+                <StudioMetric label="ASR" value={metricValue(Math.round((passport?.confidenceOverview.asr ?? 0.88) * 100))} />
+                <StudioMetric label="Alignment" value={metricValue(Math.round((passport?.confidenceOverview.alignment ?? 0.72) * 100))} />
               </div>
-              <p className="mt-4 text-sm leading-6">{passport?.summary ?? "Run a session to replace the preview with derived Live Variant Passport data."}</p>
-              <div className="mt-4 flex flex-wrap gap-2">{(passport?.structureMap.live ?? ["Live opening", "City shoutout", "Hook repeat"]).map((item, index) => <span key={`${item}-${index}`} className="studio-chip">{item}</span>)}</div>
+              <p className="mt-4 text-sm leading-6">{passport?.summary ?? (ranWithoutResult ? "No Live Variant Passport was generated for this run — resolve the error above and re-run." : "Run a session to replace the preview with derived Live Variant Passport data.")}</p>
+              <div className="mt-4 flex flex-wrap gap-2">{(passport?.structureMap.live ?? (ranWithoutResult ? [] : ["Live opening", "City shoutout", "Hook repeat"])).map((item, index) => <span key={`${item}-${index}`} className="studio-chip">{item}</span>)}</div>
               {passport && <ExportPreview passport={passport} approvedCount={approvedCount} rejectedCount={rejectedCount} pendingCount={pendingCount} />}
               <button className="studio-secondary-button mt-4 w-full" type="button" onClick={() => void props.onNarrate()}><Sparkles size={16} /> Generate narration</button>
               <p className="studio-export-note">Top-bar export includes {approvedCount} approved, {rejectedCount} rejected, and {pendingCount} pending decisions.</p>

@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.7",
+  version: "0.11.8",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.7",
+    version: "0.11.8",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.7/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.8/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -397,6 +397,29 @@ it("adds a missed live moment via the inline insert button", async () => {
     const texts = [...lyricRows].map((row) => row.textContent ?? "");
     expect(texts.some((text) => text.includes("fan") && text.includes("shouts"))).toBe(true);
   });
+}, 40000);
+
+it("does not present a failed run as a valid high-confidence passport", async () => {
+  const baseFetch = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      return jsonResponse({
+        ...completeJob,
+        status: "failed",
+        passport: undefined,
+        error: "The live transcript did not produce a confident Musixmatch track match. Select the track manually or use a clearer vocal excerpt."
+      });
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+
+  expect(await screen.findByText(/did not produce a confident Musixmatch/i)).toBeInTheDocument();
+  // A failed run must not borrow the preview placeholders to look like a valid passport.
+  expect(screen.queryByText("Valid")).not.toBeInTheDocument();
+  expect(screen.queryByText("81%")).not.toBeInTheDocument();
 }, 40000);
 
 it("surfaces a polling failure instead of leaving analysis busy", async () => {
