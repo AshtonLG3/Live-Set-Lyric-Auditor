@@ -71,8 +71,14 @@ export function SessionWorkspace(props: Props) {
           <div className="studio-clip-intake">
             <ClipIntake
               busy={props.busy}
+              tracks={props.tracks}
+              selectedTrack={props.selectedTrack}
+              trackQuery={props.trackQuery}
               onAnalyze={(input) => props.onAnalyze(input)}
               onTrackMatched={props.onTrackMatched}
+              onTrackQueryChange={props.onTrackQueryChange}
+              onTrackSearch={props.onTrackSearch}
+              onTrackSelect={props.onTrackSelect}
             />
           </div>
           <button className="studio-demo-button" disabled={props.busy} onClick={() => void props.onAnalyze(undefined, true)} title="Run the complete contest flow with seeded demo data">

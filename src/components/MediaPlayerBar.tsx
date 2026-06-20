@@ -8,6 +8,8 @@ type Props = {
   jobId?: string;
   active: boolean;
   progress: number;
+  statusLabel?: string;
+  captureStatusLabel?: string;
   focusVariant?: VariantCandidate;
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
@@ -17,7 +19,7 @@ export type MediaPlayerHandle = {
   seekTo: (seconds: number, play?: boolean) => void;
 };
 
-export const MediaPlayerBar = forwardRef<MediaPlayerHandle, Props>(function MediaPlayerBar({ jobId, active, progress, focusVariant, onTimeUpdate, onDurationChange }, ref) {
+export const MediaPlayerBar = forwardRef<MediaPlayerHandle, Props>(function MediaPlayerBar({ jobId, active, progress, statusLabel, captureStatusLabel, focusVariant, onTimeUpdate, onDurationChange }, ref) {
   const mediaRef = useRef<HTMLAudioElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
@@ -91,11 +93,11 @@ export const MediaPlayerBar = forwardRef<MediaPlayerHandle, Props>(function Medi
       <div className="studio-waveform">
         <WaveformCanvas progress={engineProgress} active={active || isPlaying} />
         {!active && mediaUrl && <input className="studio-wave-seek" type="range" min="0" max={Math.max(0.1, displayDuration)} step="0.1" value={Math.min(currentTime, displayDuration)} onChange={(e) => seekTo(Number(e.target.value))} aria-label="Seek analyzed clip" />}
-        <span className="studio-wave-badge">{active ? "ANALYZING" : isPlaying ? "PLAYING" : "PASSPORT READY"}</span>
+        <span className="studio-wave-badge">{active ? "ANALYZING" : isPlaying ? "PLAYING" : statusLabel ?? "PASSPORT READY"}</span>
       </div>
       <div className="studio-sync">
         <span className="studio-label">Capture Status</span>
-        <span className="studio-sync-badge"><span className={`studio-status-dot ${active || isPlaying ? "studio-status-dot-active" : ""}`} /> {active ? "ACTIVE SYNC" : isPlaying ? "PLAYING" : "VALIDATED"}</span>
+        <span className="studio-sync-badge"><span className={`studio-status-dot ${active || isPlaying ? "studio-status-dot-active" : ""}`} /> {active ? "ACTIVE SYNC" : isPlaying ? "PLAYING" : captureStatusLabel ?? "VALIDATED"}</span>
       </div>
     </section>
   );

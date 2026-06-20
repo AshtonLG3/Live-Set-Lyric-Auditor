@@ -32,11 +32,27 @@ type IntakeMode = "upload" | "recall";
 
 type Props = {
   busy: boolean;
+  tracks: TrackCandidate[];
+  selectedTrack?: TrackCandidate;
+  trackQuery: string;
   onAnalyze: (input: IntakeAnalysisInput) => Promise<void> | void;
   onTrackMatched: (track: TrackCandidate) => void;
+  onTrackQueryChange: (value: string) => void;
+  onTrackSearch: () => Promise<void> | void;
+  onTrackSelect: (track: TrackCandidate) => void;
 };
 
-export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
+export function ClipIntake({
+  busy,
+  tracks,
+  selectedTrack,
+  trackQuery,
+  onAnalyze,
+  onTrackMatched,
+  onTrackQueryChange,
+  onTrackSearch,
+  onTrackSelect
+}: Props) {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -339,12 +355,44 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
         </div>
       )}
 
+      {mode !== "recall" && !autoMatch && (
+        <section className="studio-inline-anchor" aria-label="Selected track anchor">
+          <div className="studio-inline-anchor-head">
+            <span><Search size={15} /> Track Anchor</span>
+            <strong>{selectedTrack ? "Selected" : "Required"}</strong>
+          </div>
+          <p>{selectedTrack ? "This clip will compare against the selected Musixmatch recording." : "Search and select the Musixmatch recording before running selected-track analysis."}</p>
+          <div className="studio-inline-anchor-search">
+            <input className="field" value={trackQuery} onChange={(event) => onTrackQueryChange(event.target.value)} aria-label="Selected track search" placeholder="Track title or artist" />
+            <button type="button" className="studio-square-button" onClick={() => void onTrackSearch()} aria-label="Search selected track" title="Search Musixmatch tracks"><Search size={18} /></button>
+          </div>
+          {selectedTrack && (
+            <button type="button" className="select-row select-row-active" onClick={() => onTrackSelect(selectedTrack)} aria-label={`Selected track ${selectedTrack.title} by ${selectedTrack.artist}`}>
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-bold">{selectedTrack.title}</span>
+                <span className="block truncate text-[13px] text-slate-600 dark:text-slate-400">{selectedTrack.artist} · {selectedTrack.album ?? "Version pending"}</span>
+              </span>
+              <CheckCircle2 className="shrink-0 text-lagoon" size={18} />
+            </button>
+          )}
+          {tracks.filter((track) => track.id !== selectedTrack?.id).slice(0, 4).map((track) => (
+            <button key={track.id} type="button" className="select-row" onClick={() => onTrackSelect(track)}>
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-bold">{track.title}</span>
+                <span className="block truncate text-[13px] text-slate-600 dark:text-slate-400">{track.artist} · {track.album ?? "Catalog match"}</span>
+              </span>
+              <Search className="shrink-0 text-slate-400" size={17} />
+            </button>
+          ))}
+        </section>
+      )}
+
       <div className="mt-4">
         {mode === "upload" && (
           <button
             type="button"
             className="button-primary w-full"
-            disabled={busy || fileProcessing || !uploadClip || Boolean(fileError)}
+            disabled={busy || fileProcessing || !uploadClip || Boolean(fileError) || (!autoMatch && !selectedTrack)}
             onClick={() => void onAnalyze({
               file: uploadClip?.file,
               durationSeconds: uploadClip?.durationSeconds,
@@ -352,7 +400,7 @@ export function ClipIntake({ busy, onAnalyze, onTrackMatched }: Props) {
               source: { kind: "upload", processingMode: "uploaded_media" }
             })}
           >
-            <Play size={17} /> Analyze clip
+            <Play size={17} /> {!autoMatch && !selectedTrack ? "Choose track to analyze" : "Analyze clip"}
           </button>
         )}
         {mode === "recall" && recordingFile && (

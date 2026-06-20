@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.10",
+  version: "0.11.11",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -44,7 +44,7 @@ const completeJob: AnalysisJob = {
   passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.10",
+    version: "0.11.11",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -259,7 +259,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.10/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.11/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -279,6 +279,23 @@ it("keeps intake focused on uploaded clips and recall", async () => {
   expect(screen.getByRole("button", { name: "Recall lyric fragment" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Live link" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Live performance URL")).not.toBeInTheDocument();
+});
+
+it("shows selected-track anchor controls directly in clip intake", async () => {
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Selected track" }));
+
+  const anchor = screen.getByLabelText("Selected track anchor");
+  expect(within(anchor).getByText("Required")).toBeInTheDocument();
+  expect(within(anchor).getByLabelText("Selected track search")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Choose track to analyze/i })).toBeDisabled();
+
+  fireEvent.change(within(anchor).getByLabelText("Selected track search"), { target: { value: "Midnight Atlas" } });
+  fireEvent.click(within(anchor).getByRole("button", { name: "Search selected track" }));
+
+  await waitFor(() => expect(within(anchor).getByText("Midnight Atlas")).toBeInTheDocument());
+  expect(within(anchor).getByText(/The Signal Keeps/i)).toBeInTheDocument();
 });
 
 it("uses remembered words to rescue a track", async () => {
@@ -380,6 +397,17 @@ it("flags seeded demo passports so fixtures are never mistaken for a live run", 
 
   expect(screen.getByText(/Seeded demo data/i)).toBeInTheDocument();
 }, 60000);
+
+it("labels timeline steps as process status instead of quality scores", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
+
+  const timeline = document.querySelector("#analysis-timeline") as HTMLElement;
+  expect(timeline).toBeTruthy();
+  expect(within(timeline).getAllByText("Done").length).toBeGreaterThan(0);
+  expect(within(timeline).queryByText("100%")).not.toBeInTheDocument();
+});
 
 it("adds a missed live moment via the inline insert button", async () => {
   render(<App />);

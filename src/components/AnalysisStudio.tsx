@@ -127,6 +127,17 @@ export function AnalysisStudio(props: Props) {
   // defaults are only honest before any run (no job yet).
   const ranWithoutResult = Boolean(props.job) && !hasPassport;
   const metricValue = (value: number) => (ranWithoutResult ? "—" : `${value}%`);
+  const passportNeedsReview = Boolean(passport && (riskCount > 0 || overallConfidence < 70));
+  const waveStatus = active
+    ? undefined
+    : ranWithoutResult
+      ? props.job?.status === "failed" ? "FAILED" : "PENDING"
+      : passportNeedsReview ? "REVIEW NEEDED" : "PASSPORT READY";
+  const captureStatus = active
+    ? undefined
+    : ranWithoutResult
+      ? props.job?.status === "failed" ? "FAILED" : "PENDING"
+      : passportNeedsReview ? "REVIEW" : "VALIDATED";
 
   useEffect(() => {
     setManualOpen(false);
@@ -156,6 +167,8 @@ export function AnalysisStudio(props: Props) {
         jobId={props.job?.id}
         active={active}
         progress={progress}
+        statusLabel={waveStatus}
+        captureStatusLabel={captureStatus}
         focusVariant={variants[0]}
         onTimeUpdate={setCurrentTime}
         onDurationChange={setMediaDuration}
@@ -459,7 +472,11 @@ function AnalysisLog({ steps, active }: { steps: AnalysisStep[]; active: boolean
 }
 
 function StudioStep({ step }: { step: AnalysisStep }) {
-  return <div className={`studio-step ${step.status === "running" ? "studio-step-active" : ""}`}><div className="flex items-center justify-between gap-2">{step.status === "complete" ? <CheckCircle2 size={17} className="studio-cyan" /> : step.status === "failed" ? <CircleAlert size={17} className="studio-orange" /> : step.status === "running" ? <Activity size={17} className="studio-cyan animate-pulse" /> : <span className="studio-step-dot" />}<span className="studio-mono">{step.status === "complete" ? "100%" : step.status === "running" ? "LIVE" : "0%"}</span></div><p className="mt-3 text-sm font-bold leading-5">{step.label}</p><div className="studio-step-progress"><span style={{ width: step.status === "complete" ? "100%" : step.status === "running" ? "64%" : "0%" }} /></div></div>;
+  const label = step.status === "complete" ? "Done"
+    : step.status === "failed" ? "Failed"
+      : step.status === "running" ? "Running"
+        : "Queued";
+  return <div className={`studio-step ${step.status === "running" ? "studio-step-active" : ""} ${step.status === "failed" ? "studio-step-failed" : ""}`}><div className="flex items-center justify-between gap-2">{step.status === "complete" ? <CheckCircle2 size={17} className="studio-cyan" /> : step.status === "failed" ? <CircleAlert size={17} className="studio-orange" /> : step.status === "running" ? <Activity size={17} className="studio-cyan animate-pulse" /> : <span className="studio-step-dot" />}<span className="studio-mono">{label}</span></div><p className="mt-3 text-sm font-bold leading-5">{step.label}</p><div className="studio-step-progress"><span style={{ width: step.status === "complete" ? "100%" : step.status === "running" ? "64%" : "0%" }} /></div></div>;
 }
 
 function DataLine({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
