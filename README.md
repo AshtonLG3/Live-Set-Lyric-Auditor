@@ -1,8 +1,22 @@
 # Live-Set Lyric Auditor
 
-**One-liner:** Turn a short noisy concert clip into a timestamped Live Variant Passport for lyric QA, captions, archives, artist teams, and fan experiences.
+Live-Set Lyric Auditor is a music-tech tool for documenting what artists actually sing live, not only what appears in the official studio lyrics.
 
-Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, rights, and track-link truth layer; optional audio fingerprinting can identify the recording before lyric rescue, ElevenLabs Scribe is the primary speech-to-text path when configured, Replicate Whisper remains a fallback, LALAL.AI and Demucs stay out of the normal hidden path, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, and ElevenLabs provides optional narration. The dashboard is built around real uploaded, recorded, or recalled media instead of a canned shortcut.
+Studio lyrics are usually treated as the final reference, but live performances often change the record: artists add callouts, skip lines, change words, repeat hooks, improvise outros, or perform lyrics with different timing and emotional emphasis. Those differences are valuable for fans, curators, archivists, lyric teams, and music platforms, but they are rarely captured in a structured way.
+
+This project takes a live concert recording or transcript and compares it against the canonical studio lyrics. The system identifies where the live performance differs from the studio version, highlights changed or added lines, flags uncertain matches, and turns the result into a Live Variant Passport: a structured summary of the performance-specific lyric changes with confidence, timestamps, and impact notes.
+
+The goal is not to replace human lyric curation. The goal is to give curators and music teams a better starting point when live audio, studio lyrics, and metadata do not perfectly match.
+
+For Musicathon, the prototype brings together the partner tools around one clear workflow:
+
+- Musixmatch provides the canonical lyric reference where available
+- LALAL.AI helps isolate vocals from live audio
+- JamBase helps anchor the performance to a real live event context
+- Cyanite can provide mood and audio context
+- ElevenLabs can generate a short narrated summary of the Live Variant Passport
+
+The result is a practical tool for turning messy live performance data into something reviewable, searchable, and useful.
 
 Runtime requirement: Node.js 20.6 or newer. The normal analysis path starts from an uploaded or recorded audio/video clip so the app can work with media the reviewer is authorized to process.
 
@@ -14,7 +28,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Real Clip Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.26`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.27`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a rear-camera stage-performance video, then trim the selected analysis excerpt to 45 seconds or less.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
