@@ -1943,6 +1943,19 @@ button {
   white-space: nowrap;
 }
 
+.studio-context-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.studio-context-link:hover strong,
+.studio-context-link:focus-visible strong {
+  color: var(--studio-cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .studio-correction-toggle {
   display: inline-flex;
   align-items: center;
@@ -2605,6 +2618,34 @@ button {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.studio-lyric-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.studio-lyric-tools button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 5px 8px;
+  border: 1px solid var(--studio-border);
+  border-radius: 4px;
+  background: var(--studio-panel-alt);
+  color: var(--studio-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.studio-lyric-tools button:hover,
+.studio-lyric-tools button:focus-visible {
+  border-color: var(--studio-cyan);
+  color: var(--studio-cyan);
 }
 
 .studio-lyric-btn {

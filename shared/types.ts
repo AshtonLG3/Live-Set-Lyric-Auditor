@@ -44,6 +44,7 @@ export type TrackCandidate = {
   releaseType?: string;
   rating?: number;
   lyricSimilarity?: number;
+  url?: string;
   source: "musixmatch" | "fixture" | "manual";
 };
 

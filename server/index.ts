@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import { env, getHealth } from "./config";
 import { searchEvents } from "./adapters/jambase";
 import { searchTracks } from "./adapters/musixmatch";
-import { createNarration, reanchorAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
+import { createNarration, reanchorAnalysis, retranscribeAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobMedia, jobs } from "./store";
 import { addJobSubscriber } from "./sse";
 import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
@@ -223,6 +223,14 @@ app.post("/api/analyze/:jobId/reanchor", mutationLimiter, async (req, res, next)
       eventCity: typeof req.body.eventCity === "string" ? req.body.eventCity : undefined,
       eventDate: typeof req.body.eventDate === "string" ? req.body.eventDate : undefined
     }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/analyze/:jobId/retranscribe", mutationLimiter, async (req, res, next) => {
+  try {
+    res.json(await retranscribeAnalysis(paramString(req.params.jobId)));
   } catch (error) {
     next(error);
   }

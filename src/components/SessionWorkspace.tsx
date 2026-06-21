@@ -150,7 +150,7 @@ function RackPanel({ id, title, icon, status, children }: { id: string; title: s
 
 function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolean, hasEvent: boolean) {
   if (name === "Musixmatch") return hasTrack ? "Track Ready" : "Catalog Ready";
-  if (name === "Audio ID") return busy ? "Listening" : "Grace Route";
+  if (name === "Audio ID") return busy ? "Fingerprinting" : "Fingerprint Ready";
   if (name === "LALAL.AI") return busy ? "Rescue Split" : "Rescue Ready";
   if (name === "JamBase") return hasEvent ? "Event Found" : "Search Ready";
   if (name === "ASR") return busy ? "Fast Whisper" : "Transcript Ready";

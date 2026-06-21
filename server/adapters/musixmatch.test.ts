@@ -36,6 +36,7 @@ describe("Musixmatch identification", () => {
     const results = await searchTracks("dua");
 
     expect(results[0]).toMatchObject({ title: "Levitating", artist: "Dua Lipa" });
+    expect(results[0]?.url).toMatch(/^https:\/\/www\.musixmatch\.com\/lyrics\//);
     expect(results[1]).toMatchObject({ title: "New Rules", artist: "Dua Lipa" });
     expect(results.findIndex((result) => result.title === "One Kiss" && result.artist.includes("Dua Lipa"))).toBeGreaterThan(1);
     expect(results.findIndex((result) => result.artist === "DUA :)")).toBeGreaterThan(1);
@@ -109,6 +110,40 @@ describe("subtitle timing", () => {
       { id: "L3", start: 19, end: 23, text: "third line here" }
     ]);
   });
+
+  it("preserves the concrete Musixmatch track.get URL for the track anchor", async () => {
+    vi.resetModules();
+    vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("track.get")) {
+        return methodResponse({ track: track(42, "Correct Song", "Correct Artist", 80).track });
+      }
+      if (url.includes("track.lyrics.get")) {
+        return methodResponse({ lyrics: { lyrics_body: "first line\nsecond line", restricted: 0, lyrics_language: "en" } });
+      }
+      if (url.includes("track.richsync.get")) {
+        return methodResponse({ richsync: { richsync_body: "" } });
+      }
+      if (url.includes("track.subtitle.get")) {
+        return methodResponse({ subtitle: { subtitle_body: "" } });
+      }
+      return methodResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getCanonicalReference } = await import("./musixmatch");
+    const reference = await getCanonicalReference({
+      id: "42",
+      title: "Correct Song",
+      artist: "Correct Artist",
+      hasLyrics: true,
+      hasSubtitles: true,
+      source: "musixmatch"
+    });
+
+    expect(reference.trackUrl).toBe("https://www.musixmatch.com/lyrics/Correct-Artist/Correct-Song");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("track.get"));
+  });
 });
 
 describe("fingerprint text", () => {
@@ -158,9 +193,17 @@ function track(id: number, title: string, artist: string, rating = 80) {
       artist_name: artist,
       has_lyrics: 1,
       has_subtitles: 1,
+      track_share_url: `https://www.musixmatch.com/lyrics/${artist.replaceAll(" ", "-")}/${title.replaceAll(" ", "-")}`,
       track_rating: rating
     }
   };
+}
+
+function methodResponse(body: unknown): Response {
+  return new Response(JSON.stringify({ message: { body } }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
 }
 
 function searchResponse(trackList: unknown[]): Response {

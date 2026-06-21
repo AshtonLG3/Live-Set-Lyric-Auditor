@@ -11,8 +11,8 @@ import {
   Search,
   Sun,
 } from "lucide-react";
-import { createNarration, getAnalysis, getHealth, reanchorAnalysis, searchEvents, searchTracks, startAnalysis, subscribeToJob } from "./api";
-import type { AnalysisJob, EventCandidate, HealthResponse, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
+import { createNarration, getAnalysis, getHealth, reanchorAnalysis, retranscribeAnalysis, searchEvents, searchTracks, startAnalysis, subscribeToJob } from "./api";
+import type { AnalysisJob, EventCandidate, HealthResponse, LineComparison, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
@@ -66,7 +66,11 @@ export default function App() {
   }, [trackQuery]);
 
   useEffect(() => {
-    if (!selectedTrack) return;
+    if (!selectedTrack || (!eventCity.trim() && !eventDate.trim())) {
+      setEvents([]);
+      setSelectedEvent(null);
+      return;
+    }
     void searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate })
       .then((items) => {
         setEvents(items);
@@ -80,6 +84,10 @@ export default function App() {
 
   const handleJobUpdate = useCallback((updated: AnalysisJob) => {
     setJob(updated);
+    if (updated.passport) {
+      setSelectedTrack(updated.passport.track);
+      setSelectedEvent(updated.passport.event ?? null);
+    }
     if (updated.status === "complete" || updated.status === "failed") {
       setBusy(false);
       if (updated.status === "failed") {
@@ -162,8 +170,33 @@ export default function App() {
       });
       setJob(updated);
       setSelectedTrack(track);
+      if (updated.passport) setSelectedEvent(updated.passport.event ?? null);
     } catch (correctionError) {
       setError(correctionError instanceof Error ? correctionError.message : "Could not correct the track anchor.");
+    }
+  }
+
+  async function handleRetranscribe() {
+    if (!job?.id) return;
+    const confirmed = window.confirm("Run ElevenLabs Scribe on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume ElevenLabs credits.");
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNarration(null);
+    setReviewDecisions({});
+    setManualVariants([]);
+    setEditedTexts({});
+    try {
+      const updated = await retranscribeAnalysis(job.id);
+      setJob(updated);
+      if (updated.passport) {
+        setSelectedTrack(updated.passport.track);
+        setSelectedEvent(updated.passport.event ?? null);
+      }
+    } catch (retranscribeError) {
+      setError(retranscribeError instanceof Error ? retranscribeError.message : "Could not run ElevenLabs Scribe.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -185,6 +218,44 @@ export default function App() {
   function addManualVariant(variant: VariantCandidate) {
     setManualVariants((current) => [...current, variant]);
     setReviewDecisions((current) => ({ ...current, [variant.id]: "approved" }));
+  }
+
+  function joinComparisonLines(current: LineComparison, next: LineComparison) {
+    const currentText = editedTexts[current.id] ?? current.liveText;
+    const nextText = editedTexts[next.id] ?? next.liveText;
+    setEditedTexts((prev) => ({
+      ...prev,
+      [current.id]: `${currentText} ${nextText}`.replace(/\s+/g, " ").trim(),
+      [next.id]: "[joined with previous line]"
+    }));
+  }
+
+  function splitComparisonLine(comparison: LineComparison) {
+    const currentText = editedTexts[comparison.id] ?? comparison.liveText;
+    const marked = window.prompt("Insert / where this ASR line should split.", currentText);
+    if (!marked || !marked.includes("/")) return;
+    const [first, ...rest] = marked.split("/");
+    const second = rest.join("/").trim();
+    if (!first.trim() || !second) return;
+    const splitAt = comparison.start + Math.max(0.1, (comparison.end - comparison.start) / 2);
+    setEditedTexts((prev) => ({ ...prev, [comparison.id]: first.trim() }));
+    addManualVariant({
+      id: `manual-split-${Date.now()}`,
+      type: "adlib",
+      start: splitAt,
+      end: comparison.end,
+      liveText: second,
+      canonicalAlignmentReference: `Split from ${comparison.id}`,
+      canonicalExcerpt: comparison.canonicalText,
+      confidence: 0.75,
+      impactNote: "Reviewer split this ASR line from the Passport Review.",
+      recommendedAction: "Review the split line timing and approve or reject it before export.",
+      translationRisk: "medium",
+      severity: "medium",
+      evidenceSource: "manual_entry",
+      evidenceTier: "needs_review",
+      reviewerNote: "Split from Passport Review."
+    });
   }
 
   function startNewSession() {
@@ -233,7 +304,24 @@ export default function App() {
       review: {
         exportedAt: new Date().toISOString(),
         status: review.every((item) => item.decision !== "pending") ? "complete" : "in_progress",
-        decisions: review
+        decisions: review,
+        manualChanges: {
+          addedMoments: manualVariants.map((variant) => ({
+            variantId: variant.id,
+            start: variant.start,
+            end: variant.end,
+            liveText: variant.liveText,
+            reference: variant.canonicalExcerpt,
+            reviewerNote: variant.reviewerNote
+          })),
+          editedLines: editedComparisons
+            .filter((comparison) => editedTexts[comparison.id] && editedTexts[comparison.id] !== job.passport!.lineComparisons.find((line) => line.id === comparison.id)?.liveText)
+            .map((comparison) => ({
+              comparisonId: comparison.id,
+              start: comparison.start,
+              liveText: comparison.liveText
+            }))
+        }
       }
     };
     const blob = new Blob([JSON.stringify(reviewedPassport, null, 2)], { type: "application/json" });
@@ -332,7 +420,10 @@ export default function App() {
               onNarrate={handleNarration}
               editedTexts={editedTexts}
               onEditLiveText={(id, text) => setEditedTexts((prev) => ({ ...prev, [id]: text }))}
+              onJoinLines={joinComparisonLines}
+              onSplitLine={splitComparisonLine}
               onCorrectTrack={handleCorrectTrack}
+              onRetranscribe={handleRetranscribe}
             />
           )}
           </ErrorBoundary>

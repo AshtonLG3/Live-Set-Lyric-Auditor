@@ -64,6 +64,9 @@ type Props = {
   onAddManualVariant: (variant: VariantCandidate) => void;
   onNarrate: () => Promise<void> | void;
   onCorrectTrack: (track: TrackCandidate) => Promise<void> | void;
+  onRetranscribe: () => Promise<void> | void;
+  onJoinLines: (current: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number], next: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number]) => void;
+  onSplitLine: (comparison: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number]) => void;
 };
 
 export function AnalysisStudio(props: Props) {
@@ -76,7 +79,7 @@ export function AnalysisStudio(props: Props) {
   const passport = props.job?.passport;
   const recovery = props.job?.recovery;
   const track = passport?.track ?? (recovery ? undefined : props.selectedTrack);
-  const event = passport?.event ?? props.selectedEvent ?? null;
+  const event = passport ? passport.event : props.selectedEvent ?? null;
   const detectedVariants = passport?.variants ?? (props.job ? [] : previewVariants);
   const variants = useMemo(() => [...detectedVariants, ...props.manualVariants], [detectedVariants, props.manualVariants]);
   const comparisonRows = useMemo(() => {
@@ -179,15 +182,17 @@ export function AnalysisStudio(props: Props) {
 
         <div className="studio-analysis-context">
           <ContextCard icon={<Fingerprint size={17} />} label="Track Anchor" status="Musixmatch">
-            <strong>{track?.title ?? "Track match pending"}</strong>
+            <TrackAnchorTitle track={track} />
             <span>{track?.artist ?? "Catalog search"}{track?.album ? ` · ${track.album}` : ""}</span>
             {(passport || recovery) && <button type="button" className="studio-correction-toggle" onClick={() => setCorrectionOpen((open) => !open)}><Pencil size={13} /> {passport ? "Correct match" : "Choose track"}</button>}
           </ContextCard>
           <ContextCard icon={<CalendarDays size={17} />} label="Event Anchor" status={event ? "JamBase" : "Optional"}>
-            <strong>{event?.venue ?? "No event selected"}</strong>
+            {event?.url
+              ? <a className="studio-context-link" href={event.url} target="_blank" rel="noreferrer"><strong>{event.venue}</strong></a>
+              : <strong>{event?.venue ?? "No event selected"}</strong>}
             <span>{event ? `${event.city} · ${formatEventDate(event.date)}` : "Add city and date for event context"}</span>
           </ContextCard>
-          <ContextCard icon={<Link2 size={17} />} label="Source Evidence" status={formatSourceMode(passport?.clip.source.processingMode ?? recovery?.source.processingMode ?? props.health?.runtimeMode ?? "fixture")}>
+          <ContextCard icon={<Link2 size={17} />} label="Clip Evidence" status={formatSourceMode(passport?.clip.source.processingMode ?? recovery?.source.processingMode ?? props.health?.runtimeMode ?? "fixture")}>
             <strong>{formatSourceMode(passport?.clip.source.kind ?? recovery?.source.kind ?? "fixture")}</strong>
             <span>{Math.round(passport?.clip.durationSeconds ?? recovery?.durationSeconds ?? 24)}s analyzed · source preserved</span>
           </ContextCard>
@@ -231,8 +236,11 @@ export function AnalysisStudio(props: Props) {
           <section id="transcript-review" className="studio-rack-panel studio-transcript-panel" aria-label="Transcription Review">
             <header><span><AudioLines size={18} /> Transcription Review</span><small><i /> {transcript.length} segments</small></header>
             <div className="studio-rack-body">
-              <p className="studio-panel-intro">Play the analyzed clip and select any line to seek directly to that moment.</p>
-              <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => setCurrentTime(segment.start)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
+              <p className="studio-panel-intro">Segment list for ASR audit. Select a line to seek playback, or run ElevenLabs Scribe when the current transcript is weak.</p>
+              <button className="studio-secondary-button mb-3 w-full" type="button" disabled={active || !passport} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
+                <Sparkles size={16} /> Retranscribe with ElevenLabs Scribe
+              </button>
+              <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => playerRef.current?.seekTo(segment.start, true)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
             </div>
           </section>
         )}
@@ -249,6 +257,8 @@ export function AnalysisStudio(props: Props) {
             onDecision={props.onDecision}
             onInsertMoment={handleInsertMoment}
             onSeekToTime={(s) => playerRef.current?.seekTo(s, true)}
+            onJoinWithNext={props.onJoinLines}
+            onSplitLine={props.onSplitLine}
           />
         )}
 
@@ -310,7 +320,7 @@ export function AnalysisStudio(props: Props) {
               </div>
               <p className="mt-4 text-sm leading-6">{passport?.summary ?? (ranWithoutResult ? "No Live Variant Passport was generated for this run — resolve the error above and re-run." : "Run a session to replace the preview with derived Live Variant Passport data.")}</p>
               <div className="mt-4 flex flex-wrap gap-2">{(passport?.structureMap.live ?? (ranWithoutResult ? [] : ["Live opening", "City shoutout", "Hook repeat"])).map((item, index) => <span key={`${item}-${index}`} className="studio-chip">{item}</span>)}</div>
-              {passport && <ExportPreview passport={passport} approvedCount={approvedCount} rejectedCount={rejectedCount} pendingCount={pendingCount} />}
+              {passport && <ExportPreview passport={passport} approvedCount={approvedCount} rejectedCount={rejectedCount} pendingCount={pendingCount} manualCount={props.manualVariants.length} editedCount={Object.keys(props.editedTexts).length} />}
               <button className="studio-secondary-button mt-4 w-full" type="button" onClick={() => void props.onNarrate()}><Sparkles size={16} /> Generate narration</button>
               <p className="studio-export-note">Top-bar export includes {approvedCount} approved, {rejectedCount} rejected, and {pendingCount} pending decisions.</p>
               {props.narration && <div className="studio-narration"><p className="studio-label">{props.narration.mode}</p><p className="mt-2 text-sm leading-6">{props.narration.text}</p>{props.narration.audioUrl && <audio className="mt-3 w-full" controls src={props.narration.audioUrl} />}</div>}
@@ -374,6 +384,19 @@ function ProvenanceBanner({ passport, health }: { passport?: AnalysisJob["passpo
 
 function ContextCard({ icon, label, status, tone = "active", children }: { icon: React.ReactNode; label: string; status: string; tone?: "active" | "risk"; children: React.ReactNode }) {
   return <article className={`studio-context-card ${tone === "risk" ? "risk" : ""}`}><header><span>{icon}{label}</span><small><i />{status}</small></header><div>{children}</div></article>;
+}
+
+function TrackAnchorTitle({ track }: { track?: TrackCandidate }) {
+  if (!track) return <strong>Track match pending</strong>;
+  const url = musixmatchTrackUrl(track);
+  return url
+    ? <a className="studio-context-link" href={url} target="_blank" rel="noreferrer" title="Open Musixmatch track"><strong>{track.title}</strong></a>
+    : <strong>{track.title}</strong>;
+}
+
+function musixmatchTrackUrl(track: TrackCandidate): string | undefined {
+  if (!track.url || !/^https?:\/\//i.test(track.url)) return undefined;
+  return track.url;
 }
 
 function EvidenceChainPanel({
@@ -449,12 +472,13 @@ function MusixmatchIdentityChain({ passport, track }: { passport?: AnalysisJob["
   );
 }
 
-function ExportPreview({ passport, approvedCount, rejectedCount, pendingCount }: { passport: NonNullable<AnalysisJob["passport"]>; approvedCount: number; rejectedCount: number; pendingCount: number }) {
+function ExportPreview({ passport, approvedCount, rejectedCount, pendingCount, manualCount, editedCount }: { passport: NonNullable<AnalysisJob["passport"]>; approvedCount: number; rejectedCount: number; pendingCount: number; manualCount: number; editedCount: number }) {
   const firstVariant = passport.variants[0];
   return (
     <div className="studio-export-preview" aria-label="Export preview">
       <div><span>Passport</span><strong>{passport.id} · v{passport.version}</strong></div>
       <div><span>Decision state</span><strong>{approvedCount} approved · {rejectedCount} rejected · {pendingCount} pending</strong></div>
+      <div><span>Manual review</span><strong>{manualCount} added · {editedCount} edited line{editedCount === 1 ? "" : "s"}</strong></div>
       <div><span>Evidence</span><strong>ASR {Math.round(passport.confidenceOverview.asr * 100)}% · {formatAsrEngine(passport.clip.asrEngine)}</strong></div>
       <div><span>Vocal gate</span><strong>{formatVocalQuality(passport.clip.vocalQuality)}</strong></div>
       <div><span>Lead candidate</span><strong>{firstVariant ? `${formatSourceMode(firstVariant.type)} · ${formatSourceMode(firstVariant.evidenceTier ?? "needs_review")}` : "No candidate"}</strong></div>
@@ -508,6 +532,7 @@ function formatVocalQuality(report?: VocalQualityReport) {
 
 function formatAsrEngine(engine?: string) {
   if (!engine) return "Engine pending";
+  if (engine.startsWith("elevenlabs/")) return "ElevenLabs Scribe";
   if (engine.startsWith("openai/whisper")) return "OpenAI Whisper";
   if (engine.startsWith("vaibhavs10/incredibly-fast-whisper:")) return "Fast Whisper";
   return engine.split(":")[0] ?? engine;

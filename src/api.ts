@@ -78,6 +78,10 @@ export async function reanchorAnalysis(
   });
 }
 
+export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> {
+  return fetchJson(`/api/analyze/${jobId}/retranscribe`, { method: "POST" });
+}
+
 export async function createNarration(
   jobId: string,
   manualVariants: VariantCandidate[] = [],

@@ -32,6 +32,8 @@ type Props = {
   onDecision: (variantId: string, decision: ReviewDecision) => void;
   onInsertMoment: (afterStart: number) => void;
   onSeekToTime: (seconds: number) => void;
+  onJoinWithNext: (current: LineComparison, next: LineComparison) => void;
+  onSplitLine: (comparison: LineComparison) => void;
 };
 
 export function DiffView(props: Props) {
@@ -75,6 +77,7 @@ export function DiffView(props: Props) {
 
       <div className="studio-lyric-editor">
         {props.comparisons.map((comparison, index) => {
+          const nextComparison = props.comparisons[index + 1];
           const variant = comparison.variantId ? variantMap.get(comparison.variantId) : undefined;
           const decision = comparison.variantId ? props.decisions[comparison.variantId] : undefined;
           const isEditing = editingId === comparison.id;
@@ -161,6 +164,13 @@ export function DiffView(props: Props) {
                     </div>
                   )}
                 </div>
+
+                {!isEditing && !isSkipped && (
+                  <div className="studio-lyric-tools" aria-label="Line edit tools">
+                    {nextComparison && <button type="button" onClick={() => props.onJoinWithNext(comparison, nextComparison)}>Join next</button>}
+                    <button type="button" onClick={() => props.onSplitLine(comparison)}>Split line</button>
+                  </div>
+                )}
 
                 {decision && (
                   <p className={`studio-lyric-decision-label ${decision === "approved" ? "approved" : "rejected"}`}>

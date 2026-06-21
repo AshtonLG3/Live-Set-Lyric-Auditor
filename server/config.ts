@@ -34,6 +34,8 @@ export const env = {
   lalalEncoderFormat: process.env.LALAL_ENCODER_FORMAT?.trim() || "mp3",
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
   elevenlabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
+  elevenlabsSttModel: process.env.ELEVENLABS_STT_MODEL?.trim() || "scribe_v2",
+  elevenlabsSttTimeoutMs: Math.min(120_000, Math.max(10_000, Number(process.env.ELEVENLABS_STT_TIMEOUT_MS ?? 60_000))),
   replicateToken: process.env.REPLICATE_API_TOKEN,
   replicateWhisperVersion: process.env.REPLICATE_WHISPER_VERSION
     ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
@@ -94,7 +96,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       mode: isAudioIdConfigured() ? "live" : "fixture",
       detail: isAudioIdConfigured()
         ? `${env.audioIdProvider === "acrcloud" ? "ACRCloud" : "Configured"} audio fingerprinting runs before ASR lyric rescue in Auto Match.`
-        : "Audio fingerprint grace route disabled; Auto Match falls back to ASR lyric rescue."
+        : "Audio fingerprinting is not configured; Auto Match starts with ASR lyric rescue."
     },
     {
       name: "LALAL.AI",
@@ -135,7 +137,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configured("ELEVENLABS_API_KEY"),
       mode: configured("ELEVENLABS_API_KEY") ? "live" : "fixture",
       detail: configured("ELEVENLABS_API_KEY")
-        ? "Narration endpoint will generate MP3 summaries."
+        ? "Narration and explicit Scribe STT retranscription are enabled."
         : "Narration returns a judge-ready script without audio."
     },
     {

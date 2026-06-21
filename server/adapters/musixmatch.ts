@@ -10,6 +10,7 @@ export type CanonicalReference = {
   language?: string;
   copyright?: string;
   trackingUrl?: string;
+  trackUrl?: string;
 };
 
 type RawTrack = {
@@ -28,6 +29,9 @@ type RawTrack = {
   track_rating?: number;
   lyrics_language?: string;
   album_release_type?: string;
+  track_share_url?: string;
+  track_edit_url?: string;
+  track_url?: string;
   primary_genres?: {
     music_genre_list?: Array<{
       music_genre?: { music_genre_name_extended?: string; music_genre_name?: string };
@@ -133,7 +137,8 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       sourceCoverage: 0.2,
       restricted: true,
       language: track.language,
-      copyright: "Manual track correction; no Musixmatch lyric reference is attached."
+      copyright: "Manual track correction; no Musixmatch lyric reference is attached.",
+      trackUrl: track.url
     };
   }
   if (!env.musixmatchKey || track.source === "fixture") {
@@ -143,16 +148,19 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       sourceCoverage: 0.9,
       restricted: false,
       language: track.language ?? "en",
-      copyright: "Fixture lyrics created for the Musicathon demo."
+      copyright: "Fixture lyrics created for the Musicathon demo.",
+      trackUrl: track.url
     };
   }
 
   try {
-    const [richSyncLines, subtitleLines, lyrics] = await Promise.all([
+    const [richSyncLines, subtitleLines, lyrics, trackDetails] = await Promise.all([
       fetchRichSyncLines(track.id),
       fetchSubtitleLines(track.id),
-      fetchLyrics(track.id)
+      fetchLyrics(track.id),
+      fetchTrackDetails(track.id)
     ]);
+    const trackUrl = trackDetails?.url ?? track.url;
 
     if (lyrics.restricted && richSyncLines.length === 0 && subtitleLines.length === 0) {
       return {
@@ -162,7 +170,8 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
         restricted: true,
         language: lyrics.language ?? track.language,
         copyright: lyrics.copyright,
-        trackingUrl: lyrics.trackingUrl
+        trackingUrl: lyrics.trackingUrl,
+        trackUrl
       };
     }
 
@@ -182,7 +191,8 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       restricted: lyrics.restricted,
       language: lyrics.language ?? track.language,
       copyright: lyrics.copyright,
-      trackingUrl: lyrics.trackingUrl
+      trackingUrl: lyrics.trackingUrl,
+      trackUrl
     };
   } catch {
     return {
@@ -191,7 +201,8 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       sourceCoverage: 0.22,
       restricted: true,
       language: track.language,
-      copyright: "Live Musixmatch lyric reference unavailable; no demo lyrics were substituted."
+      copyright: "Live Musixmatch lyric reference unavailable; no demo lyrics were substituted.",
+      trackUrl: track.url
     };
   }
 }
@@ -439,8 +450,16 @@ function mapTrack(track?: RawTrack): TrackCandidate | null {
     genre: genre?.music_genre_name_extended ?? genre?.music_genre_name,
     releaseType: track.album_release_type,
     rating: track.track_rating,
+    url: firstUrl(track.track_share_url, track.track_url, track.track_edit_url),
     source: "musixmatch"
   };
+}
+
+async function fetchTrackDetails(trackId: string): Promise<TrackCandidate | undefined> {
+  const response = await fetchMethod("track.get", trackId);
+  if (!response.ok) return undefined;
+  const json = await response.json();
+  return mapTrack(json?.message?.body?.track) ?? undefined;
 }
 
 async function fetchRichSyncLines(trackId: string): Promise<CanonicalLine[]> {
@@ -557,4 +576,8 @@ function firstString(value: unknown): string | undefined {
     if (typeof item === "string" && item.trim()) return item;
   }
   return undefined;
+}
+
+function firstUrl(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string" && /^https?:\/\//i.test(value.trim()))?.trim();
 }

@@ -2,7 +2,7 @@
 
 **One-liner:** Turn a short noisy concert clip into a timestamped Live Variant Passport for lyric QA, captions, archives, artist teams, and fan experiences.
 
-Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, and rights truth layer; optional audio fingerprinting can identify the recording before lyric rescue, fast ASR runs on the original clip first, LALAL.AI or Demucs can rescue weak transcripts, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, and ElevenLabs provides optional narration polish. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
+Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, rights, and track-link truth layer; optional audio fingerprinting can identify the recording before lyric rescue, fast ASR runs on the original clip first, LALAL.AI or Demucs can rescue weak transcripts, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, and ElevenLabs provides optional narration plus explicit Scribe retranscription. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
 Runtime requirement: Node.js 20.6 or newer. The normal analysis path starts from an uploaded or recorded audio/video clip so the app can work with media the reviewer is authorized to process.
 
@@ -14,7 +14,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.16`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.17`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -25,13 +25,13 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## API Surfaces
 
-- **Musixmatch:** `track.search`, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
-- **Audio ID:** optional Auto Match grace route before ASR lyric rescue. Set `AUDIO_ID_PROVIDER=acrcloud` with ACRCloud credentials, or `AUDIO_ID_PROVIDER=custom` / `MUSIXMATCH_AUDIO_ID_API_URL` for a partner endpoint that accepts an uploaded clip and returns title, artist, and optional ISRC metadata.
+- **Musixmatch:** `track.search`, `track.get` track links, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
+- **Audio ID:** optional Auto Match audio fingerprinting before ASR lyric rescue. Set `AUDIO_ID_PROVIDER=acrcloud` with ACRCloud credentials, or `AUDIO_ID_PROVIDER=custom` / `MUSIXMATCH_AUDIO_ID_API_URL` for a partner endpoint that accepts an uploaded clip and returns title, artist, and optional ISRC metadata.
 - **LALAL.AI:** faster vocal-split rescue when original-audio ASR/alignment is weak. The normal path no longer waits for a split before first-pass transcription.
 - **Demucs:** Replicate-hosted Demucs uses the same `REPLICATE_API_TOKEN` as ASR and remains a slow quality fallback after original ASR and LALAL rescue.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied. City hints filter safely, and a selected date accepts matching shows in that calendar month so distant December dates remain discoverable.
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
-- **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` using `xi-api-key`.
+- **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` for narration and `POST /v1/speech-to-text` for explicit Scribe retranscription, using `xi-api-key`.
 - **ASR:** Replicate `incredibly-fast-whisper` is the default fast path and is capped by `ASR_REPLICATE_TIMEOUT_MS` so normal runs do not wait on slow cold starts. The official `openai/whisper` endpoint is opt-in through `ASR_SLOW_FALLBACK_ENABLED=true`; set `ASR_COMPARE_ALL_MODELS=true` only for high-quality/offline comparisons. A custom Whisper-style endpoint remains available through `ASR_API_URL`. Segment confidence is kept conservative when the provider does not return real confidence values, and common low-confidence Whisper filler phrases are removed before alignment.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
@@ -108,6 +108,8 @@ LALAL_ENCODER_FORMAT=mp3
 LALAL_SPLITTER=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
+ELEVENLABS_STT_MODEL=scribe_v2
+ELEVENLABS_STT_TIMEOUT_MS=60000
 ASR_API_URL=
 ASR_API_KEY=
 REPLICATE_API_TOKEN=
@@ -137,7 +139,7 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 | JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
 | Cyanite | `CYANITE_API_TOKEN` | `CYANITE_API_BASE_URL`, `CYANITE_WEBHOOK_URL` |
 | LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL`, `LALAL_LEAD_BACK_ENABLED`, `LALAL_DEREVERB_ENABLED`, `LALAL_EXTRACTION_LEVEL`, `LALAL_ENCODER_FORMAT`, `LALAL_SPLITTER` |
-| ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID` |
+| ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID`, `ELEVENLABS_STT_MODEL`, `ELEVENLABS_STT_TIMEOUT_MS` |
 | Replicate Demucs and ASR | `REPLICATE_API_TOKEN` | `REPLICATE_DEMUCS_REF`, `REPLICATE_DEMUCS_MODEL`, `REPLICATE_DEMUCS_STEM`, `REPLICATE_WHISPER_VERSION`, `REPLICATE_WHISPER_FALLBACK_VERSION` |
 | External ASR | `ASR_API_URL` | `ASR_API_KEY` |
 

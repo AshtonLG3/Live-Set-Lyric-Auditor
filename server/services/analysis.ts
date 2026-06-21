@@ -4,7 +4,7 @@ import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtu
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import type { TranscriptionResult } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
-import { narratePassport } from "../adapters/elevenlabs";
+import { narratePassport, transcribeWithElevenLabs } from "../adapters/elevenlabs";
 import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { isolateVocalsWithDemucs } from "../adapters/demucs";
 import { isolateVocals as isolateVocalsWithLalal } from "../adapters/lalal";
@@ -163,7 +163,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
         throw new Error("Auto-match could not confirm a Musixmatch track from the saved ASR transcript. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
       });
     }
-    const track = resolved.track;
+    let track = resolved.track;
     const event = await resolveEvent(input, track);
     const liveContext = buildLiveContext(event, track);
     setStep(
@@ -175,6 +175,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
 
     setStep(jobId, "compare", "running");
     const canonical = await getCanonicalReference(track);
+    track = enrichTrackWithCanonical(track, canonical);
     setStep(
       jobId,
       "compare",
@@ -253,16 +254,17 @@ export async function reanchorAnalysis(
   }
 
   const canonical = await getCanonicalReference(track);
+  const correctedTrack = enrichTrackWithCanonical(track, canonical);
   const event = passport?.event
     ?? await resolveEvent({
       event: options.event !== undefined ? options.event : recovery?.event ?? null,
       eventCity: options.eventCity ?? recovery?.eventCity,
       eventDate: options.eventDate ?? recovery?.eventDate
-    }, track);
-  const liveContext = buildLiveContext(event, track);
+    }, correctedTrack);
+  const liveContext = buildLiveContext(event, correctedTrack);
   const corrected = buildPassport({
     id: jobId,
-    track,
+    track: correctedTrack,
     event,
     filename: passport?.clip.filename ?? recovery!.filename,
     durationSeconds: passport?.clip.durationSeconds ?? recovery!.durationSeconds,
@@ -292,7 +294,7 @@ export async function reanchorAnalysis(
     error: undefined,
     progress: current.progress.map((step) => {
       if (step.id === "anchor") {
-        return { ...step, status: "complete", detail: `${track.title} by ${track.artist} · corrected track anchor` };
+        return { ...step, status: "complete", detail: `${correctedTrack.title} by ${correctedTrack.artist} · corrected track anchor` };
       }
       if (step.id === "compare") {
         return {
@@ -352,6 +354,97 @@ type VocalTranscriptionSelection = {
 
 function isSeparatedStem(source: VocalIsolationResult["source"]): boolean {
   return source === "demucs" || source === "lalalai";
+}
+
+export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> {
+  const job = jobs.get(jobId);
+  const passport = job?.passport;
+  const media = jobMedia.get(jobId);
+  if (!job || !passport) {
+    throw new Error("A completed passport is required before retranscribing.");
+  }
+  if (!media) {
+    throw new Error("No saved audio or video is available for retranscription.");
+  }
+
+  setStep(jobId, "transcribe", "running", "Running ElevenLabs Scribe on the saved source media.");
+  try {
+    const file = mediaToMulterFile(media);
+    const transcription = await transcribeWithElevenLabs(file);
+    const canonical = await getCanonicalReference(passport.track);
+    const track = enrichTrackWithCanonical(passport.track, canonical);
+    const event = passport.event;
+    const liveContext = buildLiveContext(event, track);
+    const vocalQuality = assessVocalTranscript(transcription.segments, "original");
+    const updatedPassport = buildPassport({
+      id: jobId,
+      track,
+      event,
+      filename: passport.clip.filename,
+      durationSeconds: passport.clip.durationSeconds,
+      canonicalLines: canonical.lines,
+      transcript: transcription.segments,
+      sourceCoverage: canonical.sourceCoverage,
+      canonicalSource: canonical.source,
+      restricted: canonical.restricted,
+      language: canonical.language,
+      copyright: canonical.copyright,
+      trackingUrl: canonical.trackingUrl,
+      matchMethod: passport.recordingIdentity.matchMethod,
+      vocalIsolationSource: "original",
+      vocalIsolationConfidence: passport.clip.vocalIsolationConfidence,
+      vocalQuality,
+      asrSource: transcription.source,
+      asrEngine: transcription.engine,
+      source: passport.clip.source,
+      liveContext,
+      performanceContext: passport.performanceContext
+    });
+
+    const updated = updateJob(jobId, (current) => ({
+      ...current,
+      status: "complete",
+      passport: updatedPassport,
+      error: undefined,
+      progress: current.progress.map((step) =>
+        step.id === "transcribe"
+          ? { ...step, status: "complete", detail: `ElevenLabs Scribe retranscribed ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.` }
+          : step.id === "compare"
+            ? { ...step, status: "complete", detail: canonical.restricted ? "Lyrics restricted; passport switched to metadata-only comparison." : `${canonical.lines.length} reference lines from ${canonical.source}.` }
+            : step.id === "passport"
+              ? { ...step, status: "complete", detail: `${updatedPassport.variants.length} variant candidates refreshed after ElevenLabs STT.` }
+              : step
+      )
+    }));
+    if (!updated) {
+      throw new Error("Analysis job no longer exists.");
+    }
+    return updated;
+  } catch (error) {
+    setStep(jobId, "transcribe", "complete", `ElevenLabs Scribe retry failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    throw error;
+  }
+}
+
+function mediaToMulterFile(media: { buffer: Buffer; mimetype: string; filename: string }): Express.Multer.File {
+  return {
+    fieldname: "clip",
+    originalname: media.filename,
+    encoding: "7bit",
+    mimetype: media.mimetype,
+    size: media.buffer.length,
+    buffer: media.buffer,
+    stream: undefined as never,
+    destination: "",
+    filename: media.filename,
+    path: ""
+  };
+}
+
+function enrichTrackWithCanonical(track: TrackCandidate, canonical: Awaited<ReturnType<typeof getCanonicalReference>>): TrackCandidate {
+  return canonical.trackUrl && canonical.trackUrl !== track.url
+    ? { ...track, url: canonical.trackUrl }
+    : track;
 }
 
 function stemSourceLabel(source: VocalIsolationResult["source"]): string {

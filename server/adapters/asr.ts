@@ -10,6 +10,12 @@ export type TranscriptionResult = {
   segments: TranscriptSegment[];
 };
 
+export type TranscriptionOptions = {
+  slowFallback?: boolean;
+  slowOnly?: boolean;
+  timeoutMs?: number;
+};
+
 type ExternalSegment = {
   id?: string;
   start?: number;
@@ -32,18 +38,23 @@ type ReplicateCandidate = {
 const replicateVersionCooldowns = new Map<string, number>();
 const ESTIMATED_SEGMENT_CONFIDENCE = 0.62;
 
-export async function transcribeLiveVocal(file?: Express.Multer.File, vocalUrl?: string): Promise<TranscriptionResult> {
-  return transcribe(file, fixtureTranscript, vocalUrl);
+export async function transcribeLiveVocal(
+  file?: Express.Multer.File,
+  vocalUrl?: string,
+  options: TranscriptionOptions = {}
+): Promise<TranscriptionResult> {
+  return transcribe(file, fixtureTranscript, vocalUrl, options);
 }
 
-export async function transcribeRecallFragment(file?: Express.Multer.File): Promise<TranscriptionResult> {
-  return transcribe(file, fixtureRecallTranscript);
+export async function transcribeRecallFragment(file?: Express.Multer.File, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
+  return transcribe(file, fixtureRecallTranscript, undefined, options);
 }
 
 async function transcribe(
   file: Express.Multer.File | undefined,
   fixtureSegments: TranscriptSegment[],
-  vocalUrl?: string
+  vocalUrl?: string,
+  options: TranscriptionOptions = {}
 ): Promise<TranscriptionResult> {
   if (!file && !vocalUrl) {
     return { source: "fixture", segments: fixtureSegments };
@@ -56,7 +67,7 @@ async function transcribe(
   const errors: string[] = [];
   if (env.replicateToken) {
     try {
-      const result = await transcribeWithReplicate(file, vocalUrl);
+      const result = await transcribeWithReplicate(file, vocalUrl, options);
       return { source: "replicate", engine: result.engine, segments: result.segments };
     } catch (error) {
       errors.push(error instanceof Error ? error.message : "Replicate transcription failed");
@@ -112,7 +123,8 @@ async function transcribe(
 
 async function transcribeWithReplicate(
   file: Express.Multer.File | undefined,
-  vocalUrl?: string
+  vocalUrl?: string,
+  options: TranscriptionOptions = {}
 ): Promise<{ segments: TranscriptSegment[]; engine?: string }> {
   const audio = await initialReplicateAudioInput(file, vocalUrl);
   if (!audio || !env.replicateToken) {
@@ -120,14 +132,16 @@ async function transcribeWithReplicate(
   }
 
   const replicate = new Replicate({ auth: env.replicateToken, fileEncodingStrategy: "upload" });
-  const versions = [
-    env.replicateWhisperVersion,
-    ...(env.asrCompareAllModels || env.asrSlowFallbackEnabled ? [env.replicateWhisperFallbackVersion] : [])
-  ]
+  const versions = (options.slowOnly
+    ? [env.replicateWhisperFallbackVersion]
+    : [
+        env.replicateWhisperVersion,
+        ...(options.slowFallback || env.asrCompareAllModels || env.asrSlowFallbackEnabled ? [env.replicateWhisperFallbackVersion] : [])
+      ])
     .map((version) => version.trim())
     .filter((version, index, values) => version && values.indexOf(version) === index);
 
-  const firstPass = await runReplicateVersions(replicate, versions, audio);
+  const firstPass = await runReplicateVersions(replicate, versions, audio, options);
   if (firstPass.segments.length > 0) {
     return { segments: firstPass.segments, engine: firstPass.engine };
   }
@@ -135,7 +149,7 @@ async function transcribeWithReplicate(
   if (vocalUrl && typeof audio === "string" && shouldRetryByDownloading(firstPass.messages)) {
     try {
       const downloaded = await downloadAudioFile(vocalUrl);
-      const downloadedResult = await runReplicateVersions(replicate, versions, downloaded);
+      const downloadedResult = await runReplicateVersions(replicate, versions, downloaded, options);
       if (downloadedResult.segments.length > 0) {
         return { segments: downloadedResult.segments, engine: downloadedResult.engine };
       }
@@ -151,7 +165,8 @@ async function transcribeWithReplicate(
 async function runReplicateVersions(
   replicate: Replicate,
   versions: string[],
-  audio: ReplicateAudioInput
+  audio: ReplicateAudioInput,
+  options: TranscriptionOptions
 ): Promise<{ segments: TranscriptSegment[]; engine?: string; messages: string[] }> {
   const messages: string[] = [];
   const candidates: ReplicateCandidate[] = [];
@@ -163,7 +178,7 @@ async function runReplicateVersions(
       continue;
     }
 
-    const outcome = await runReplicateVersion(replicate, version, index, audio);
+    const outcome = await runReplicateVersion(replicate, version, index, audio, options);
     messages.push(outcome.message);
     if (outcome.candidate) {
       candidates.push(outcome.candidate);
@@ -185,15 +200,17 @@ async function runReplicateVersion(
   replicate: Replicate,
   version: string,
   index: number,
-  audio: ReplicateAudioInput
+  audio: ReplicateAudioInput,
+  options: TranscriptionOptions
 ): Promise<{ candidate?: ReplicateCandidate; message: string }> {
   try {
+    const timeoutMs = options.timeoutMs ?? env.asrReplicateTimeoutMs;
     const output = await withTimeout(
       replicate.run(version as `${string}/${string}` | `${string}/${string}:${string}`, {
         input: replicateInput(version, audio)
       }) as Promise<object>,
-      env.asrReplicateTimeoutMs,
-      `${version} timed out after ${Math.round(env.asrReplicateTimeoutMs / 1000)}s`
+      timeoutMs,
+      `${version} timed out after ${Math.round(timeoutMs / 1000)}s`
     );
     const segments = parseReplicateOutput(output);
     if (segments.length === 0) {
