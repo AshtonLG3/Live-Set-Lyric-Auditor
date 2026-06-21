@@ -202,10 +202,11 @@ export default function App() {
   async function handleRetranscribe() {
     if (!job?.id) return;
     const recoveryRun = job.status === "failed" && !job.passport;
+    const target = getRetranscriptionTarget(job);
     const confirmed = window.confirm(
       recoveryRun
-        ? "Retry ElevenLabs Scribe on the saved source media? This can recover failed speech-to-text runs and may consume ElevenLabs credits."
-        : "Run ElevenLabs Scribe on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume ElevenLabs credits."
+        ? `Retry ${target.label} on the saved source media? This can recover failed speech-to-text runs and may consume provider credits.`
+        : `Run ${target.label} on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume provider credits.`
     );
     if (!confirmed) return;
     setBusy(true);
@@ -223,7 +224,7 @@ export default function App() {
         rememberTrack(updated.passport.track);
       }
     } catch (retranscribeError) {
-      setError(retranscribeError instanceof Error ? retranscribeError.message : "Could not run ElevenLabs Scribe.");
+      setError(retranscribeError instanceof Error ? retranscribeError.message : `Could not run ${target.label}.`);
     } finally {
       setBusy(false);
     }
@@ -565,6 +566,36 @@ function lowercaseFirstLetter(value: string): string {
 
 function uppercaseFirstLetter(value: string): string {
   return value.replace(/[A-Za-z]/, (letter) => letter.toUpperCase());
+}
+
+function getRetranscriptionTarget(job: AnalysisJob): { label: string } {
+  return shouldRetryWithWhisper(job) ? { label: "Whisper fallback" } : { label: "ElevenLabs Scribe" };
+}
+
+function shouldRetryWithWhisper(job: AnalysisJob): boolean {
+  const error = job.error ?? "";
+  if (job.status === "failed" && !job.passport && mentionsScribe(error) && !mentionsWhisper(error)) {
+    return true;
+  }
+  if (job.status === "failed" && !job.passport && mentionsWhisper(error) && !mentionsScribe(error)) {
+    return false;
+  }
+
+  const engine = job.passport?.clip.asrEngine ?? job.recovery?.asrEngine;
+  const source = job.passport?.clip.asrSource ?? job.recovery?.asrSource;
+  return isScribeEngine(engine) || Boolean(job.passport && source === "external" && !engine);
+}
+
+function isScribeEngine(engine?: string): boolean {
+  return Boolean(engine && /^(elevenlabs\/|elevenlabs scribe$)/i.test(engine.trim()));
+}
+
+function mentionsScribe(value: string): boolean {
+  return /elevenlabs|scribe/i.test(value);
+}
+
+function mentionsWhisper(value: string): boolean {
+  return /whisper|replicate/i.test(value);
 }
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {

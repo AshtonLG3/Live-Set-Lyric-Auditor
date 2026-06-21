@@ -167,6 +167,65 @@ describe("analysis vocal quality fallback", () => {
     expect(mocks.transcribeLiveVocal).not.toHaveBeenCalled();
   });
 
+  it("retranscribes a completed Scribe passport with Whisper fallback", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    mocks.transcribeWithElevenLabs.mockResolvedValue({
+      source: "external",
+      engine: "elevenlabs/scribe_v2",
+      segments: originalAudioSegments()
+    });
+    mocks.transcribeLiveVocal.mockResolvedValue({
+      source: "replicate",
+      engine: "vaibhavs10/incredibly-fast-whisper:test",
+      segments: [
+        { id: "W1", start: 0, end: 4, text: "Talk to God wonder if he is listening", confidence: 0.72 },
+        { id: "W2", start: 4, end: 8, text: "Listen God I know I have been sinning lately", confidence: 0.7 }
+      ]
+    });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob } = await import("../store");
+    const { retranscribeAnalysis, runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    const retranscribed = await retranscribeAnalysis(job.id);
+
+    expect(retranscribed.status).toBe("complete");
+    expect(retranscribed.passport?.clip.asrSource).toBe("replicate");
+    expect(retranscribed.passport?.clip.asrEngine).toBe("vaibhavs10/incredibly-fast-whisper:test");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
+    expect(retranscribed.progress.find((step) => step.id === "transcribe")?.detail).toContain("Whisper fallback retranscribed");
+  });
+
   it("falls back to Whisper when primary ElevenLabs Scribe fails", async () => {
     vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
     mocks.transcribeWithElevenLabs.mockRejectedValue(new Error("ElevenLabs Scribe failed with 500"));

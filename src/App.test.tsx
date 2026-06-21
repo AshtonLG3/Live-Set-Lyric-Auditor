@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.23",
+  version: "0.11.24",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.23",
+    version: "0.11.24",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -276,7 +276,7 @@ async function runUploadedClip(fileName = "concert-snippet.mp3") {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.23/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.24/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -444,6 +444,50 @@ it("runs an uploaded clip and renders a passport", async () => {
   fireEvent.click(screen.getByText(/Generate narration/i));
   await waitFor(() => expect(screen.getByText("Narration script")).toBeInTheDocument());
 }, 60000);
+
+it("offers Whisper fallback when the current transcript came from ElevenLabs Scribe", async () => {
+  const baseFetch = fetch;
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      return jsonResponse({
+        ...completeJob,
+        passport: {
+          ...completeJob.passport!,
+          clip: {
+            ...completeJob.passport!.clip,
+            asrSource: "external",
+            asrEngine: "elevenlabs/scribe_v2"
+          }
+        }
+      });
+    }
+    if (url === "/api/analyze/job-1/retranscribe") {
+      return jsonResponse({
+        ...completeJob,
+        passport: {
+          ...completeJob.passport!,
+          clip: {
+            ...completeJob.passport!.clip,
+            asrSource: "replicate",
+            asrEngine: "vaibhavs10/incredibly-fast-whisper:test"
+          }
+        }
+      });
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  await runUploadedClip();
+
+  expect(await screen.findByText(/ElevenLabs Scribe · 89% avg/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Whisper fallback/i }));
+
+  expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.stringContaining("Run Whisper fallback"));
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/analyze/job-1/retranscribe")).toBe(true));
+  expect((await screen.findAllByText(/Fast Whisper/i)).length).toBeGreaterThan(0);
+}, 40000);
 
 it("surfaces the Musixmatch identity chain including ISRC and version confidence", async () => {
   render(<App />);

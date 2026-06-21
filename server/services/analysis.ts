@@ -350,6 +350,8 @@ type VocalTranscriptionSelection = {
   vocalQuality: VocalQualityReport;
 };
 
+type RetranscriptionProvider = "scribe" | "whisper";
+
 function isSeparatedStem(source: VocalIsolationResult["source"]): boolean {
   return source === "demucs" || source === "lalalai";
 }
@@ -369,12 +371,14 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
     updateJob(jobId, (current) => ({ ...current, recovery }));
   }
 
-  setStep(jobId, "transcribe", "running", "Running ElevenLabs Scribe on the saved source media.");
+  const provider = chooseRetranscriptionProvider(passport, recovery, job.error);
+  const label = retranscriptionProviderLabel(provider);
+  setStep(jobId, "transcribe", "running", `Running ${label} on the saved source media.`);
   try {
     const file = mediaToMulterFile(media);
-    const transcription = await transcribeWithElevenLabs(file);
+    const transcription = await runRetranscriptionProvider(provider, file);
     if (!passport) {
-      return buildPassportFromScribeRecovery(jobId, recovery!, file, transcription);
+      return buildPassportFromRetranscriptionRecovery(jobId, recovery!, file, transcription, provider);
     }
 
     const canonical = await getCanonicalReference(passport.track);
@@ -414,11 +418,11 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
       error: undefined,
       progress: current.progress.map((step) =>
         step.id === "transcribe"
-          ? { ...step, status: "complete", detail: `ElevenLabs Scribe retranscribed ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.` }
+          ? { ...step, status: "complete", detail: `${label} retranscribed ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.` }
           : step.id === "compare"
             ? { ...step, status: "complete", detail: canonical.restricted ? "Lyrics restricted; passport switched to metadata-only comparison." : `${canonical.lines.length} reference lines from ${canonical.source}.` }
             : step.id === "passport"
-              ? { ...step, status: "complete", detail: `${updatedPassport.variants.length} variant candidates refreshed after ElevenLabs STT.` }
+              ? { ...step, status: "complete", detail: `${updatedPassport.variants.length} variant candidates refreshed after ${label}.` }
               : step
       )
     }));
@@ -431,15 +435,59 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
     updateJob(jobId, (current) => ({
       ...current,
       status: "failed",
-      error: `ElevenLabs Scribe retry failed: ${message}`,
+      error: `${label} retry failed: ${message}`,
       progress: current.progress.map((step) =>
         step.id === "transcribe" || step.status === "running"
-          ? { ...step, status: "failed", detail: `ElevenLabs Scribe retry failed: ${message}` }
+          ? { ...step, status: "failed", detail: `${label} retry failed: ${message}` }
           : step
       )
     }));
     throw error;
   }
+}
+
+function chooseRetranscriptionProvider(
+  passport: AnalysisJob["passport"] | undefined,
+  recovery: AnalysisRecovery | undefined,
+  error?: string
+): RetranscriptionProvider {
+  const errorText = error ?? "";
+  if (!passport && mentionsScribe(errorText) && !mentionsWhisper(errorText)) {
+    return "whisper";
+  }
+  if (!passport && mentionsWhisper(errorText) && !mentionsScribe(errorText)) {
+    return "scribe";
+  }
+
+  const asrEngine = passport?.clip.asrEngine ?? recovery?.asrEngine;
+  const asrSource = passport?.clip.asrSource ?? recovery?.asrSource;
+  if (isScribeEngine(asrEngine) || (passport && asrSource === "external" && !asrEngine)) {
+    return "whisper";
+  }
+  return "scribe";
+}
+
+async function runRetranscriptionProvider(provider: RetranscriptionProvider, file: Express.Multer.File): Promise<TranscriptionResult> {
+  if (provider === "scribe") {
+    return transcribeWithElevenLabs(file);
+  }
+  return transcribeLiveVocal(file);
+}
+
+function retranscriptionProviderLabel(provider: RetranscriptionProvider): string {
+  return provider === "scribe" ? "ElevenLabs Scribe" : "Whisper fallback";
+}
+
+function isScribeEngine(engine?: string): boolean {
+  return Boolean(engine && /^(elevenlabs\/|elevenlabs scribe$)/i.test(engine.trim()));
+}
+
+function mentionsScribe(value: string): boolean {
+  return /elevenlabs|scribe/i.test(value);
+}
+
+function mentionsWhisper(value: string): boolean {
+  return /whisper|replicate/i.test(value);
 }
 
 function buildRecoveryFromSavedMedia(
@@ -466,18 +514,20 @@ function buildRecoveryFromSavedMedia(
   };
 }
 
-async function buildPassportFromScribeRecovery(
+async function buildPassportFromRetranscriptionRecovery(
   jobId: string,
   recovery: NonNullable<AnalysisJob["recovery"]>,
   analysisFile: Express.Multer.File,
-  transcription: TranscriptionResult
+  transcription: TranscriptionResult,
+  provider: RetranscriptionProvider
 ): Promise<AnalysisJob> {
+  const label = retranscriptionProviderLabel(provider);
   const selected: VocalTranscriptionSelection = {
     transcription,
     vocal: {
       source: "original",
       confidence: recovery.vocalIsolationConfidence,
-      detail: "ElevenLabs Scribe recovered the transcript after Whisper failed."
+      detail: `${label} recovered the transcript after the previous ASR run failed.`
     },
     vocalQuality: assessVocalTranscript(transcription.segments, "original")
   };
@@ -492,15 +542,15 @@ async function buildPassportFromScribeRecovery(
     source: recovery.source
   };
 
-  setStep(jobId, "transcribe", "complete", `ElevenLabs Scribe recovered ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.`);
-  setStep(jobId, "anchor", "running", "Matching recording from ElevenLabs transcript.");
+  setStep(jobId, "transcribe", "complete", `${label} recovered ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.`);
+  setStep(jobId, "anchor", "running", `Matching recording from ${label} transcript.`);
   let track: TrackCandidate;
   let resolved: Awaited<ReturnType<typeof resolveTrack>>;
   try {
     resolved = await resolveTrack(retryInput, transcription.segments);
     track = resolved.track;
   } catch (error) {
-    throw new Error(`ElevenLabs Scribe produced a transcript, but the track still could not be anchored: ${error instanceof Error ? error.message : "unknown anchor error"}`);
+    throw new Error(`${label} produced a transcript, but the track still could not be anchored: ${error instanceof Error ? error.message : "unknown anchor error"}`);
   }
 
   const event = await resolveEvent(retryInput, track);
@@ -524,7 +574,7 @@ async function buildPassportFromScribeRecovery(
       : `${canonical.lines.length} reference lines from ${canonical.source}.`
   );
 
-  setStep(jobId, "passport", "running", "Generating passport from ElevenLabs Scribe transcript.");
+  setStep(jobId, "passport", "running", `Generating passport from ${label} transcript.`);
   const passport = buildPassportForSelection({
     jobId,
     input: retryInput,
@@ -547,7 +597,7 @@ async function buildPassportFromScribeRecovery(
     recovery: undefined,
     error: undefined
   }));
-  setStep(jobId, "passport", "complete", `${passport.variants.length} variant candidates flagged after ElevenLabs Scribe recovery.`);
+  setStep(jobId, "passport", "complete", `${passport.variants.length} variant candidates flagged after ${label} recovery.`);
   if (!updated) {
     throw new Error("Analysis job no longer exists.");
   }

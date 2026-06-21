@@ -128,7 +128,8 @@ export function AnalysisStudio(props: Props) {
   const pendingCount = Math.max(0, variants.length - approvedCount - rejectedCount);
   const hasPassport = Boolean(passport);
   const needsTrackRecovery = Boolean(recovery && !passport);
-  const canRunScribeRecovery = Boolean(props.job?.status === "failed" && !passport);
+  const retranscriptionTarget = getRetranscriptionTarget(props.job);
+  const canRunTranscriptionRecovery = Boolean(props.job?.status === "failed" && !passport);
   const autoOpenTrackRecovery = Boolean(props.job?.status === "failed" && needsTrackRecovery && dismissedCorrectionJobId !== props.job?.id);
   const showCorrectionPanel = correctionOpen || autoOpenTrackRecovery;
   // A run that finished without a passport (e.g. failed track-match) must not borrow
@@ -247,14 +248,14 @@ export function AnalysisStudio(props: Props) {
         </section>
 
         {(props.error || props.job?.error) && <p className="studio-error">{props.error || props.job?.error}</p>}
-        {canRunScribeRecovery && (
-          <section className="studio-scribe-recovery" aria-label="ElevenLabs Scribe recovery">
+        {canRunTranscriptionRecovery && (
+          <section className="studio-scribe-recovery" aria-label={`${retranscriptionTarget.label} recovery`}>
             <div>
               <strong>Speech-to-text could not finish this transcript.</strong>
-              <span>Retry ElevenLabs Scribe on the saved clip without importing it again.</span>
+              <span>Retry {retranscriptionTarget.label} on the saved clip without importing it again.</span>
             </div>
             <button className="studio-secondary-button" type="button" disabled={active} onClick={() => void props.onRetranscribe()}>
-              <Sparkles size={16} /> Retry ElevenLabs Scribe
+              <Sparkles size={16} /> Retry {retranscriptionTarget.label}
             </button>
           </section>
         )}
@@ -265,8 +266,8 @@ export function AnalysisStudio(props: Props) {
             <div className="studio-rack-body">
               <div className="studio-transcript-toolbar">
                 <span>{formatAsrEngine(passport?.clip.asrEngine ?? recovery?.asrEngine)} · {Math.round(average(transcript.map((segment) => segment.confidence)) * 100)}% avg</span>
-                <button className="studio-secondary-button" type="button" disabled={active || (!passport && !recovery)} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
-                  <Sparkles size={16} /> ElevenLabs Scribe
+                <button className="studio-secondary-button" type="button" disabled={active || (!passport && !recovery)} onClick={() => void props.onRetranscribe()} title={`Runs ${retranscriptionTarget.label} on the saved source media and refreshes the passport comparison`}>
+                  <Sparkles size={16} /> {retranscriptionTarget.label}
                 </button>
               </div>
               <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => playerRef.current?.seekTo(segment.start, true)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
@@ -565,6 +566,37 @@ function formatAsrEngine(engine?: string) {
   if (engine.startsWith("openai/whisper")) return "OpenAI Whisper";
   if (engine.startsWith("vaibhavs10/incredibly-fast-whisper:")) return "Fast Whisper";
   return engine.split(":")[0] ?? engine;
+}
+
+function getRetranscriptionTarget(job: AnalysisJob | null): { label: string } {
+  if (!job) return { label: "ElevenLabs Scribe" };
+  return shouldRetryWithWhisper(job) ? { label: "Whisper fallback" } : { label: "ElevenLabs Scribe" };
+}
+
+function shouldRetryWithWhisper(job: AnalysisJob): boolean {
+  const error = job.error ?? "";
+  if (job.status === "failed" && !job.passport && mentionsScribe(error) && !mentionsWhisper(error)) {
+    return true;
+  }
+  if (job.status === "failed" && !job.passport && mentionsWhisper(error) && !mentionsScribe(error)) {
+    return false;
+  }
+
+  const engine = job.passport?.clip.asrEngine ?? job.recovery?.asrEngine;
+  const source = job.passport?.clip.asrSource ?? job.recovery?.asrSource;
+  return isScribeEngine(engine) || Boolean(job.passport && source === "external" && !engine);
+}
+
+function isScribeEngine(engine?: string): boolean {
+  return Boolean(engine && /^(elevenlabs\/|elevenlabs scribe$)/i.test(engine.trim()));
+}
+
+function mentionsScribe(value: string): boolean {
+  return /elevenlabs|scribe/i.test(value);
+}
+
+function mentionsWhisper(value: string): boolean {
+  return /whisper|replicate/i.test(value);
 }
 
 const defaultSteps: AnalysisStep[] = [
