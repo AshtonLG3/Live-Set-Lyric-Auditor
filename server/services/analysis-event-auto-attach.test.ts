@@ -82,6 +82,40 @@ describe("analysis event auto-attach", () => {
     expect(analyzed?.passport?.event).toBeNull();
     expect(analyzed?.passport?.liveContext).toBeNull();
   });
+
+  it("auto-attaches JamBase when a saved transcript is re-anchored with event hints", async () => {
+    mocks.searchEvents.mockResolvedValue([event()]);
+    mockCommonAnalysis();
+
+    const { createJob, updateJob } = await import("../store");
+    const { reanchorAnalysis } = await import("./analysis");
+    const job = createJob();
+    updateJob(job.id, (current) => ({
+      ...current,
+      status: "failed",
+      error: "The live transcript did not produce a confident Musixmatch track match.",
+      recovery: {
+        filename: "stage.mp4",
+        durationSeconds: 12,
+        vocalIsolationSource: "original",
+        vocalIsolationConfidence: 0.72,
+        asrSource: "replicate",
+        transcript: transcript(),
+        source: { kind: "upload", processingMode: "uploaded_media" },
+        performanceContext: performanceContext(),
+        event: null,
+        eventCity: "London",
+        eventDate: "2025-06-21"
+      }
+    }));
+
+    const corrected = await reanchorAnalysis(job.id, track());
+
+    expect(mocks.searchEvents).toHaveBeenCalledWith({ artist: "Dua Lipa", city: "London", date: "2025-06-21" });
+    expect(corrected.passport?.event?.id).toBe("jambase-london");
+    expect(corrected.passport?.liveContext?.eventId).toBe("jambase-london");
+    expect(corrected.recovery).toBeUndefined();
+  });
 });
 
 function mockCommonAnalysis() {
@@ -105,6 +139,19 @@ function mockCommonAnalysis() {
     summary: "Fallback profile.",
     confidence: 0.4
   });
+}
+
+function performanceContext() {
+  return {
+    source: "fixture" as const,
+    status: "fallback" as const,
+    energyLevel: 0.62,
+    dominantEmotions: [],
+    instruments: [],
+    arrangement: "uncertain" as const,
+    summary: "Fallback profile.",
+    confidence: 0.4
+  };
 }
 
 function track(): TrackCandidate {

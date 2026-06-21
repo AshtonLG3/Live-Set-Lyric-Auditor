@@ -120,7 +120,10 @@ async function transcribeWithReplicate(
   }
 
   const replicate = new Replicate({ auth: env.replicateToken, fileEncodingStrategy: "upload" });
-  const versions = [env.replicateWhisperVersion, env.replicateWhisperFallbackVersion]
+  const versions = [
+    env.replicateWhisperVersion,
+    ...(env.asrCompareAllModels || env.asrSlowFallbackEnabled ? [env.replicateWhisperFallbackVersion] : [])
+  ]
     .map((version) => version.trim())
     .filter((version, index, values) => version && values.indexOf(version) === index);
 
@@ -185,9 +188,13 @@ async function runReplicateVersion(
   audio: ReplicateAudioInput
 ): Promise<{ candidate?: ReplicateCandidate; message: string }> {
   try {
-    const output = await replicate.run(version as `${string}/${string}` | `${string}/${string}:${string}`, {
-      input: replicateInput(version, audio)
-    });
+    const output = await withTimeout(
+      replicate.run(version as `${string}/${string}` | `${string}/${string}:${string}`, {
+        input: replicateInput(version, audio)
+      }) as Promise<object>,
+      env.asrReplicateTimeoutMs,
+      `${version} timed out after ${Math.round(env.asrReplicateTimeoutMs / 1000)}s`
+    );
     const segments = parseReplicateOutput(output);
     if (segments.length === 0) {
       return { message: `${version} returned no transcript` };
@@ -209,6 +216,20 @@ async function runReplicateVersion(
       replicateVersionCooldowns.set(version, Date.now() + retryDelayMs(detail));
     }
     return { message: `${version}: ${detail}` };
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 

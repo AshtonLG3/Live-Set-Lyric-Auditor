@@ -140,7 +140,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
           processingMode: analysisFile ? "uploaded_media" : "fixture"
         },
         performanceContext,
-        event: input.event ?? null
+        event: input.event ?? null,
+        eventCity: input.eventCity,
+        eventDate: input.eventDate
       }
     }));
     persistRecovery();
@@ -158,7 +160,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
       persistRecovery();
       resolved = await resolveTrack(input, selected.transcription.segments, await audioIdentity).catch(() => {
-        throw new Error("Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
+        throw new Error("Auto-match could not confirm a Musixmatch track from the saved ASR transcript. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
       });
     }
     const track = resolved.track;
@@ -238,7 +240,11 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
   }
 }
 
-export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Promise<AnalysisJob> {
+export async function reanchorAnalysis(
+  jobId: string,
+  track: TrackCandidate,
+  options: { event?: EventCandidate | null; eventCity?: string; eventDate?: string } = {}
+): Promise<AnalysisJob> {
   const job = jobs.get(jobId);
   const passport = job?.passport;
   const recovery = job?.recovery;
@@ -247,7 +253,12 @@ export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Pr
   }
 
   const canonical = await getCanonicalReference(track);
-  const event = passport?.event ?? recovery?.event ?? null;
+  const event = passport?.event
+    ?? await resolveEvent({
+      event: options.event !== undefined ? options.event : recovery?.event ?? null,
+      eventCity: options.eventCity ?? recovery?.eventCity,
+      eventDate: options.eventDate ?? recovery?.eventDate
+    }, track);
   const liveContext = buildLiveContext(event, track);
   const corrected = buildPassport({
     id: jobId,
@@ -772,7 +783,10 @@ function sourceFilename(source?: ClipSource): string {
   return "seeded-demo-clip.mp3";
 }
 
-async function resolveEvent(input: AnalyzeInput, track: TrackCandidate): Promise<EventCandidate | null> {
+async function resolveEvent(
+  input: Pick<AnalyzeInput, "useFixture" | "event" | "eventCity" | "eventDate">,
+  track: TrackCandidate
+): Promise<EventCandidate | null> {
   if (input.useFixture) {
     return fixtureEvents[0];
   }

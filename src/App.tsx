@@ -155,7 +155,11 @@ export default function App() {
     if (!job?.id) return;
     setError("");
     try {
-      const updated = await reanchorAnalysis(job.id, track);
+      const updated = await reanchorAnalysis(job.id, track, {
+        event: selectedEvent ?? null,
+        eventCity,
+        eventDate
+      });
       setJob(updated);
       setSelectedTrack(track);
     } catch (correctionError) {

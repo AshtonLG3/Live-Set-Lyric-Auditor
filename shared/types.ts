@@ -114,6 +114,8 @@ export type AnalysisRecovery = {
   source: ClipSource;
   performanceContext: PerformanceContext;
   event: EventCandidate | null;
+  eventCity?: string;
+  eventDate?: string;
 };
 
 export type VocalQualityStatus = "passed" | "warning" | "failed" | "fallback_original";

@@ -48,7 +48,7 @@ describe("JamBase adapter", () => {
 
   it("filters live results by user event hints instead of attaching arbitrary dates", async () => {
     vi.stubEnv("JAMBASE_API_KEY", "jambase-test-key");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({
       events: [{
         identifier: "event-42",
         name: "The Signal Keeps at Civic Hall",
@@ -56,12 +56,16 @@ describe("JamBase adapter", () => {
         performers: [{ identifier: "artist-7", name: "The Signal Keeps" }],
         venue: { identifier: "venue-9", name: "Civic Hall", city: "Cape Town" }
       }]
-    })));
+    }))));
 
     const { searchEvents } = await import("./jambase");
 
     await expect(searchEvents({ artist: "The Signal Keeps", city: "Cape Town", date: "2026-06-18" }))
       .resolves.toHaveLength(1);
+    await expect(searchEvents({ artist: "The Signal Keeps", city: "Cape Town", date: "2026-06-01" }))
+      .resolves.toHaveLength(1);
+    await expect(searchEvents({ artist: "The Signal Keeps", city: "Cape Town", date: "2026-07-01" }))
+      .resolves.toEqual([]);
     await expect(searchEvents({ artist: "The Signal Keeps", city: "London", date: "2026-06-18" }))
       .resolves.toEqual([]);
   });

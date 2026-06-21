@@ -16,7 +16,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.15",
+  version: "0.11.16",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -46,7 +46,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.15",
+    version: "0.11.16",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -261,7 +261,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.15/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.16/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -437,7 +437,7 @@ it("does not present a failed run as a valid high-confidence passport", async ()
         ...completeJob,
         status: "failed",
         passport: undefined,
-        error: "Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip."
+        error: "Auto-match could not confirm a Musixmatch track from the saved ASR transcript. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip."
       });
     }
     return baseFetch(url, init);
@@ -460,7 +460,7 @@ it("opens saved-transcript recovery when auto-match fails after Demucs and raw A
         ...completeJob,
         status: "failed",
         passport: undefined,
-        error: "Auto-match could not confirm a Musixmatch track after testing both the Demucs stem and original-audio ASR. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.",
+        error: "Auto-match could not confirm a Musixmatch track from the saved ASR transcript. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.",
         recovery: {
           filename: "phone-stage-clip.mp4",
           durationSeconds: 18,

@@ -97,13 +97,15 @@ function hasEventHint(input: { city?: string; date?: string }): boolean {
 function filterByEventHints(events: EventCandidate[], input: { city?: string; date?: string }): EventCandidate[] {
   const city = normalize(input.city ?? "");
   const date = input.date?.trim().slice(0, 10);
+  const month = date?.slice(0, 7);
   if (!city && !date) {
     return events;
   }
   return events.filter((event) => {
     const eventCity = normalize(event.city);
+    const eventDate = event.date.slice(0, 10);
     const cityMatches = !city || eventCity.includes(city) || city.includes(eventCity);
-    const dateMatches = !date || event.date.slice(0, 10) === date;
+    const dateMatches = !date || eventDate === date || (month ? eventDate.startsWith(month) : false);
     return cityMatches && dateMatches;
   });
 }

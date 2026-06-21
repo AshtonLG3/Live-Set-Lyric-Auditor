@@ -55,8 +55,9 @@ describe("ASR adapter", () => {
     expect(uploaded.name).toBe("stage-clip.mp3");
   });
 
-  it("falls back to the shared openai whisper version", async () => {
+  it("uses the shared openai whisper version only when slow fallback is explicitly enabled", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    vi.stubEnv("ASR_SLOW_FALLBACK_ENABLED", "true");
     runMock
       .mockRejectedValueOnce(new Error("fast model unavailable"))
       .mockResolvedValueOnce({ transcription: "fallback transcript" });
@@ -78,8 +79,26 @@ describe("ASR adapter", () => {
     });
   });
 
-  it("chooses the older Whisper candidate when the fast model returns a repetitive transcript", async () => {
+  it("does not spend slow fallback time when the fast model returns a weak transcript by default", async () => {
     vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    runMock.mockResolvedValueOnce({
+      chunks: Array.from({ length: 12 }, (_, index) => ({
+        timestamp: [index, index + 1],
+        text: "I'm trying to be"
+      }))
+    });
+
+    const { transcribeLiveVocal } = await import("./asr");
+    const result = await transcribeLiveVocal(undefined, "https://cdn.example/demucs-vocals.mp3");
+
+    expect(result.engine).toBe("vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c");
+    expect(result.segments.map((segment) => segment.text).join(" ")).toContain("I'm trying to be");
+    expect(runMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("can choose the older Whisper candidate in explicit slow fallback mode", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    vi.stubEnv("ASR_SLOW_FALLBACK_ENABLED", "true");
     runMock
       .mockResolvedValueOnce({
         chunks: Array.from({ length: 12 }, (_, index) => ({
@@ -96,6 +115,7 @@ describe("ASR adapter", () => {
 
     expect(result.engine).toBe("openai/whisper");
     expect(result.segments.map((segment) => segment.text).join(" ")).toContain("Talk to God");
+    expect(runMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not spend fallback time on a usable fast transcript by default", async () => {
@@ -128,6 +148,22 @@ describe("ASR adapter", () => {
 
     expect(result.engine).toBeTruthy();
     expect(runMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("times out a slow Replicate ASR request before it can block the run", async () => {
+    vi.stubEnv("REPLICATE_API_TOKEN", "replicate-test-token");
+    vi.stubEnv("ASR_REPLICATE_TIMEOUT_MS", "10000");
+    vi.useFakeTimers();
+    runMock.mockReturnValue(new Promise(() => undefined));
+
+    try {
+      const { transcribeLiveVocal } = await import("./asr");
+      const pending = expect(transcribeLiveVocal(audioFile())).rejects.toThrow("timed out after 10s");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("downloads a vocal URL and retries when Replicate rejects the remote file handoff", async () => {

@@ -218,7 +218,11 @@ app.post("/api/analyze/:jobId/reanchor", mutationLimiter, async (req, res, next)
       res.status(400).json({ error: "Track title and artist are required." });
       return;
     }
-    res.json(await reanchorAnalysis(paramString(req.params.jobId), track));
+    res.json(await reanchorAnalysis(paramString(req.params.jobId), track, {
+      event: req.body.event as EventCandidate | null | undefined,
+      eventCity: typeof req.body.eventCity === "string" ? req.body.eventCity : undefined,
+      eventDate: typeof req.body.eventDate === "string" ? req.body.eventDate : undefined
+    }));
   } catch (error) {
     next(error);
   }

@@ -66,11 +66,15 @@ export async function getAnalysis(jobId: string): Promise<AnalysisJob> {
   return fetchJson(`/api/analyze/${jobId}`);
 }
 
-export async function reanchorAnalysis(jobId: string, track: TrackCandidate): Promise<AnalysisJob> {
+export async function reanchorAnalysis(
+  jobId: string,
+  track: TrackCandidate,
+  eventInput: { event?: EventCandidate | null; eventCity?: string; eventDate?: string } = {}
+): Promise<AnalysisJob> {
   return fetchJson(`/api/analyze/${jobId}/reanchor`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ track })
+    body: JSON.stringify({ track, ...eventInput })
   });
 }
 

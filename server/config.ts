@@ -40,6 +40,8 @@ export const env = {
   replicateWhisperFallbackVersion: process.env.REPLICATE_WHISPER_FALLBACK_VERSION
     ?? "openai/whisper",
   asrCompareAllModels: parseBoolean(process.env.ASR_COMPARE_ALL_MODELS) ?? false,
+  asrSlowFallbackEnabled: parseBoolean(process.env.ASR_SLOW_FALLBACK_ENABLED) ?? false,
+  asrReplicateTimeoutMs: Math.min(120_000, Math.max(10_000, Number(process.env.ASR_REPLICATE_TIMEOUT_MS ?? 45_000))),
   replicateDemucsRef: process.env.REPLICATE_DEMUCS_REF?.trim()
     || "cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81158fa03836d953",
   replicateDemucsModel: process.env.REPLICATE_DEMUCS_MODEL?.trim() || undefined,
@@ -143,7 +145,9 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       detail: configured("REPLICATE_API_TOKEN")
         ? env.asrCompareAllModels
           ? "Replicate Whisper compares every configured candidate for quality review mode."
-          : "Replicate fast Whisper runs first; openai/whisper fallback runs only if fast ASR fails."
+          : env.asrSlowFallbackEnabled
+            ? "Replicate fast Whisper runs first; openai/whisper fallback is explicitly enabled."
+            : `Replicate fast Whisper is capped at ${Math.round(env.asrReplicateTimeoutMs / 1000)}s; slow openai/whisper fallback is off.`
         : configured("ASR_API_URL")
           ? "External Whisper-style ASR endpoint configured."
         : "Using seeded transcript for demo resilience."

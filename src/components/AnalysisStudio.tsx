@@ -508,7 +508,7 @@ function formatVocalQuality(report?: VocalQualityReport) {
 
 function formatAsrEngine(engine?: string) {
   if (!engine) return "Engine pending";
-  if (engine.startsWith("openai/whisper:")) return "OpenAI Whisper large-v2";
+  if (engine.startsWith("openai/whisper")) return "OpenAI Whisper";
   if (engine.startsWith("vaibhavs10/incredibly-fast-whisper:")) return "Fast Whisper";
   return engine.split(":")[0] ?? engine;
 }
