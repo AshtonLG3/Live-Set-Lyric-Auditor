@@ -6,8 +6,7 @@ import {
   Radio,
   Search,
   ShieldCheck,
-  Sparkles,
-  WandSparkles
+  Sparkles
 } from "lucide-react";
 import type { EventCandidate, HealthResponse, IntegrationName, TrackCandidate } from "../../shared/types";
 import { formatEventDate } from "../../shared/format";
@@ -24,7 +23,7 @@ type Props = {
   eventDate: string;
   busy: boolean;
   error: string;
-  onAnalyze: (input?: IntakeAnalysisInput, useFixture?: boolean) => Promise<void> | void;
+  onAnalyze: (input: IntakeAnalysisInput) => Promise<void> | void;
   onTrackMatched: (track: TrackCandidate) => void;
   onTrackQueryChange: (value: string) => void;
   onTrackSearch: () => Promise<void> | void;
@@ -81,9 +80,6 @@ export function SessionWorkspace(props: Props) {
               onTrackSelect={props.onTrackSelect}
             />
           </div>
-          <button className="studio-demo-button" disabled={props.busy} onClick={() => void props.onAnalyze(undefined, true)} title="Run the complete contest flow with seeded demo data">
-            <WandSparkles size={17} /> Run judge-ready demo
-          </button>
           {props.error && <p className="studio-inline-error"><CircleAlert size={15} /> {props.error}</p>}
         </RackPanel>
 
@@ -153,7 +149,7 @@ function getPartnerStatus(name: IntegrationName, busy: boolean, hasTrack: boolea
   if (name === "Audio ID") return busy ? "Fingerprinting" : "Fingerprint Ready";
   if (name === "LALAL.AI") return busy ? "Rescue Split" : "Rescue Ready";
   if (name === "JamBase") return hasEvent ? "Event Found" : "Search Ready";
-  if (name === "ASR") return busy ? "Fast Whisper" : "Transcript Ready";
+  if (name === "ASR") return busy ? "Scribe/ASR" : "Transcript Ready";
   if (name === "Demucs") return busy ? "Last Resort" : "Slow Fallback";
   if (name === "Cyanite") return busy ? "Profiling Live Energy" : "Context Ready";
   return "Narration Ready";

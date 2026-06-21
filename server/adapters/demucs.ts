@@ -18,7 +18,7 @@ export async function isolateVocalsWithDemucs(file?: Express.Multer.File): Promi
     return {
       source: "fixture",
       confidence: 0.74,
-      detail: "Fixture vocal isolation used for stable demo playback."
+      detail: "Fixture vocal isolation used for labeled fallback coverage."
     };
   }
   if (!env.replicateToken) {

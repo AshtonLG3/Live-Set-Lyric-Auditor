@@ -148,7 +148,7 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       sourceCoverage: 0.9,
       restricted: false,
       language: track.language ?? "en",
-      copyright: "Fixture lyrics created for the Musicathon demo.",
+      copyright: "Fixture lyrics created for fallback testing.",
       trackUrl: track.url
     };
   }
@@ -200,7 +200,7 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
       sourceCoverage: 0.22,
       restricted: true,
       language: track.language,
-      copyright: "Live Musixmatch lyric reference unavailable; no demo lyrics were substituted.",
+      copyright: "Live Musixmatch lyric reference unavailable; no fixture lyrics were substituted.",
       trackUrl: track.url
     };
   }

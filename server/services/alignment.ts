@@ -535,7 +535,7 @@ export function buildPassport(input: {
         : "Source media was supplied directly by the user for this analysis.",
       input.performanceContext?.source === "cyanite"
         ? "Configured Cyanite analysis contributes derived energy, mood, BPM, and arrangement metadata."
-        : "Performance context uses seeded demo metadata when Cyanite analysis is unavailable.",
+        : "Performance context uses a labeled fallback profile when Cyanite analysis is unavailable.",
       input.asrEngine
         ? `ASR engine selected by transcript quality gate: ${input.asrEngine}.`
         : "ASR engine was not reported by the configured transcription provider.",
@@ -547,7 +547,7 @@ export function buildPassport(input: {
             ? "Configured Replicate Demucs vocal isolation supplied the transcription stem."
             : input.vocalIsolationSource === "original"
               ? "Vocal isolation was unavailable or rejected, so transcription used the original user-supplied audio."
-              : "Seeded demo isolation metadata was used for the fixture run."
+              : "Fixture isolation metadata was used for the labeled fallback run."
     ]
   };
 }

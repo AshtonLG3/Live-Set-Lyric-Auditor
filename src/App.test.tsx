@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.20",
+  version: "0.11.23",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.20",
+    version: "0.11.23",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -267,9 +267,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+async function runUploadedClip(fileName = "concert-snippet.mp3") {
+  const file = new File(["audio"], fileName, { type: "audio/mpeg" });
+  fireEvent.drop(screen.getByTestId("clip-dropzone"), { dataTransfer: { files: [file] } });
+  expect(await screen.findByText(fileName)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Analyze clip/i }));
+}
+
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.20/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.23/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -287,6 +294,7 @@ it("keeps intake focused on uploaded clips and recall", async () => {
   render(<App />);
   expect(await screen.findByRole("button", { name: "Upload clip" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Recall lyric fragment" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /judge-ready demo|seeded demo/i })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Live link" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Live performance URL")).not.toBeInTheDocument();
 });
@@ -405,9 +413,9 @@ it("offers rear-camera capture and imports the recorded video", async () => {
   expect(screen.getByRole("button", { name: /Analyze clip/i })).toBeEnabled();
 });
 
-it("runs the seeded demo and renders a passport", async () => {
+it("runs an uploaded clip and renders a passport", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
   expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument();
   const diffViewLink = screen.getByRole("button", { name: "Diff View" });
@@ -439,7 +447,7 @@ it("runs the seeded demo and renders a passport", async () => {
 
 it("surfaces the Musixmatch identity chain including ISRC and version confidence", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
 
   expect(screen.getByText(/Musixmatch Identity/i)).toBeInTheDocument();
@@ -447,17 +455,17 @@ it("surfaces the Musixmatch identity chain including ISRC and version confidence
   expect(screen.getByText(/91% version confidence/i)).toBeInTheDocument();
 }, 60000);
 
-it("flags seeded demo passports so fixtures are never mistaken for a live run", async () => {
+it("flags fixture passports so fallback data is never mistaken for a live run", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
   await waitFor(() => expect(screen.getAllByText("Midnight Atlas").length).toBeGreaterThan(0));
 
-  expect(screen.getByText(/Seeded demo data/i)).toBeInTheDocument();
+  expect(screen.getByText(/Fixture fallback data/i)).toBeInTheDocument();
 }, 60000);
 
 it("labels timeline steps as process status instead of quality scores", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
   await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
 
   const timeline = document.querySelector("#analysis-timeline") as HTMLElement;
@@ -501,7 +509,7 @@ it("imports a longer clip and sends the selected trim range for analysis", async
 
 it("adds a missed live moment via the inline insert button", async () => {
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
   await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
 
   const insertButtons = await screen.findAllByRole("button", { name: /Add missed moment/i });
@@ -532,7 +540,7 @@ it("does not present a failed run as a valid high-confidence passport", async ()
   }));
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
 
   expect(await screen.findByText(/Auto-match could not confirm/i)).toBeInTheDocument();
   // A failed run must not borrow the preview placeholders to look like a valid passport.
@@ -569,10 +577,10 @@ it("offers ElevenLabs Scribe when Whisper fails before a transcript is available
   }));
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
 
-  expect(await screen.findByText(/Whisper could not finish this transcript/i)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /Try ElevenLabs Scribe/i }));
+  expect(await screen.findByText(/Speech-to-text could not finish this transcript/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Retry ElevenLabs Scribe/i }));
 
   await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/analyze/job-1/retranscribe")).toBe(true));
   expect((await screen.findAllByText(/ElevenLabs Scribe/i)).length).toBeGreaterThan(0);
@@ -639,18 +647,32 @@ it("opens saved-transcript recovery when auto-match fails after Demucs and raw A
     return baseFetch(url, init);
   }));
 
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  const { container } = render(<App />);
+  await runUploadedClip();
 
-  const recoveryPanel = await screen.findByRole("region", { name: /Choose track anchor/i });
-  expect(within(recoveryPanel).getByText(/Transcript saved/i)).toBeInTheDocument();
-  expect(within(recoveryPanel).getByText(/without rerunning the clip/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Auto-match could not confirm/i)).toBeInTheDocument();
+  let recoveryPanel = container.querySelector<HTMLElement>('[aria-label="Choose track anchor"]');
+  if (!recoveryPanel) {
+    fireEvent.click(await screen.findByRole("button", { name: /Choose track/i }));
+    await waitFor(() => expect(container.querySelector('[aria-label="Choose track anchor"]')).not.toBeNull());
+    recoveryPanel = container.querySelector<HTMLElement>('[aria-label="Choose track anchor"]');
+  }
+  expect(recoveryPanel).not.toBeNull();
+  const panel = recoveryPanel!;
+  expect(within(panel).getByText(/Transcript saved/i)).toBeInTheDocument();
+  expect(within(panel).getByText(/without rerunning the clip/i)).toBeInTheDocument();
 
-  fireEvent.change(within(recoveryPanel).getByLabelText("Correct track title"), { target: { value: "Correct Song" } });
-  fireEvent.change(within(recoveryPanel).getByLabelText("Correct track artist"), { target: { value: "Correct Artist" } });
-  fireEvent.click(within(recoveryPanel).getByRole("button", { name: /Use manual labels/i }));
+  const currentPanel = screen.getByRole("region", { name: /Choose track anchor/i });
+  const titleInput = within(currentPanel).getByLabelText("Correct track title");
+  const artistInput = within(currentPanel).getByLabelText("Correct track artist");
+  fireEvent.change(titleInput, { target: { value: "Correct Song" } });
+  fireEvent.change(artistInput, { target: { value: "Correct Artist" } });
+  expect(await screen.findByDisplayValue("Correct Song")).toBeInTheDocument();
+  expect(await screen.findByDisplayValue("Correct Artist")).toBeInTheDocument();
+  fireEvent.click(within(screen.getByRole("region", { name: /Choose track anchor/i })).getByRole("button", { name: /Use manual labels/i }));
 
-  expect((await screen.findAllByText("Correct Song")).length).toBeGreaterThan(0);
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/analyze/job-1/reanchor")).toBe(true));
+  await waitFor(() => expect(screen.getAllByText(/Correct Song/).length).toBeGreaterThan(0));
   expect(screen.queryByText(/Auto-match could not confirm/i)).not.toBeInTheDocument();
 }, 40000);
 
@@ -669,7 +691,7 @@ it("surfaces a polling failure instead of leaving analysis busy", async () => {
   }));
 
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+  await runUploadedClip();
 
   expect(await screen.findByText("Analysis status connection failed", {}, { timeout: 5000 })).toBeInTheDocument();
 }, 40000);

@@ -1,6 +1,6 @@
 import type { AnalysisJob, AnalysisRecovery, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
 import { formatBytes } from "../../shared/format";
-import { fixtureClipDuration, fixtureEvents, fixturePerformanceContext, fixtureTracks } from "../data/fixtures";
+import { fixtureClipDuration, fixturePerformanceContext } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import type { TranscriptionResult } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
@@ -25,7 +25,6 @@ export type AnalyzeInput = {
   eventDate?: string;
   durationSeconds?: number;
   autoMatch?: boolean;
-  useFixture?: boolean;
   source?: ClipSource;
   recallSegments?: TranscriptSegment[];
 };
@@ -87,7 +86,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
           ? `${recallSegments.length} recalled lyric segment${recallSegments.length === 1 ? "" : "s"} loaded.`
           : input.source?.kind === "live_link"
             ? `${providerLabel(input.source)} reference · no processable excerpt`
-            : "Seeded fixture clip loaded."
+            : "Source media pending."
     );
 
     setStep(jobId, "isolate", "running");
@@ -104,9 +103,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
             detail: "Fast mode: original audio goes to ASR first; split rescue is not run automatically."
           }
         : {
-            source: "fixture",
-            confidence: 0.74,
-            detail: "Fixture vocal isolation used for stable demo playback."
+            source: "original",
+            confidence: 0,
+            detail: "No vocal media was supplied."
           };
     setStep(jobId, "isolate", "complete", initialVocal.detail);
 
@@ -116,7 +115,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       jobId,
       "profile",
       "complete",
-      `${performanceContext.source === "cyanite" ? "Cyanite" : "Demo profile"} · ${Math.round(performanceContext.energyLevel * 100)}% energy · ${performanceContext.arrangement.replaceAll("_", " ")}`
+      `${performanceContext.source === "cyanite" ? "Cyanite" : "Fallback profile"} · ${Math.round(performanceContext.energyLevel * 100)}% energy · ${performanceContext.arrangement.replaceAll("_", " ")}`
     );
 
     const recoveryBase = {
@@ -126,8 +125,8 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       trackQuery: input.trackQuery,
       autoMatch: input.autoMatch,
       source: effectiveSource ?? {
-        kind: analysisFile ? "upload" as const : "fixture" as const,
-        processingMode: analysisFile ? "uploaded_media" as const : "fixture" as const
+        kind: analysisFile ? "upload" as const : "recall_recording" as const,
+        processingMode: analysisFile ? "uploaded_media" as const : "recall_recording" as const
       },
       performanceContext,
       event: input.event ?? null,
@@ -141,8 +140,8 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
         vocalIsolationSource: initialVocal.source,
         vocalIsolationConfidence: initialVocal.confidence,
         vocalQuality: assessVocalTranscript([], initialVocal.source),
-        asrSource: "replicate",
-        asrEngine: "Whisper",
+        asrSource: env.elevenlabsKey ? "external" : "replicate",
+        asrEngine: env.elevenlabsKey ? `elevenlabs/${env.elevenlabsSttModel}` : "Whisper",
         transcript: []
       }
     }));
@@ -458,8 +457,8 @@ function buildRecoveryFromSavedMedia(
     vocalIsolationSource: "original",
     vocalIsolationConfidence: 0.58,
     vocalQuality: assessVocalTranscript([], "original", [issue]),
-    asrSource: "replicate",
-    asrEngine: "Whisper",
+    asrSource: env.elevenlabsKey ? "external" : "replicate",
+    asrEngine: env.elevenlabsKey ? `elevenlabs/${env.elevenlabsSttModel}` : "Whisper",
     transcript: [],
     source,
     performanceContext: fixturePerformanceContext,
@@ -595,6 +594,25 @@ async function selectVocalTranscription(
     };
   }
 
+  let scribeError: string | undefined;
+  if (analysisFile && !vocal.vocalUrl && env.elevenlabsKey) {
+    const scribeVocal = {
+      ...vocal,
+      detail: "ElevenLabs Scribe selected as the primary ASR engine on original audio."
+    };
+    try {
+      const transcription = await transcribeWithElevenLabs(analysisFile);
+      return {
+        transcription,
+        vocal: scribeVocal,
+        vocalQuality: addIsolationDetail(assessVocalTranscript(transcription.segments, vocal.source), scribeVocal)
+      };
+    } catch (error) {
+      scribeError = error instanceof Error ? error.message : "ElevenLabs Scribe transcription failed";
+      setStep(jobId, "transcribe", "running", `ElevenLabs Scribe failed; retrying Whisper fallback. ${scribeError}`);
+    }
+  }
+
   let primary: VocalTranscriptionSelection;
   try {
     const transcription = await transcribeLiveVocal(analysisFile, vocal.vocalUrl);
@@ -613,6 +631,10 @@ async function selectVocalTranscription(
         assessVocalTranscript([], vocal.source, [reason]),
         `the ${label} stem could not be transcribed`
       );
+    }
+    if (scribeError) {
+      const whisperError = error instanceof Error ? error.message : "Whisper fallback failed";
+      throw new Error(`ElevenLabs Scribe failed: ${scribeError}; Whisper fallback failed: ${whisperError}`);
     }
     throw error;
   }
@@ -840,8 +862,8 @@ function buildPassportForSelection(args: PassportBuildArgs): LiveVariantPassport
     asrSource: args.selected.transcription.source,
     asrEngine: args.selected.transcription.engine,
     source: args.effectiveSource ?? {
-      kind: args.analysisFile ? "upload" : "fixture",
-      processingMode: args.analysisFile ? "uploaded_media" : "fixture"
+      kind: args.analysisFile ? "upload" : "recall_recording",
+      processingMode: args.analysisFile ? "uploaded_media" : "recall_recording"
     },
     liveContext: args.liveContext,
     performanceContext: args.performanceContext
@@ -857,9 +879,6 @@ async function resolveTrack(
   matchMethod: RecordingMatchMethod;
   detail?: string;
 }> {
-  if (input.useFixture) {
-    return { track: fixtureTracks[0], matchMethod: "fixture_rescue" };
-  }
   if (input.track && !input.autoMatch) {
     return { track: input.track, matchMethod: "selected_track" };
   }
@@ -894,9 +913,6 @@ async function resolveAnalysisFile(input: AnalyzeInput): Promise<Express.Multer.
     }
     return input.file;
   }
-  if (input.useFixture || input.source?.kind === "fixture") {
-    return undefined;
-  }
   if (input.source?.kind === "live_link" && input.source.provider === "youtube" && input.source.processingMode === "provider_excerpt") {
     if (!env.youtubeExtractionEnabled) {
       throw new Error("YouTube extraction is disabled for this server. Attach an authorized excerpt instead.");
@@ -920,16 +936,13 @@ function sourceFilename(source?: ClipSource): string {
   if (source?.kind === "recall_recording") {
     return "remembered-lyric.webm";
   }
-  return "seeded-demo-clip.mp3";
+  return "source-media";
 }
 
 async function resolveEvent(
-  input: Pick<AnalyzeInput, "useFixture" | "event" | "eventCity" | "eventDate">,
+  input: Pick<AnalyzeInput, "event" | "eventCity" | "eventDate">,
   track: TrackCandidate
 ): Promise<EventCandidate | null> {
-  if (input.useFixture) {
-    return fixtureEvents[0];
-  }
   if (input.event) {
     return input.event;
   }

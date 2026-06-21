@@ -1605,8 +1605,7 @@ button {
 }
 
 .studio-square-button,
-.studio-ghost-button,
-.studio-demo-button {
+.studio-ghost-button {
   display: inline-flex;
   min-height: 42px;
   align-items: center;
@@ -1624,18 +1623,12 @@ button {
   background: var(--app-panel-low);
 }
 
-.studio-ghost-button,
-.studio-demo-button {
+.studio-ghost-button {
   width: 100%;
   margin-top: 10px;
   border: 1px solid var(--app-border);
   color: var(--app-text);
   background: var(--app-panel-low);
-}
-
-.studio-demo-button {
-  border-color: color-mix(in srgb, var(--app-orange) 55%, var(--app-border));
-  color: var(--app-orange);
 }
 
 .studio-event-fields {

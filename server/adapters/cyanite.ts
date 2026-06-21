@@ -44,7 +44,7 @@ export async function analyzePerformance(input: {
     return result ? mapPerformanceContext(result) : fixturePerformanceContext;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown Cyanite error";
-    console.warn(`Cyanite analysis unavailable; using the labeled demo profile. ${detail}`);
+    console.warn(`Cyanite analysis unavailable; using the labeled fallback profile. ${detail}`);
     return fixturePerformanceContext;
   }
 }

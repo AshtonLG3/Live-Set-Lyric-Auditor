@@ -91,7 +91,6 @@ app.post("/api/recall", mutationLimiter, upload.single("fragment"), async (req, 
 
 app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res, next) => {
   try {
-    const useFixture = req.body.useFixture === "true";
     const source = parseJsonField<ClipSource>(req.body.source);
     const recallSegments = parseTranscriptSegments(req.body.recallSegments);
     const hasRecallTranscript = source?.kind === "recall_recording" && recallSegments.length > 0;
@@ -105,7 +104,7 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       res.status(400).json({ error: "YouTube extraction is unavailable on this server. Attach an authorized excerpt instead." });
       return;
     }
-    if (!req.file && !useFixture && !canUseProviderExtraction && !hasRecallTranscript) {
+    if (!req.file && !canUseProviderExtraction && !hasRecallTranscript) {
       res.status(400).json({
         error: source?.kind === "live_link"
           ? "Attach an authorized audio or video excerpt before starting analysis."
@@ -158,7 +157,6 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       eventDate: req.body.eventDate,
       durationSeconds: durationSeconds || undefined,
       autoMatch: req.body.autoMatch === "true",
-      useFixture,
       source,
       recallSegments
     });

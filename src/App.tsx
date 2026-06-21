@@ -137,7 +137,7 @@ export default function App() {
     setSelectedEvent(hasEventHint ? items[0] ?? null : null);
   }
 
-  async function handleAnalyze(input?: IntakeAnalysisInput, useFixture = false) {
+  async function handleAnalyze(input: IntakeAnalysisInput) {
     setBusy(true);
     setError("");
     setNarration(null);
@@ -147,14 +147,13 @@ export default function App() {
     setActiveSection("analysis-timeline");
     try {
       const { jobId } = await startAnalysis({
-        file: useFixture ? undefined : input?.file,
-        durationSeconds: useFixture ? undefined : input?.durationSeconds,
-        autoMatch: useFixture ? true : input?.autoMatch,
-        useFixture,
-        source: useFixture ? { kind: "fixture", processingMode: "fixture" } : input?.source,
-        recallSegments: input?.recallSegments,
-        track: input?.autoMatch === false ? selectedTrack : undefined,
-        event: input?.autoMatch === false ? selectedEvent ?? null : null,
+        file: input.file,
+        durationSeconds: input.durationSeconds,
+        autoMatch: input.autoMatch,
+        source: input.source,
+        recallSegments: input.recallSegments,
+        track: input.autoMatch === false ? selectedTrack : undefined,
+        event: input.autoMatch === false ? selectedEvent ?? null : null,
         trackQuery,
         eventCity,
         eventDate
@@ -205,7 +204,7 @@ export default function App() {
     const recoveryRun = job.status === "failed" && !job.passport;
     const confirmed = window.confirm(
       recoveryRun
-        ? "Try ElevenLabs Scribe on the saved source media? This can recover files that Whisper rejected and may consume ElevenLabs credits."
+        ? "Retry ElevenLabs Scribe on the saved source media? This can recover failed speech-to-text runs and may consume ElevenLabs credits."
         : "Run ElevenLabs Scribe on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume ElevenLabs credits."
     );
     if (!confirmed) return;
@@ -571,5 +570,5 @@ function uppercaseFirstLetter(value: string): string {
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {
   if (mode === "live") return { label: "API mode", detail: "All partner credentials are present. Each analysis step reports whether its live request completed or fell back." };
   if (mode === "mixed") return { label: "Mixed sources", detail: "Configured partners are requested live; unavailable optional context is left empty or clearly labeled." };
-  return { label: "Setup needed", detail: "Add partner keys for live processing. A tucked-away judge demo remains available under Judge / Deploy tools." };
+  return { label: "Setup needed", detail: "Add partner keys for live processing, then upload, record, or recall real media to run analysis." };
 }

@@ -88,7 +88,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       mode: configured("MUSIXMATCH_API_KEY") ? "live" : "fixture",
       detail: configured("MUSIXMATCH_API_KEY")
         ? "Search, metadata, lyrics, and subtitles adapters enabled."
-        : "Using seeded track and canonical reference fixtures."
+        : "Musixmatch is not configured; any fixture fallback is labeled explicitly."
     },
     {
       name: "Audio ID",
@@ -112,7 +112,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       mode: configured("REPLICATE_API_TOKEN") ? "live" : "fixture",
       detail: configured("REPLICATE_API_TOKEN")
         ? "Replicate Demucs remains configured for explicit fallback work, not hidden post-passport rescue."
-        : "Uploads fall back to original audio; seeded demos use fixture isolation."
+        : "Uploads use original audio unless a separator is configured."
     },
     {
       name: "JamBase",
@@ -120,7 +120,7 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       mode: configured("JAMBASE_API_KEY") ? "live" : "fixture",
       detail: configured("JAMBASE_API_KEY")
         ? "Event search, catalog identifiers, and live-context evidence enabled."
-        : "Using seeded concert and setlist context."
+        : "JamBase is not configured; event context remains pending unless supplied by a live run."
     },
     {
       name: "Cyanite",
@@ -130,31 +130,44 @@ export function getIntegrationStatus(): IntegrationStatus[] {
         ? configured("CYANITE_WEBHOOK_URL")
           ? "Credential present; analysis requests are enabled and Cyanite completion events route to the configured webhook."
           : "Credential present; analysis requests are enabled and fallbacks are labeled per job."
-        : "Using a seeded live-performance profile."
+        : "Cyanite is not configured; performance context remains pending or clearly labeled fallback."
     },
     {
       name: "ElevenLabs",
       configured: configured("ELEVENLABS_API_KEY"),
       mode: configured("ELEVENLABS_API_KEY") ? "live" : "fixture",
       detail: configured("ELEVENLABS_API_KEY")
-        ? "Narration and explicit Scribe STT retranscription are enabled."
-        : "Narration returns a judge-ready script without audio."
+        ? "Narration and primary Scribe STT are enabled."
+        : "Narration returns a text-only script without audio; Scribe STT is unavailable."
     },
     {
       name: "ASR",
-      configured: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL"),
-      mode: configuredAny("REPLICATE_API_TOKEN", "ASR_API_URL") ? "live" : "fixture",
-      detail: configured("REPLICATE_API_TOKEN")
-        ? env.asrCompareAllModels
-          ? "Replicate Whisper compares every configured candidate for quality review mode."
-          : env.asrSlowFallbackEnabled
-            ? "Replicate fast Whisper runs first; openai/whisper fallback is explicitly enabled."
-            : `Replicate fast Whisper is capped at ${Math.round(env.asrReplicateTimeoutMs / 1000)}s; slow openai/whisper fallback is off.`
-        : configured("ASR_API_URL")
-          ? "External Whisper-style ASR endpoint configured."
-        : "Using seeded transcript for demo resilience."
+      configured: configuredAny("ELEVENLABS_API_KEY", "REPLICATE_API_TOKEN", "ASR_API_URL"),
+      mode: configuredAny("ELEVENLABS_API_KEY", "REPLICATE_API_TOKEN", "ASR_API_URL") ? "live" : "fixture",
+      detail: asrIntegrationDetail()
     }
   ];
+}
+
+function asrIntegrationDetail(): string {
+  if (configured("ELEVENLABS_API_KEY")) {
+    return configured("REPLICATE_API_TOKEN")
+      ? "ElevenLabs Scribe is primary; Replicate Whisper remains available as fallback."
+      : "ElevenLabs Scribe is primary; no Whisper fallback is configured.";
+  }
+  if (configured("REPLICATE_API_TOKEN")) {
+    if (env.asrCompareAllModels) {
+      return "Replicate Whisper compares every configured candidate for quality review mode.";
+    }
+    if (env.asrSlowFallbackEnabled) {
+      return "Replicate fast Whisper runs first; openai/whisper fallback is explicitly enabled.";
+    }
+    return `Replicate fast Whisper is capped at ${Math.round(env.asrReplicateTimeoutMs / 1000)}s; slow openai/whisper fallback is off.`;
+  }
+  if (configured("ASR_API_URL")) {
+    return "External Whisper-style ASR endpoint configured.";
+  }
+  return "No live ASR is configured; fixture transcripts are labeled when used by tests or fallback adapters.";
 }
 
 export function getRuntimeMode(): RuntimeMode {

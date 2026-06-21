@@ -22,12 +22,12 @@ export function riskMessage(variants: VariantCandidate[]) {
 }
 
 export function formatSourceMode(value: string) {
-  if (value.includes("fixture")) return "Demo Ready";
+  if (value.includes("fixture")) return "Fixture Fallback";
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function formatRecordingId(value: string) {
-  return value.replace(/^fixture-/i, "demo-").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value.replace(/^fixture-/i, "fallback-").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function formatTime(value: number) {

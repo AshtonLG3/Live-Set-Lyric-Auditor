@@ -114,6 +114,109 @@ describe("analysis vocal quality fallback", () => {
     expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBeUndefined();
   });
 
+  it("uses ElevenLabs Scribe as the primary ASR when configured", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    mocks.transcribeWithElevenLabs.mockResolvedValue({
+      source: "external",
+      engine: "elevenlabs/scribe_v2",
+      segments: originalAudioSegments()
+    });
+    mocks.identifyTrackFromLyrics.mockImplementation(async (segments: TranscriptSegment[]) =>
+      segments.some((segment) => String(segment.text).toLowerCase().includes("talk to god"))
+        ? mocks.track
+        : null
+    );
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobs } = await import("../store");
+    const { runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.passport?.clip.asrSource).toBe("external");
+    expect(analyzed?.passport?.clip.asrEngine).toBe("elevenlabs/scribe_v2");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal).not.toHaveBeenCalled();
+  });
+
+  it("falls back to Whisper when primary ElevenLabs Scribe fails", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    mocks.transcribeWithElevenLabs.mockRejectedValue(new Error("ElevenLabs Scribe failed with 500"));
+    mocks.transcribeLiveVocal.mockResolvedValue({
+      source: "replicate",
+      engine: "vaibhavs10/incredibly-fast-whisper:test",
+      segments: originalAudioSegments()
+    });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobs } = await import("../store");
+    const { runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.passport?.clip.asrSource).toBe("replicate");
+    expect(analyzed?.passport?.clip.asrEngine).toBe("vaibhavs10/incredibly-fast-whisper:test");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
+  });
+
   it("does not run hidden split rescue after a weak original-audio passport", async () => {
     vi.stubEnv("LALAL_LICENSE_KEY", "lalal-test-key");
     mocks.isolateVocalsWithLalal.mockResolvedValue({

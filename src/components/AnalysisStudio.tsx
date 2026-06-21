@@ -75,10 +75,12 @@ export function AnalysisStudio(props: Props) {
   const [currentTime, setCurrentTime] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [dismissedCorrectionJobId, setDismissedCorrectionJobId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [insertAfterTime, setInsertAfterTime] = useState(0);
   const passport = props.job?.passport;
   const recovery = props.job?.recovery;
+  const clipSource = passport?.clip.source ?? recovery?.source;
   const track = passport?.track ?? (recovery ? undefined : props.selectedTrack);
   const event = passport ? passport.event : props.selectedEvent ?? null;
   const detectedVariants = passport?.variants ?? (props.job ? [] : previewVariants);
@@ -114,7 +116,7 @@ export function AnalysisStudio(props: Props) {
   const divergence = Math.round((1 - (passport?.confidenceOverview.alignment ?? 0.72)) * 100);
   const liveContext = passport?.liveContext;
   const performanceContext = passport?.performanceContext;
-  const energyLevel = Math.round((performanceContext?.energyLevel ?? 0.86) * 100);
+  const energyLevel = performanceContext ? Math.round(performanceContext.energyLevel * 100) : 0;
   const riskCount = variants.filter((v) => matchesFilter(v, "risk")).length;
   const transcript = passport?.clip.transcript ?? recovery?.transcript ?? [];
   const displayDuration = mediaDuration || passport?.clip.durationSeconds || recovery?.durationSeconds || 0;
@@ -127,6 +129,8 @@ export function AnalysisStudio(props: Props) {
   const hasPassport = Boolean(passport);
   const needsTrackRecovery = Boolean(recovery && !passport);
   const canRunScribeRecovery = Boolean(props.job?.status === "failed" && !passport);
+  const autoOpenTrackRecovery = Boolean(props.job?.status === "failed" && needsTrackRecovery && dismissedCorrectionJobId !== props.job?.id);
+  const showCorrectionPanel = correctionOpen || autoOpenTrackRecovery;
   // A run that finished without a passport (e.g. failed track-match) must not borrow
   // the marketing-preview numbers and read as a valid high-confidence passport. Preview
   // defaults are only honest before any run (no job yet).
@@ -147,13 +151,23 @@ export function AnalysisStudio(props: Props) {
   useEffect(() => {
     setManualOpen(false);
     setCorrectionOpen(false);
+    setDismissedCorrectionJobId(null);
   }, [props.job?.id]);
 
-  useEffect(() => {
-    if (props.job?.status === "failed" && needsTrackRecovery) {
-      setCorrectionOpen(true);
+  function toggleCorrectionPanel() {
+    if (showCorrectionPanel) {
+      setCorrectionOpen(false);
+      setDismissedCorrectionJobId(props.job?.id ?? null);
+      return;
     }
-  }, [needsTrackRecovery, props.job?.id, props.job?.status]);
+    setDismissedCorrectionJobId(null);
+    setCorrectionOpen(true);
+  }
+
+  function closeCorrectionPanel() {
+    setCorrectionOpen(false);
+    setDismissedCorrectionJobId(props.job?.id ?? null);
+  }
 
   function handleInsertMoment(afterStart: number) {
     setInsertAfterTime(afterStart);
@@ -186,7 +200,7 @@ export function AnalysisStudio(props: Props) {
           <ContextCard icon={<Fingerprint size={17} />} label="Track Anchor" status="Musixmatch">
             <TrackAnchorTitle track={track} onVisitTrack={props.onVisitTrack} />
             <span>{track?.artist ?? "Catalog search"}{track?.album ? ` · ${track.album}` : ""}</span>
-            {(passport || recovery) && <button type="button" className="studio-correction-toggle" onClick={() => setCorrectionOpen((open) => !open)}><Pencil size={13} /> {passport ? "Correct match" : "Choose track"}</button>}
+            {(passport || recovery) && <button type="button" className="studio-correction-toggle" onClick={toggleCorrectionPanel}><Pencil size={13} /> {passport ? "Correct match" : "Choose track"}</button>}
           </ContextCard>
           <ContextCard icon={<CalendarDays size={17} />} label="Event Anchor" status={event ? "JamBase" : "Optional"}>
             {event?.url
@@ -194,9 +208,9 @@ export function AnalysisStudio(props: Props) {
               : <strong>{event?.venue ?? "No event selected"}</strong>}
             <span>{event ? `${event.city} · ${formatEventDate(event.date)}` : "Add city and date for event context"}</span>
           </ContextCard>
-          <ContextCard icon={<Link2 size={17} />} label="Clip Evidence" status={formatSourceMode(passport?.clip.source.processingMode ?? recovery?.source.processingMode ?? props.health?.runtimeMode ?? "fixture")}>
-            <strong>{formatSourceMode(passport?.clip.source.kind ?? recovery?.source.kind ?? "fixture")}</strong>
-            <span>{Math.round(passport?.clip.durationSeconds ?? recovery?.durationSeconds ?? 24)}s analyzed · source preserved</span>
+          <ContextCard icon={<Link2 size={17} />} label="Clip Evidence" status={clipSource ? formatSourceMode(clipSource.processingMode) : "Pending"}>
+            <strong>{clipSource ? formatSourceMode(clipSource.kind) : "Pending"}</strong>
+            <span>{clipSource ? `${Math.round(passport?.clip.durationSeconds ?? recovery?.durationSeconds ?? 0)}s analyzed · source preserved` : "Upload, record, or recall media"}</span>
           </ContextCard>
           <ContextCard icon={<ShieldCheck size={17} />} label="Review Signal" status={riskCount ? `${riskCount} Risk` : "Clear"} tone={riskCount ? "risk" : "active"}>
             <strong>{riskCount ? "Focused review needed" : "No high-risk variants"}</strong>
@@ -204,8 +218,8 @@ export function AnalysisStudio(props: Props) {
           </ContextCard>
         </div>
 
-        {correctionOpen && (
-          <CorrectionPanel track={track} recovery={needsTrackRecovery} onCorrectTrack={props.onCorrectTrack} onClose={() => setCorrectionOpen(false)} />
+        {showCorrectionPanel && (
+          <CorrectionPanel track={track} recovery={needsTrackRecovery} onCorrectTrack={props.onCorrectTrack} onClose={closeCorrectionPanel} />
         )}
 
         <EvidenceChainPanel
@@ -236,11 +250,11 @@ export function AnalysisStudio(props: Props) {
         {canRunScribeRecovery && (
           <section className="studio-scribe-recovery" aria-label="ElevenLabs Scribe recovery">
             <div>
-              <strong>Whisper could not finish this transcript.</strong>
-              <span>Try ElevenLabs Scribe on the saved clip without importing it again.</span>
+              <strong>Speech-to-text could not finish this transcript.</strong>
+              <span>Retry ElevenLabs Scribe on the saved clip without importing it again.</span>
             </div>
             <button className="studio-secondary-button" type="button" disabled={active} onClick={() => void props.onRetranscribe()}>
-              <Sparkles size={16} /> Try ElevenLabs Scribe
+              <Sparkles size={16} /> Retry ElevenLabs Scribe
             </button>
           </section>
         )}
@@ -289,7 +303,7 @@ export function AnalysisStudio(props: Props) {
 
         <section className="studio-intelligence-grid" aria-label="Live and performance context">
           <article className="studio-panel studio-intelligence-card">
-            <div className="studio-panel-heading"><span><ListMusic size={17} /> Live Context</span><span className="studio-mono">{liveContext?.source === "jambase" ? "JamBase" : "Demo Ready"}</span></div>
+            <div className="studio-panel-heading"><span><ListMusic size={17} /> Live Context</span><span className="studio-mono">{liveContext?.source === "jambase" ? "JamBase" : liveContext ? "Fallback" : "Pending"}</span></div>
             <div className="studio-intelligence-body">
               <div className="studio-data-list">
                 <DataLine label="Event" value={event ? `${event.venue}, ${event.city}` : "Event anchor pending"} />
@@ -302,15 +316,15 @@ export function AnalysisStudio(props: Props) {
           </article>
 
           <article className="studio-panel studio-intelligence-card">
-            <div className="studio-panel-heading"><span><AudioWaveform size={17} /> Performance Context</span><span className="studio-mono">{performanceContext?.source === "cyanite" ? "Cyanite" : "Demo Profile"}</span></div>
+            <div className="studio-panel-heading"><span><AudioWaveform size={17} /> Performance Context</span><span className="studio-mono">{performanceContext?.source === "cyanite" ? "Cyanite" : performanceContext ? "Fallback" : "Pending"}</span></div>
             <div className="studio-intelligence-body">
               <div className="studio-performance-readout">
-                <div><span>Energy</span><strong>{energyLevel}%</strong></div>
+                <div><span>Energy</span><strong>{performanceContext ? `${energyLevel}%` : "Pending"}</strong></div>
                 <div><span>Tempo</span><strong>{performanceContext?.bpm ? `${performanceContext.bpm} BPM` : "Pending"}</strong></div>
-                <div><span>Arrangement</span><strong>{formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}</strong></div>
+                <div><span>Arrangement</span><strong>{performanceContext?.arrangement ? formatSourceMode(performanceContext.arrangement) : "Pending"}</strong></div>
               </div>
               <div className="studio-context-tags">
-                {(performanceContext?.dominantEmotions ?? ["Energetic", "Uplifting", "Powerful"]).map((emotion, index) => <span key={`${emotion}-${index}`}>{formatSourceMode(emotion)}</span>)}
+                {(performanceContext?.dominantEmotions ?? []).map((emotion, index) => <span key={`${emotion}-${index}`}>{formatSourceMode(emotion)}</span>)}
               </div>
               <p>{performanceContext?.summary ?? "Cyanite-derived energy, mood, BPM, and arrangement context will appear after profiling."}</p>
             </div>
@@ -320,7 +334,7 @@ export function AnalysisStudio(props: Props) {
         <section className="studio-metric-strip" aria-label="Passport metrics">
           <MetricCard icon={<Gauge size={16} />} label="Divergence Score" value={metricValue(divergence)} detail="Derived from alignment fit" tone="orange" />
           <MetricCard icon={<Clock3 size={16} />} label="Cadence Offset" value={ranWithoutResult ? "—" : formatCadenceDelta(averageTimingDeltaSeconds)} detail={`After ${formatSignedSeconds(timingOffsetSeconds)} clip offset`} tone={averageTimingDeltaSeconds >= 2.5 ? "orange" : "cyan"} />
-          <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={metricValue(energyLevel)} detail={`${formatSourceMode(performanceContext?.arrangement ?? "high_intensity")}${performanceContext?.bpm ? ` · ${performanceContext.bpm} BPM` : ""}`} tone={energyLevel >= 78 ? "orange" : "cyan"} />
+          <MetricCard icon={<AudioWaveform size={16} />} label="Live Energy" value={performanceContext ? metricValue(energyLevel) : "—"} detail={performanceContext ? `${formatSourceMode(performanceContext.arrangement)}${performanceContext.bpm ? ` · ${performanceContext.bpm} BPM` : ""}` : "Profile pending"} tone={energyLevel >= 78 ? "orange" : "cyan"} />
           <MetricCard icon={<BadgeCheck size={16} />} label="Passport Status" value={ranWithoutResult ? (props.job?.status === "failed" ? "Failed" : "Pending") : riskCount ? "Review" : "Valid"} detail={ranWithoutResult ? (props.job?.status === "failed" ? "No passport generated" : "Analysis running") : riskCount ? `${riskCount} risk candidate${riskCount === 1 ? "" : "s"}` : "Ready to export"} tone={(ranWithoutResult && props.job?.status === "failed") || riskCount ? "orange" : "cyan"} />
         </section>
 
@@ -343,16 +357,16 @@ export function AnalysisStudio(props: Props) {
           </article>
 
           <article className="studio-panel">
-            <div className="studio-panel-heading"><span><Fingerprint size={17} /> Recording Intelligence</span><span className="studio-mono">{formatSourceMode(passport?.recordingIdentity.matchMethod ?? "demo_ready")}</span></div>
+            <div className="studio-panel-heading"><span><Fingerprint size={17} /> Recording Intelligence</span><span className="studio-mono">{formatSourceMode(passport?.recordingIdentity.matchMethod ?? "pending")}</span></div>
             <div className="p-4 md:p-5">
               <div className="studio-data-list">
                 <DataLine label="Track ID" value={formatRecordingId(passport?.recordingIdentity.trackId ?? track?.id ?? "pending")} />
                 <DataLine label="Common track" value={formatRecordingId(passport?.recordingIdentity.commonTrackId ?? "not supplied")} />
                 <DataLine label="ISRC" value={passport?.recordingIdentity.isrc ?? "Not supplied"} />
-                <DataLine label="Lyric source" value={formatSourceMode(passport?.recordingIdentity.canonicalSource ?? "fixture")} />
+                <DataLine label="Lyric source" value={formatSourceMode(passport?.recordingIdentity.canonicalSource ?? "pending")} />
                 <DataLine label="Attribution" value={passport?.rights.attribution ?? "Lyrics powered by Musixmatch"} />
                 <DataLine label="Language" value={passport?.rights.language?.toUpperCase() ?? track?.language?.toUpperCase() ?? "EN"} />
-                <DataLine label="Performance profile" value={performanceContext?.source === "cyanite" ? "Cyanite live analysis" : "Demo-safe fallback"} />
+                <DataLine label="Performance profile" value={performanceContext?.source === "cyanite" ? "Cyanite live analysis" : performanceContext ? "Fallback profile" : "Pending"} />
                 <DataLine label="Vocal quality" value={formatVocalQuality(passport?.clip.vocalQuality ?? recovery?.vocalQuality)} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
@@ -369,7 +383,7 @@ export function AnalysisStudio(props: Props) {
   );
 }
 
-// Guardrail against demoing fixtures as a real run: when the passport's identity,
+// Guardrail against presenting fixtures as a real run: when the passport's identity,
 // canonical lyrics, or transcript came from seeded fixtures, say so loudly. A real
 // keyed run (real Musixmatch canonical + real ASR) gets a quiet positive confirmation
 // instead, so the presenter always knows which one is on screen.
@@ -391,8 +405,8 @@ function ProvenanceBanner({ passport, health }: { passport?: AnalysisJob["passpo
   const fixturePartners = (health?.integrations ?? []).filter((integration) => integration.mode === "fixture").map((integration) => integration.name);
   return (
     <div className="studio-provenance studio-provenance-demo" role="status" aria-label="Run provenance">
-      <CircleAlert size={15} /><strong>Seeded demo data</strong>
-      <span>This passport was generated from built-in fixtures{fixturePartners.length ? ` (${fixturePartners.join(", ")} not configured)` : ""}, not a live Musixmatch run. Upload a real clip with partner keys set for a true end-to-end demo.</span>
+      <CircleAlert size={15} /><strong>Fixture fallback data</strong>
+      <span>This passport was generated from built-in fixtures{fixturePartners.length ? ` (${fixturePartners.join(", ")} not configured)` : ""}, not a live Musixmatch run. Upload a real clip with partner keys set for a true end-to-end run.</span>
     </div>
   );
 }
@@ -436,9 +450,9 @@ function EvidenceChainPanel({
   averageTimingDeltaSeconds: number;
 }) {
   const source = passport?.clip.source ?? recovery?.source;
-  const asrSource = passport?.clip.asrSource ?? recovery?.asrSource ?? "fixture";
-  const canonicalSource = passport?.recordingIdentity.canonicalSource ?? "fixture";
-  const rightsStatus = passport?.rights.status ?? (health?.runtimeMode === "live" ? "pending" : "fixture");
+  const asrSource = passport?.clip.asrSource ?? recovery?.asrSource ?? "pending";
+  const canonicalSource = passport?.recordingIdentity.canonicalSource ?? "pending";
+  const rightsStatus = passport?.rights.status ?? "pending";
   const sourceDetail = source?.processingMode === "provider_excerpt"
     ? "Provider excerpt analyzed and deleted"
     : source?.processingMode === "authorized_excerpt"
@@ -447,7 +461,7 @@ function EvidenceChainPanel({
 
   return (
     <section className="studio-evidence-chain" aria-label="Evidence chain">
-      <EvidenceStep label="Source" value={formatSourceMode(source?.processingMode ?? health?.runtimeMode ?? "fixture")} detail={sourceDetail} />
+      <EvidenceStep label="Source" value={source ? formatSourceMode(source.processingMode) : formatSourceMode(health?.runtimeMode ?? "pending")} detail={source ? sourceDetail : "Awaiting source media"} />
       <EvidenceStep label="Vocal" value={formatVocalSource(vocalQuality)} detail={vocalQuality?.detail ?? "Stem quality gate pending"} tone={vocalQuality && vocalQuality.status !== "passed" ? "risk" : "active"} />
       <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round((passport?.confidenceOverview.asr ?? 0) * 100)}%`} detail={`${formatAsrEngine(asrEngine)} · ${asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"}`} tone={asrUncertainCount ? "risk" : "active"} />
       <EvidenceStep label="Canonical" value={formatSourceMode(canonicalSource)} detail={passport?.track.title ?? "Track anchor pending"} />
@@ -467,14 +481,14 @@ function EvidenceStep({ label, value, detail, tone = "active" }: { label: string
 function MusixmatchIdentityChain({ passport, track }: { passport?: AnalysisJob["passport"]; track?: TrackCandidate }) {
   const identity = passport?.recordingIdentity;
   const versionConfidence = identity?.versionConfidence;
-  const canonicalSource = identity?.canonicalSource ?? "fixture";
-  const rightsStatus = passport?.rights.status ?? "fixture";
+  const canonicalSource = identity?.canonicalSource ?? "pending";
+  const rightsStatus = passport?.rights.status ?? "pending";
   const isrc = identity?.isrc;
   return (
     <section className="studio-mxm-identity" aria-label="Musixmatch identity chain">
       <header>
         <span><Fingerprint size={16} /> Musixmatch Identity Chain</span>
-        <small className="studio-mono">{formatSourceMode(identity?.matchMethod ?? "demo_ready")}{typeof versionConfidence === "number" ? ` · ${Math.round(versionConfidence * 100)}% version confidence` : ""}</small>
+        <small className="studio-mono">{formatSourceMode(identity?.matchMethod ?? "pending")}{typeof versionConfidence === "number" ? ` · ${Math.round(versionConfidence * 100)}% version confidence` : ""}</small>
       </header>
       <div className="studio-mxm-chain">
         <EvidenceStep label="Track ID" value={formatRecordingId(identity?.trackId ?? track?.id ?? "pending")} detail="track.search → track_id" />

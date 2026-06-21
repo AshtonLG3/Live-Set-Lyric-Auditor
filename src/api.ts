@@ -29,7 +29,6 @@ export async function startAnalysis(input: {
   eventDate?: string;
   durationSeconds?: number;
   autoMatch?: boolean;
-  useFixture?: boolean;
   source?: ClipSource;
   recallSegments?: TranscriptSegment[];
 }): Promise<{ jobId: string }> {
@@ -42,7 +41,6 @@ export async function startAnalysis(input: {
   if (input.eventDate) formData.append("eventDate", input.eventDate);
   if (input.durationSeconds) formData.append("durationSeconds", String(input.durationSeconds));
   formData.append("autoMatch", String(Boolean(input.autoMatch)));
-  formData.append("useFixture", String(Boolean(input.useFixture)));
   if (input.source) formData.append("source", JSON.stringify(input.source));
   if (input.recallSegments?.length) formData.append("recallSegments", JSON.stringify(input.recallSegments));
 

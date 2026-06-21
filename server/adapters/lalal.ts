@@ -68,7 +68,7 @@ export async function isolateVocals(file?: Express.Multer.File): Promise<VocalIs
     return {
       source: "fixture",
       confidence: 0.74,
-      detail: "Fixture vocal isolation used for stable demo playback."
+      detail: "Fixture vocal isolation used for labeled fallback coverage."
     };
   }
   if (!env.lalalKey) {
