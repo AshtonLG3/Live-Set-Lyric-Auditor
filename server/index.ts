@@ -9,7 +9,7 @@ import { createNarration, reanchorAnalysis, retranscribeAnalysis, runAnalysis, r
 import { createJob, jobMedia, jobs } from "./store";
 import { addJobSubscriber } from "./sse";
 import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
-import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
+import { MAX_CLIP_SECONDS, MAX_IMPORT_BYTES, MAX_IMPORT_SECONDS } from "../shared/version";
 import { MediaProbeError, probeMediaDuration, resolveAnalysisDuration } from "./services/media";
 import { isAllowedLiveSource } from "./source-validation";
 
@@ -19,7 +19,7 @@ const app = express();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: MAX_CLIP_BYTES
+    fileSize: MAX_IMPORT_BYTES
   }
 });
 
@@ -100,9 +100,7 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       && source.processingMode === "provider_excerpt"
       && env.youtubeExtractionEnabled;
     const requestedDuration = Number(req.body.durationSeconds || 0);
-    const rangedDuration = source?.startSeconds !== undefined && source.endSeconds !== undefined
-      ? source.endSeconds - source.startSeconds
-      : 0;
+    const rangedDuration = sourceRangeDuration(source);
     if (source?.kind === "live_link" && source.processingMode === "provider_excerpt" && !canUseProviderExtraction) {
       res.status(400).json({ error: "YouTube extraction is unavailable on this server. Attach an authorized excerpt instead." });
       return;
@@ -119,7 +117,11 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       res.status(400).json({ error: source.provider === "youtube" ? "Enter a valid YouTube performance URL." : "Enter a valid HTTP or HTTPS live-performance link." });
       return;
     }
-    if (source?.kind === "live_link" && rangedDuration <= 0) {
+    if (source?.kind === "live_link" && (rangedDuration ?? 0) <= 0) {
+      res.status(400).json({ error: "The clip end must be after its start." });
+      return;
+    }
+    if (source && (source.startSeconds !== undefined || source.endSeconds !== undefined) && (rangedDuration ?? 0) <= 0) {
       res.status(400).json({ error: "The clip end must be after its start." });
       return;
     }
@@ -128,9 +130,17 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       return;
     }
     const fileDuration = req.file ? await probeMediaDuration(req.file) : undefined;
+    if (fileDuration && fileDuration > MAX_IMPORT_SECONDS) {
+      res.status(400).json({ error: `Import a source file under ${Math.round(MAX_IMPORT_SECONDS / 60)} minutes, then choose a ${MAX_CLIP_SECONDS}-second excerpt.` });
+      return;
+    }
+    if (req.file && rangedDuration !== undefined && fileDuration && Number(source?.endSeconds) > fileDuration + 0.75) {
+      res.status(400).json({ error: "The selected excerpt ends after the imported media finishes." });
+      return;
+    }
     const durationSeconds = resolveAnalysisDuration({ fileDuration, source, requestedDuration });
     if ((durationSeconds ?? 0) > MAX_CLIP_SECONDS) {
-      res.status(400).json({ error: `Keep clips under ${MAX_CLIP_SECONDS} seconds.` });
+      res.status(400).json({ error: `Choose a ${MAX_CLIP_SECONDS}-second or shorter excerpt before analysis.` });
       return;
     }
 
@@ -259,7 +269,7 @@ app.post("/api/narrate/:jobId", mutationLimiter, async (req, res, next) => {
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    res.status(413).json({ error: "Clip is larger than 40 MB." });
+    res.status(413).json({ error: `Clip is larger than ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB.` });
     return;
   }
   if (error instanceof MediaProbeError) {
@@ -326,4 +336,16 @@ function parseTranscriptSegments(value: unknown): TranscriptSegment[] {
   const parsed = parseJsonField<TranscriptSegment[] | TranscriptSegment>(value);
   const values = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
   return values.filter(isTranscriptSegment);
+}
+
+function sourceRangeDuration(source?: ClipSource): number | undefined {
+  if (source?.startSeconds === undefined && source?.endSeconds === undefined) {
+    return undefined;
+  }
+  const start = Number(source?.startSeconds ?? 0);
+  const end = Number(source?.endSeconds ?? 0);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
+  return end - Math.max(0, start);
 }

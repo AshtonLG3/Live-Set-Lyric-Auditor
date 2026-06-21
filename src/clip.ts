@@ -1,4 +1,4 @@
-import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS } from "../shared/version";
+import { MAX_IMPORT_BYTES, MAX_IMPORT_SECONDS } from "../shared/version";
 
 export type ClipSelection = {
   file: File;
@@ -13,13 +13,13 @@ export async function inspectClip(file: File): Promise<ClipSelection> {
   if (!kind) {
     throw new Error("Choose an audio or video clip: MP3, WAV, M4A, AAC, OGG, MP4, MOV, or WebM.");
   }
-  if (file.size > MAX_CLIP_BYTES) {
-    throw new Error("Keep the clip under 40 MB.");
+  if (file.size > MAX_IMPORT_BYTES) {
+    throw new Error(`Keep the imported source under ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB.`);
   }
 
   const durationSeconds = await readMediaDuration(file, kind);
-  if (durationSeconds && durationSeconds > MAX_CLIP_SECONDS) {
-    throw new Error(`Keep the clip under ${MAX_CLIP_SECONDS} seconds.`);
+  if (durationSeconds && durationSeconds > MAX_IMPORT_SECONDS) {
+    throw new Error(`Keep the imported source under ${Math.round(MAX_IMPORT_SECONDS / 60)} minutes.`);
   }
   return { file, durationSeconds: durationSeconds ?? undefined, kind };
 }

@@ -108,7 +108,7 @@ describe("analysis vocal quality fallback", () => {
     expect(mocks.transcribeLiveVocal.mock.calls[0]?.[1]).toBeUndefined();
   });
 
-  it("rescues weak original-audio ASR with LALAL before trying slow Demucs", async () => {
+  it("does not run hidden split rescue after a weak original-audio passport", async () => {
     vi.stubEnv("LALAL_LICENSE_KEY", "lalal-test-key");
     mocks.isolateVocalsWithLalal.mockResolvedValue({
       source: "lalalai",
@@ -156,11 +156,11 @@ describe("analysis vocal quality fallback", () => {
 
     const analyzed = jobs.get(job.id);
     expect(analyzed?.status).toBe("complete");
-    expect(analyzed?.passport?.clip.vocalIsolationSource).toBe("lalalai");
-    expect(analyzed?.passport?.clip.transcript[0]?.text).toContain("Talk to God");
-    expect(mocks.isolateVocalsWithLalal).toHaveBeenCalledTimes(1);
+    expect(analyzed?.passport?.clip.vocalIsolationSource).toBe("original");
+    expect(analyzed?.passport?.clip.transcript[0]?.text).toContain("satellite engines");
+    expect(mocks.isolateVocalsWithLalal).not.toHaveBeenCalled();
     expect(mocks.isolateVocalsWithDemucs).not.toHaveBeenCalled();
-    expect(mocks.transcribeLiveVocal.mock.calls.map((call) => call[1])).toEqual([undefined, "https://cdn.example/lalal-vocals.mp3"]);
+    expect(mocks.transcribeLiveVocal.mock.calls.map((call) => call[1])).toEqual([undefined]);
   });
 });
 

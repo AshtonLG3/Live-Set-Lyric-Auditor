@@ -1785,6 +1785,48 @@ button {
   background: #000;
 }
 
+.studio-trim-panel {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 480px);
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--app-panel-low) 88%, transparent);
+  text-align: left;
+}
+
+.studio-trim-panel header,
+.studio-trim-panel label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-trim-panel header span,
+.studio-trim-panel label span {
+  flex: 0 0 84px;
+  color: var(--app-muted);
+  font-family: var(--studio-mono);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.studio-trim-panel header strong {
+  color: var(--app-cyan);
+  font-family: var(--studio-mono);
+  font-size: 12px;
+}
+
+.studio-trim-panel input[type="range"] {
+  min-width: 0;
+  width: 100%;
+  accent-color: var(--app-cyan);
+}
+
 .studio-clip-intake .button-primary {
   min-height: 46px;
   border: 1px solid var(--app-orange);

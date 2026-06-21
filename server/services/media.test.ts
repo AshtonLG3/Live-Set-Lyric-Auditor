@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { buildFfprobeArgs, buildTranscodeToMp3Args, resolveAnalysisDuration } from "./media";
+import { buildFfprobeArgs, buildTranscodeToMp3Args, buildTrimToMp3Args, resolveAnalysisDuration } from "./media";
 
 describe("media validation", () => {
   it("uses measured upload duration instead of client metadata", () => {
     expect(resolveAnalysisDuration({ fileDuration: 301, requestedDuration: 20 })).toBe(301);
+  });
+
+  it("uses the selected upload range when a larger source is trimmed", () => {
+    expect(resolveAnalysisDuration({
+      fileDuration: 301,
+      requestedDuration: 44,
+      source: {
+        kind: "upload",
+        processingMode: "uploaded_media",
+        startSeconds: 60,
+        endSeconds: 95
+      }
+    })).toBe(35);
   });
 
   it("uses the selected provider range instead of client metadata", () => {
@@ -43,6 +56,24 @@ describe("media validation", () => {
       "-q:a",
       "5",
       "C:\\Temp\\profile.mp3"
+    ]);
+  });
+
+  it("builds an excerpt trim request for uploaded media", () => {
+    expect(buildTrimToMp3Args("C:\\Temp\\clip.mp4", "C:\\Temp\\excerpt.mp3", 12.25, 32.5)).toEqual([
+      "-y",
+      "-ss",
+      "12.25",
+      "-i",
+      "C:\\Temp\\clip.mp4",
+      "-t",
+      "32.5",
+      "-vn",
+      "-acodec",
+      "libmp3lame",
+      "-q:a",
+      "5",
+      "C:\\Temp\\excerpt.mp3"
     ]);
   });
 });

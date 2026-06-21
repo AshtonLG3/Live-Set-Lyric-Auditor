@@ -77,6 +77,47 @@ export async function transcodeMediaToMp3(file: Express.Multer.File, label = "cl
   }
 }
 
+export async function trimMediaExcerptToMp3(file: Express.Multer.File, startSeconds: number, endSeconds: number): Promise<Express.Multer.File> {
+  const start = Math.max(0, startSeconds);
+  const duration = Math.max(0, endSeconds - start);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new MediaProbeError("The selected clip end must be after its start.", "invalid");
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "lsla-trim-"));
+  const extension = extname(file.originalname).replace(/[^.a-z0-9]/gi, "") || ".media";
+  const inputPath = join(directory, `source${extension}`);
+  const outputPath = join(directory, "excerpt.mp3");
+  try {
+    await writeFile(inputPath, file.buffer);
+    await execFileAsync(resolveFfmpegTool("ffmpeg"), buildTrimToMp3Args(inputPath, outputPath, start, duration), {
+      timeout: 60_000,
+      maxBuffer: 2 * 1024 * 1024,
+      windowsHide: true
+    });
+    const buffer = await readFile(outputPath);
+    if (buffer.length === 0) {
+      throw new MediaProbeError("Clip trimming returned an empty excerpt.", "invalid");
+    }
+    return {
+      ...file,
+      originalname: file.originalname.replace(/\.[^.]+$/, "") + `-${Math.round(start)}-${Math.round(endSeconds)}.mp3`,
+      mimetype: "audio/mpeg",
+      size: buffer.length,
+      buffer
+    };
+  } catch (error) {
+    if (error instanceof MediaProbeError) throw error;
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (code === "ENOENT") {
+      throw new MediaProbeError("Server clip trimming needs ffmpeg. Install ffmpeg or configure FFMPEG_LOCATION.", "unavailable");
+    }
+    throw new MediaProbeError("Could not trim the selected clip excerpt.", "invalid");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 export async function assertYouTubeTooling(): Promise<void> {
   try {
     await execFileAsync(env.pythonCommand, ["-m", "yt_dlp", "--version"], {
@@ -99,10 +140,10 @@ export function resolveAnalysisDuration(input: {
   source?: ClipSource;
   requestedDuration?: number;
 }): number | undefined {
-  if (input.fileDuration && Number.isFinite(input.fileDuration)) return input.fileDuration;
-  if (input.source?.kind === "live_link" && input.source.startSeconds !== undefined && input.source.endSeconds !== undefined) {
+  if (input.source?.startSeconds !== undefined && input.source.endSeconds !== undefined) {
     return input.source.endSeconds - input.source.startSeconds;
   }
+  if (input.fileDuration && Number.isFinite(input.fileDuration)) return input.fileDuration;
   return input.requestedDuration && Number.isFinite(input.requestedDuration) ? input.requestedDuration : undefined;
 }
 
@@ -132,6 +173,24 @@ export function buildTranscodeToMp3Args(inputPath: string, outputPath: string): 
   ];
 }
 
+export function buildTrimToMp3Args(inputPath: string, outputPath: string, startSeconds: number, durationSeconds: number): string[] {
+  return [
+    "-y",
+    "-ss",
+    formatFfmpegSeconds(startSeconds),
+    "-i",
+    inputPath,
+    "-t",
+    formatFfmpegSeconds(durationSeconds),
+    "-vn",
+    "-acodec",
+    "libmp3lame",
+    "-q:a",
+    "5",
+    outputPath
+  ];
+}
+
 export function resolveFfmpegTool(tool: "ffmpeg" | "ffprobe"): string {
   const location = env.ffmpegLocation;
   if (!location) return tool;
@@ -141,4 +200,8 @@ export function resolveFfmpegTool(tool: "ffmpeg" | "ffprobe"): string {
     return join(dirname(location), `${tool}${extension}`);
   }
   return join(location, process.platform === "win32" ? `${tool}.exe` : tool);
+}
+
+function formatFfmpegSeconds(value: number): string {
+  return Math.max(0, value).toFixed(3).replace(/\.?0+$/, "");
 }

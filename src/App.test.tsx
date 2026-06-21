@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
+import { inspectClip } from "./clip";
 import type { AnalysisJob, HealthResponse } from "../shared/types";
 
 vi.mock("./clip", async () => {
@@ -16,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.18",
+  version: "0.11.19",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -46,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.18",
+    version: "0.11.19",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -186,6 +187,12 @@ const completeJob: AnalysisJob = {
 
 beforeEach(() => {
   localStorage.clear();
+  vi.mocked(inspectClip).mockReset();
+  vi.mocked(inspectClip).mockImplementation(async (file: File) => ({
+    file,
+    durationSeconds: 24,
+    kind: file.type.startsWith("video/") ? "video" as const : "audio" as const
+  }));
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     if (url === "/api/health") {
       return jsonResponse(health);
@@ -261,7 +268,7 @@ afterEach(() => {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.18/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.19/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -409,6 +416,39 @@ it("labels timeline steps as process status instead of quality scores", async ()
   expect(timeline).toBeTruthy();
   expect(within(timeline).getAllByText("Done").length).toBeGreaterThan(0);
   expect(within(timeline).queryByText("100%")).not.toBeInTheDocument();
+});
+
+it("imports a longer clip and sends the selected trim range for analysis", async () => {
+  const file = new File(["video"], "full-song.mp4", { type: "video/mp4" });
+  vi.mocked(inspectClip).mockResolvedValueOnce({
+    file,
+    durationSeconds: 96,
+    kind: "video"
+  });
+  render(<App />);
+
+  fireEvent.drop(screen.getByTestId("clip-dropzone"), { dataTransfer: { files: [file] } });
+
+  expect(await screen.findByText("full-song.mp4")).toBeInTheDocument();
+  expect(screen.getByLabelText("Clip trim range")).toBeInTheDocument();
+  expect(screen.getByText("0:00 - 0:45 · 45.0s")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole("slider", { name: "Clip trim end" }), { target: { value: "70" } });
+  expect(screen.getByText("0:25 - 1:10 · 45.0s")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /Analyze clip/i }));
+  await waitFor(() => {
+    const analyzeCall = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === "/api/analyze");
+    expect(analyzeCall).toBeTruthy();
+    const body = analyzeCall?.[1]?.body as FormData;
+    expect(body.get("durationSeconds")).toBe("45");
+    expect(JSON.parse(String(body.get("source")))).toMatchObject({
+      kind: "upload",
+      processingMode: "uploaded_media",
+      startSeconds: 25,
+      endSeconds: 70
+    });
+  });
 });
 
 it("adds a missed live moment via the inline insert button", async () => {

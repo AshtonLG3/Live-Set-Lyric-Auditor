@@ -16,7 +16,7 @@ import {
   Upload
 } from "lucide-react";
 import type { ClipSource, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
-import { MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
+import { MAX_CLIP_SECONDS, MAX_IMPORT_BYTES, MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
 import { rescueRecall } from "../api";
 import { formatFileSize, inspectClip, type ClipSelection } from "../clip";
 
@@ -29,6 +29,11 @@ export type IntakeAnalysisInput = {
 };
 
 type IntakeMode = "upload" | "recall";
+
+type ClipTrimRange = {
+  start: number;
+  end: number;
+};
 
 type Props = {
   busy: boolean;
@@ -62,6 +67,7 @@ export function ClipIntake({
   const [mode, setMode] = useState<IntakeMode>("upload");
   const [autoMatch, setAutoMatch] = useState(true);
   const [uploadClip, setUploadClip] = useState<ClipSelection>();
+  const [uploadTrim, setUploadTrim] = useState<ClipTrimRange>();
   const [fileError, setFileError] = useState("");
   const [fileProcessing, setFileProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -78,6 +84,8 @@ export function ClipIntake({
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
   const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
   const recallAnalysisReady = Boolean(recallResult?.segments.length);
+  const uploadSelectedDuration = uploadTrim ? uploadTrim.end - uploadTrim.start : uploadClip?.durationSeconds;
+  const uploadExcerptTooLong = Boolean(uploadSelectedDuration && uploadSelectedDuration > MAX_CLIP_SECONDS);
 
   useEffect(() => () => {
     stopMediaStream();
@@ -95,8 +103,10 @@ export function ClipIntake({
     try {
       const inspected = await inspectClip(file);
       setUploadClip(inspected);
+      setUploadTrim(createInitialTrimRange(inspected.durationSeconds));
     } catch (error) {
       setUploadClip(undefined);
+      setUploadTrim(undefined);
       setFileError(error instanceof Error ? error.message : "Could not import this clip.");
     } finally {
       setFileProcessing(false);
@@ -185,6 +195,7 @@ export function ClipIntake({
 
   function removeUploadClip() {
     setUploadClip(undefined);
+    setUploadTrim(undefined);
     setFileError("");
     if (uploadInputRef.current) uploadInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
@@ -217,18 +228,27 @@ export function ClipIntake({
           }}
         >
           {uploadClip ? (
-            <ClipSummary
-              clip={uploadClip}
-              onReplace={() => uploadInputRef.current?.click()}
-              onCapture={() => cameraInputRef.current?.click()}
-              onRemove={removeUploadClip}
-            />
+            <div className="w-full space-y-3">
+              <ClipSummary
+                clip={uploadClip}
+                onReplace={() => uploadInputRef.current?.click()}
+                onCapture={() => cameraInputRef.current?.click()}
+                onRemove={removeUploadClip}
+              />
+              {uploadClip.durationSeconds && uploadTrim && (
+                <ClipTrimControls
+                  durationSeconds={uploadClip.durationSeconds}
+                  range={uploadTrim}
+                  onChange={setUploadTrim}
+                />
+              )}
+            </div>
           ) : (
             <>
               <FileAudio className={`mb-3 ${isDragging ? "text-ember" : "text-slate-500"}`} size={30} />
               <span className="text-base font-bold">{fileProcessing ? "Inspecting clip..." : isDragging ? "Drop clip to import" : "Drag a concert clip here"}</span>
               <span className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-                Audio or video · target {TARGET_CLIP_SECONDS}s · max 40 MB
+                Audio or video · target {TARGET_CLIP_SECONDS}s · analyze up to {MAX_CLIP_SECONDS}s · max {formatFileSize(MAX_IMPORT_BYTES)}
               </span>
               <div className="studio-capture-actions mt-4">
                 <button type="button" className="button-secondary" onClick={() => uploadInputRef.current?.click()} disabled={fileProcessing}>
@@ -392,12 +412,12 @@ export function ClipIntake({
           <button
             type="button"
             className="button-primary w-full"
-            disabled={busy || fileProcessing || !uploadClip || Boolean(fileError) || (!autoMatch && !selectedTrack)}
+            disabled={busy || fileProcessing || !uploadClip || Boolean(fileError) || uploadExcerptTooLong || (!autoMatch && !selectedTrack)}
             onClick={() => void onAnalyze({
               file: uploadClip?.file,
-              durationSeconds: uploadClip?.durationSeconds,
+              durationSeconds: uploadSelectedDuration,
               autoMatch,
-              source: { kind: "upload", processingMode: "uploaded_media" }
+              source: buildUploadSource(uploadTrim, uploadClip?.durationSeconds)
             })}
           >
             <Play size={17} /> {!autoMatch && !selectedTrack ? "Choose track to analyze" : "Analyze clip"}
@@ -466,6 +486,69 @@ function ClipSummary({ clip, onReplace, onCapture, onRemove, compact = false }: 
   );
 }
 
+function ClipTrimControls({
+  durationSeconds,
+  range,
+  onChange
+}: {
+  durationSeconds: number;
+  range: ClipTrimRange;
+  onChange: (range: ClipTrimRange) => void;
+}) {
+  const duration = Math.max(0.5, durationSeconds);
+  const selectedDuration = Math.max(0, range.end - range.start);
+  const startMax = Math.max(0, duration - 0.5);
+  const endMin = Math.min(duration, 0.5);
+
+  function changeStart(value: number) {
+    const start = clamp(value, 0, startMax);
+    const end = Math.min(duration, Math.max(start + 0.5, Math.min(range.end, start + MAX_CLIP_SECONDS)));
+    onChange({ start: roundTenth(start), end: roundTenth(end) });
+  }
+
+  function changeEnd(value: number) {
+    const end = clamp(value, endMin, duration);
+    let start = Math.max(0, Math.min(range.start, end - 0.5));
+    if (end - start > MAX_CLIP_SECONDS) {
+      start = Math.max(0, end - MAX_CLIP_SECONDS);
+    }
+    onChange({ start: roundTenth(start), end: roundTenth(end) });
+  }
+
+  return (
+    <section className="studio-trim-panel" aria-label="Clip trim range">
+      <header>
+        <span>Analysis excerpt</span>
+        <strong>{formatClock(range.start)} - {formatClock(range.end)} · {selectedDuration.toFixed(1)}s</strong>
+      </header>
+      <label>
+        <span>Start</span>
+        <input
+          type="range"
+          min={0}
+          max={startMax}
+          step={0.1}
+          value={range.start}
+          onChange={(event) => changeStart(Number(event.target.value))}
+          aria-label="Clip trim start"
+        />
+      </label>
+      <label>
+        <span>End</span>
+        <input
+          type="range"
+          min={endMin}
+          max={duration}
+          step={0.1}
+          value={range.end}
+          onChange={(event) => changeEnd(Number(event.target.value))}
+          aria-label="Clip trim end"
+        />
+      </label>
+    </section>
+  );
+}
+
 function InlineNotice({ tone, text }: { tone: "neutral" | "warning"; text: string }) {
   return (
     <p className={`flex items-start gap-2 rounded-md px-3 py-2 text-xs leading-5 ${tone === "warning" ? "bg-ember/10 text-ember" : "bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300"}`}>
@@ -504,4 +587,42 @@ function getMicrophoneCaptureErrorMessage(error: unknown): string {
 function recallDurationSeconds(segments?: TranscriptSegment[]): number | undefined {
   const lastEnd = Math.max(0, ...(segments ?? []).map((segment) => Number(segment.end) || 0));
   return lastEnd > 0 ? lastEnd : undefined;
+}
+
+function createInitialTrimRange(durationSeconds?: number): ClipTrimRange | undefined {
+  if (!durationSeconds || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return undefined;
+  return { start: 0, end: roundTenth(Math.min(durationSeconds, MAX_CLIP_SECONDS)) };
+}
+
+function buildUploadSource(range: ClipTrimRange | undefined, durationSeconds: number | undefined): ClipSource {
+  const source: ClipSource = { kind: "upload", processingMode: "uploaded_media" };
+  if (!range || !durationSeconds || !shouldSendTrimRange(range, durationSeconds)) {
+    return source;
+  }
+  return {
+    ...source,
+    startSeconds: roundTenth(range.start),
+    endSeconds: roundTenth(range.end)
+  };
+}
+
+function shouldSendTrimRange(range: ClipTrimRange, durationSeconds: number): boolean {
+  return durationSeconds > MAX_CLIP_SECONDS
+    || range.start > 0.05
+    || range.end < durationSeconds - 0.05;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function roundTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function formatClock(value: number): string {
+  const totalSeconds = Math.max(0, Math.round(value));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

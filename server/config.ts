@@ -103,15 +103,15 @@ export function getIntegrationStatus(): IntegrationStatus[] {
       configured: configured("LALAL_LICENSE_KEY"),
       mode: configured("LALAL_LICENSE_KEY") ? "live" : "fixture",
       detail: configured("LALAL_LICENSE_KEY")
-        ? "Fast vocal-split rescue runs only when original-audio ASR/alignment is weak."
-        : "LALAL split rescue disabled; slow Demucs remains the last-resort fallback."
+        ? "LALAL split is configured but no longer runs automatically after the first passport."
+        : "LALAL split is not configured; original-audio ASR remains the normal path."
     },
     {
       name: "Demucs",
       configured: configured("REPLICATE_API_TOKEN"),
       mode: configured("REPLICATE_API_TOKEN") ? "live" : "fixture",
       detail: configured("REPLICATE_API_TOKEN")
-        ? "Replicate Demucs stays available as the slow quality fallback after original ASR and LALAL rescue."
+        ? "Replicate Demucs remains configured for explicit fallback work, not hidden post-passport rescue."
         : "Uploads fall back to original audio; seeded demos use fixture isolation."
     },
     {

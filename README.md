@@ -2,7 +2,7 @@
 
 **One-liner:** Turn a short noisy concert clip into a timestamped Live Variant Passport for lyric QA, captions, archives, artist teams, and fan experiences.
 
-Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, rights, and track-link truth layer; optional audio fingerprinting can identify the recording before lyric rescue, fast ASR runs on the original clip first, LALAL.AI or Demucs can rescue weak transcripts, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, and ElevenLabs provides optional narration plus explicit Scribe retranscription. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
+Live-Set Lyric Auditor is a Musicathon 2026 contest MVP. Musixmatch Pro is the identity, timing, rights, and track-link truth layer; optional audio fingerprinting can identify the recording before lyric rescue, fast ASR runs on the selected original-audio excerpt first, LALAL.AI and Demucs stay out of the normal hidden path, JamBase anchors the event and setlist context, Cyanite profiles the live arrangement, and ElevenLabs provides optional narration plus explicit Scribe retranscription. The dashboard has resilient demo data so judges can run the full flow even when API keys are unavailable.
 
 Runtime requirement: Node.js 20.6 or newer. The normal analysis path starts from an uploaded or recorded audio/video clip so the app can work with media the reviewer is authorized to process.
 
@@ -14,8 +14,8 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.18`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
-2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.19`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+2. Import an audio/video clip or use **Record live** on a phone to capture a rear-camera stage-performance video, then trim the selected analysis excerpt to 45 seconds or less.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
 5. Start with **Live vs Studio Comparison** to see each live line beside its studio reference, including matched rows, changed rows, skipped studio lines, timing drift, and live-only moments.
@@ -27,8 +27,8 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 - **Musixmatch:** `track.search`, lazy `track.get` track links, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
 - **Audio ID:** optional Auto Match audio fingerprinting before ASR lyric rescue. Set `AUDIO_ID_PROVIDER=acrcloud` with ACRCloud credentials, or `AUDIO_ID_PROVIDER=custom` / `MUSIXMATCH_AUDIO_ID_API_URL` for a partner endpoint that accepts an uploaded clip and returns title, artist, and optional ISRC metadata.
-- **LALAL.AI:** faster vocal-split rescue when original-audio ASR/alignment is weak. The normal path no longer waits for a split before first-pass transcription.
-- **Demucs:** Replicate-hosted Demucs uses the same `REPLICATE_API_TOKEN` as ASR and remains a slow quality fallback after original ASR and LALAL rescue.
+- **LALAL.AI:** configured split support remains available for explicit fallback work, but normal analysis no longer launches hidden post-passport rescue.
+- **Demucs:** Replicate-hosted Demucs uses the same `REPLICATE_API_TOKEN` as ASR and is no longer run as an automatic post-passport rescue step.
 - **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied. City hints filter safely, and a selected date accepts matching shows in that calendar month so distant December dates remain discoverable.
 - **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` for narration and `POST /v1/speech-to-text` for explicit Scribe retranscription, using `xi-api-key`.
