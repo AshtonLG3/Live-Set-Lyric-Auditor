@@ -182,7 +182,8 @@ export function classifyVariants(
   alignments: AlignmentResult[],
   canonicalLines: CanonicalLine[],
   sourceCoverage: number,
-  eventCity?: string
+  eventCity?: string,
+  clipDurationSeconds = Infinity
 ): VariantCandidate[] {
   const variants: VariantCandidate[] = [];
   const matchedCanonicalIds = new Set<string>();
@@ -221,7 +222,7 @@ export function classifyVariants(
     });
   });
 
-  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes);
+  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes, clipDurationSeconds);
   skipped.forEach((line) => {
     variants.push({
       id: `V${variants.length + 1}`,
@@ -249,7 +250,8 @@ function skippedLinesWithinAnchoredWindow(
   canonicalLines: CanonicalLine[],
   alignments: AlignmentResult[],
   matchedCanonicalIds: Set<string>,
-  canonicalIndexes: Map<string, number>
+  canonicalIndexes: Map<string, number>,
+  clipDurationSeconds = Infinity
 ): CanonicalLine[] {
   const matchedIndexes = alignments
     .map((alignment) => alignment.canonical ? canonicalIndexes.get(alignment.canonical.id) : undefined)
@@ -260,15 +262,22 @@ function skippedLinesWithinAnchoredWindow(
   }
   const min = Math.min(...uniqueIndexes);
   const max = Math.max(...uniqueIndexes);
+  // A clip only covers ~clipDurationSeconds of the song from its first anchor.
+  // A stray late match (e.g. a recurring hook) can stretch [min, max] across the
+  // whole track, so without this bound the diff lists every unsung line to the
+  // song's end as a phantom omission. Cap the window to the clip's actual reach.
+  const hasCap = Number.isFinite(clipDurationSeconds) && clipDurationSeconds > 0;
+  const windowEnd = hasCap ? canonicalLines[min].start + clipDurationSeconds : Infinity;
   return canonicalLines.filter((line, index) =>
-    index >= min && index <= max && !matchedCanonicalIds.has(line.id)
+    index >= min && index <= max && line.start <= windowEnd && !matchedCanonicalIds.has(line.id)
   );
 }
 
 export function buildLineComparisons(
   alignments: AlignmentResult[],
   canonicalLines: CanonicalLine[],
-  variants: VariantCandidate[] = []
+  variants: VariantCandidate[] = [],
+  clipDurationSeconds = Infinity
 ): LineComparison[] {
   const canonicalIndexes = new Map(canonicalLines.map((line, index) => [line.id, index]));
   const matchedCanonicalIds = new Set(alignments.flatMap((alignment) => alignment.canonical ? [alignment.canonical.id] : []));
@@ -308,7 +317,7 @@ export function buildLineComparisons(
     };
   });
 
-  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes);
+  const skipped = skippedLinesWithinAnchoredWindow(canonicalLines, alignments, matchedCanonicalIds, canonicalIndexes, clipDurationSeconds);
   const skippedComparisons = skipped.map((line, index): LineComparison => {
     const canonicalIndex = canonicalIndexes.get(line.id) ?? -1;
     return {
@@ -460,8 +469,8 @@ export function buildPassport(input: {
     averageTimingDelta: round(averageTimingDelta)
   };
 
-  const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage, input.event?.city);
-  const lineComparisons = buildLineComparisons(alignments, input.canonicalLines, variants);
+  const variants = classifyVariants(alignments, input.canonicalLines, confidenceOverview.sourceCoverage, input.event?.city, input.durationSeconds);
+  const lineComparisons = buildLineComparisons(alignments, input.canonicalLines, variants, input.durationSeconds);
   const summary = summarizePassport(variants, confidenceOverview.overall);
   const syncFitScore = round(averageAlignment * 0.72 + input.sourceCoverage * 0.28);
   const versionConfidence = scoreVersionConfidence(input.track, input.matchMethod, input.canonicalSource);

@@ -36,6 +36,36 @@ describe("alignment pipeline", () => {
     ]);
   });
 
+  it("caps skipped comparison rows at the clip length so a 45s clip does not list the whole song", () => {
+    // A full-song canonical (30 lines at 4s spacing = 116s) against a ~45s clip.
+    const canonicalLines = Array.from({ length: 30 }, (_, i) => ({
+      id: `L${i + 1}`,
+      start: i * 4,
+      end: i * 4 + 4,
+      text: `token${i}alpha token${i}bravo token${i}charlie`
+    }));
+    const seg = (id: string, start: number, text: string) => ({ id, start, end: start + 3, text, confidence: 0.95 });
+    const align = (segment: ReturnType<typeof seg>, lineIndex: number) => ({
+      transcript: segment,
+      canonical: canonicalLines[lineIndex],
+      similarity: 1,
+      timingDelta: 0,
+      rawTimingDelta: 0,
+      clipOffset: 0
+    });
+    // The clip performs the opening lines, then a late hook that recurs near the
+    // song's end (line 28 at 112s) gets anchored — ballooning the skip window.
+    const alignments = [align(seg("T1", 0, canonicalLines[0].text), 0), align(seg("T2", 4, canonicalLines[1].text), 1), align(seg("T3", 8, canonicalLines[2].text), 2), align(seg("T4", 20, canonicalLines[28].text), 28)];
+
+    const comparisons = buildLineComparisons(alignments, canonicalLines, [], 45);
+    const skipped = comparisons.filter((comparison) => comparison.status === "skipped");
+
+    expect(skipped.length).toBeGreaterThan(0); // near-clip omissions are still flagged
+    expect(comparisons.every((comparison) => comparison.start <= 45)).toBe(true); // nothing past the clip length
+    expect(skipped.some((comparison) => comparison.canonicalId === "L4")).toBe(true); // line at 12s kept
+    expect(skipped.some((comparison) => comparison.start > 45)).toBe(false); // 112s phantom dropped
+  });
+
   it("builds a line-by-line comparison model with matched and changed rows", () => {
     const alignments = alignTranscript([
       { id: "T1", start: 0, end: 4, text: fixtureCanonicalLines[0].text, confidence: 0.9 },
