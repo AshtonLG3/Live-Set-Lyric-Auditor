@@ -14,7 +14,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Real Clip Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.24`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.25`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a rear-camera stage-performance video, then trim the selected analysis excerpt to 45 seconds or less.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -82,6 +82,7 @@ HOST=0.0.0.0
 PORT=4242
 DEV_ALLOWED_HOSTS=.replit.dev,.picard.replit.dev
 MUSIXMATCH_API_KEY=
+MUSIXMATCH_TIMEOUT_MS=12000
 AUDIO_ID_PROVIDER=
 AUDIO_ID_FILE_FIELD=clip
 AUDIO_ID_TIMEOUT_MS=12000
@@ -134,7 +135,7 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 
 | Partner | Required value | Optional value |
 | --- | --- | --- |
-| Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL` |
+| Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL`, `MUSIXMATCH_TIMEOUT_MS` |
 | Audio ID | `ACRCLOUD_HOST`, `ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_ACCESS_SECRET` or `AUDIO_ID_API_URL` | `AUDIO_ID_PROVIDER`, `AUDIO_ID_API_KEY`, `AUDIO_ID_FILE_FIELD`, `MUSIXMATCH_AUDIO_ID_API_URL`, `MUSIXMATCH_AUDIO_ID_API_KEY` |
 | JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
 | Cyanite | `CYANITE_API_TOKEN` | `CYANITE_API_BASE_URL`, `CYANITE_WEBHOOK_URL` |

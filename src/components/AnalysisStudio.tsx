@@ -119,9 +119,11 @@ export function AnalysisStudio(props: Props) {
   const energyLevel = performanceContext ? Math.round(performanceContext.energyLevel * 100) : 0;
   const riskCount = variants.filter((v) => matchesFilter(v, "risk")).length;
   const transcript = passport?.clip.transcript ?? recovery?.transcript ?? [];
+  const transcriptConfidence = average(transcript.map((segment) => segment.confidence));
   const displayDuration = mediaDuration || passport?.clip.durationSeconds || recovery?.durationSeconds || 0;
   const activeTranscriptId = transcript.find((segment) => currentTime >= segment.start && currentTime < segment.end)?.id;
   const overallConfidence = Math.round((passport?.confidenceOverview.overall ?? 0.81) * 100);
+  const asrConfidence = passport?.confidenceOverview.asr ?? transcriptConfidence;
   const asrUncertainCount = passport?.confidenceOverview.asrUncertainSegments ?? transcript.filter((segment) => segment.confidence < 0.7).length;
   const timingOffsetSeconds = passport?.confidenceOverview.timingOffsetSeconds ?? comparisonRows.find((row) => typeof row.clipOffset === "number")?.clipOffset ?? 0;
   const averageTimingDeltaSeconds = passport?.confidenceOverview.averageTimingDelta ?? average(comparisonRows.filter((row) => row.canonicalId).map((row) => row.timingDelta));
@@ -129,7 +131,7 @@ export function AnalysisStudio(props: Props) {
   const hasPassport = Boolean(passport);
   const needsTrackRecovery = Boolean(recovery && !passport);
   const retranscriptionTarget = getRetranscriptionTarget(props.job);
-  const canRunTranscriptionRecovery = Boolean(props.job?.status === "failed" && !passport);
+  const canRunTranscriptionRecovery = Boolean(props.job && isTranscriptionFailure(props.job));
   const autoOpenTrackRecovery = Boolean(props.job?.status === "failed" && needsTrackRecovery && dismissedCorrectionJobId !== props.job?.id);
   const showCorrectionPanel = correctionOpen || autoOpenTrackRecovery;
   // A run that finished without a passport (e.g. failed track-match) must not borrow
@@ -229,6 +231,7 @@ export function AnalysisStudio(props: Props) {
           health={props.health}
           vocalQuality={passport?.clip.vocalQuality ?? recovery?.vocalQuality}
           asrEngine={passport?.clip.asrEngine ?? recovery?.asrEngine}
+          asrConfidence={asrConfidence}
           asrUncertainCount={asrUncertainCount}
           variantCount={variants.length}
           timingOffsetSeconds={timingOffsetSeconds}
@@ -265,7 +268,7 @@ export function AnalysisStudio(props: Props) {
             <header><span><AudioLines size={18} /> Transcription Review</span><small><i /> {transcript.length} segments</small></header>
             <div className="studio-rack-body">
               <div className="studio-transcript-toolbar">
-                <span>{formatAsrEngine(passport?.clip.asrEngine ?? recovery?.asrEngine)} · {Math.round(average(transcript.map((segment) => segment.confidence)) * 100)}% avg</span>
+                <span>{formatAsrEngine(passport?.clip.asrEngine ?? recovery?.asrEngine)} · {Math.round(transcriptConfidence * 100)}% avg</span>
                 <button className="studio-secondary-button" type="button" disabled={active || (!passport && !recovery)} onClick={() => void props.onRetranscribe()} title={`Runs ${retranscriptionTarget.label} on the saved source media and refreshes the passport comparison`}>
                   <Sparkles size={16} /> {retranscriptionTarget.label}
                 </button>
@@ -435,6 +438,7 @@ function EvidenceChainPanel({
   health,
   vocalQuality,
   asrEngine,
+  asrConfidence,
   asrUncertainCount,
   variantCount,
   timingOffsetSeconds,
@@ -445,6 +449,7 @@ function EvidenceChainPanel({
   health: HealthResponse | null;
   vocalQuality?: VocalQualityReport;
   asrEngine?: string;
+  asrConfidence: number;
   asrUncertainCount: number;
   variantCount: number;
   timingOffsetSeconds: number;
@@ -464,7 +469,7 @@ function EvidenceChainPanel({
     <section className="studio-evidence-chain" aria-label="Evidence chain">
       <EvidenceStep label="Source" value={source ? formatSourceMode(source.processingMode) : formatSourceMode(health?.runtimeMode ?? "pending")} detail={source ? sourceDetail : "Awaiting source media"} />
       <EvidenceStep label="Vocal" value={formatVocalSource(vocalQuality)} detail={vocalQuality?.detail ?? "Stem quality gate pending"} tone={vocalQuality && vocalQuality.status !== "passed" ? "risk" : "active"} />
-      <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round((passport?.confidenceOverview.asr ?? 0) * 100)}%`} detail={`${formatAsrEngine(asrEngine)} · ${asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"}`} tone={asrUncertainCount ? "risk" : "active"} />
+      <EvidenceStep label="ASR" value={`${formatSourceMode(asrSource)} · ${Math.round(asrConfidence * 100)}%`} detail={`${formatAsrEngine(asrEngine)} · ${asrUncertainCount ? `${asrUncertainCount} uncertain segment${asrUncertainCount === 1 ? "" : "s"}` : "No low-confidence segments"}`} tone={asrUncertainCount ? "risk" : "active"} />
       <EvidenceStep label="Canonical" value={formatSourceMode(canonicalSource)} detail={passport?.track.title ?? "Track anchor pending"} />
       <EvidenceStep label="Timing" value={formatCadenceDelta(averageTimingDeltaSeconds)} detail={`Clip offset ${formatSignedSeconds(timingOffsetSeconds)}`} tone={averageTimingDeltaSeconds >= 2.5 ? "risk" : "active"} />
       <EvidenceStep label="Export" value={`${variantCount} candidate${variantCount === 1 ? "" : "s"}`} detail={formatSourceMode(rightsStatus)} tone={rightsStatus === "restricted" || rightsStatus === "metadata_only" ? "risk" : "active"} />
@@ -573,6 +578,14 @@ function getRetranscriptionTarget(job: AnalysisJob | null): { label: string } {
   return shouldRetryWithWhisper(job) ? { label: "Whisper fallback" } : { label: "ElevenLabs Scribe" };
 }
 
+function isTranscriptionFailure(job: AnalysisJob): boolean {
+  if (job.status !== "failed" || job.passport) return false;
+  if (job.recovery?.transcript?.length) return false;
+  const error = job.error ?? "";
+  if (mentionsTrackAnchorFailure(error)) return false;
+  return /speech-to-text|transcrib|asr|whisper|replicate|elevenlabs|scribe/i.test(error);
+}
+
 function shouldRetryWithWhisper(job: AnalysisJob): boolean {
   const error = job.error ?? "";
   if (job.status === "failed" && !job.passport && mentionsScribe(error) && !mentionsWhisper(error)) {
@@ -597,6 +610,10 @@ function mentionsScribe(value: string): boolean {
 
 function mentionsWhisper(value: string): boolean {
   return /whisper|replicate/i.test(value);
+}
+
+function mentionsTrackAnchorFailure(value: string): boolean {
+  return /auto-match|track match|track anchor|recording match|musixmatch track|saved asr transcript/i.test(value);
 }
 
 const defaultSteps: AnalysisStep[] = [

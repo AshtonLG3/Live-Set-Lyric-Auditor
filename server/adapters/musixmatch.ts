@@ -212,7 +212,7 @@ async function searchMusixmatch(query: URLSearchParams): Promise<TrackCandidate[
   query.set("format", "json");
 
   try {
-    const response = await fetch(`${env.musixmatchBaseUrl}/track.search?${query.toString()}`);
+    const response = await fetchMusixmatch(`${env.musixmatchBaseUrl}/track.search?${query.toString()}`, undefined, "track search");
     if (!response.ok) {
       throw new Error(`Musixmatch search failed with ${response.status}`);
     }
@@ -235,11 +235,11 @@ async function fingerprintLyrics(text: string): Promise<TrackCandidate[]> {
   });
 
   try {
-    const response = await fetch(`${env.musixmatchBaseUrl}/track.lyrics.fingerprint.post?${query.toString()}`, {
+    const response = await fetchMusixmatch(`${env.musixmatchBaseUrl}/track.lyrics.fingerprint.post?${query.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data: { text } })
-    });
+    }, "lyric fingerprint");
     if (!response.ok) {
       return [];
     }
@@ -558,7 +558,22 @@ function fetchMethod(method: string, trackId: string, extra: Record<string, stri
     format: "json",
     ...extra
   });
-  return fetch(`${env.musixmatchBaseUrl}/${method}?${params.toString()}`);
+  return fetchMusixmatch(`${env.musixmatchBaseUrl}/${method}?${params.toString()}`, undefined, method);
+}
+
+async function fetchMusixmatch(url: string, init?: RequestInit, label = "request"): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.musixmatchTimeoutMs);
+  try {
+    return await fetch(url, { ...(init ?? {}), signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Musixmatch ${label} timed out after ${Math.round(env.musixmatchTimeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function splitCanonicalBody(body?: string): CanonicalLine[] {

@@ -18,6 +18,7 @@ export const env = {
   devAllowedHosts: parseList(process.env.DEV_ALLOWED_HOSTS, defaultDevAllowedHosts),
   musixmatchKey: process.env.MUSIXMATCH_API_KEY,
   musixmatchBaseUrl: process.env.MUSIXMATCH_API_BASE_URL ?? "https://api.musixmatch.com/ws/1.1",
+  musixmatchTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.MUSIXMATCH_TIMEOUT_MS ?? 12_000))),
   jambaseKey: process.env.JAMBASE_API_KEY,
   jambaseBaseUrl: process.env.JAMBASE_API_BASE_URL ?? "https://api.data.jambase.com/v3",
   cyaniteToken: process.env.CYANITE_API_TOKEN ?? process.env.CYANITE_API_KEY,

@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.24",
+  version: "0.11.25",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.24",
+    version: "0.11.25",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -276,7 +276,7 @@ async function runUploadedClip(fileName = "concert-snippet.mp3") {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.24/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.25/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -695,6 +695,9 @@ it("opens saved-transcript recovery when auto-match fails after Demucs and raw A
   await runUploadedClip();
 
   expect(await screen.findByText(/Auto-match could not confirm/i)).toBeInTheDocument();
+  expect(screen.queryByText(/Speech-to-text could not finish this transcript/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Retry ElevenLabs Scribe|Retry Whisper fallback/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/Replicate · 72%/i)).toBeInTheDocument();
   let recoveryPanel = container.querySelector<HTMLElement>('[aria-label="Choose track anchor"]');
   if (!recoveryPanel) {
     fireEvent.click(await screen.findByRole("button", { name: /Choose track/i }));

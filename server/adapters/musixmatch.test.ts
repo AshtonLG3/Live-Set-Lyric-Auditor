@@ -3,6 +3,7 @@ import type { TranscriptSegment } from "../../shared/types";
 
 describe("Musixmatch identification", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.resetModules();
@@ -41,6 +42,32 @@ describe("Musixmatch identification", () => {
     expect(results.findIndex((result) => result.title === "One Kiss" && result.artist.includes("Dua Lipa"))).toBeGreaterThan(1);
     expect(results.findIndex((result) => result.artist === "DUA :)")).toBeGreaterThan(1);
     expect(results.findIndex((result) => result.title === "Dua Lipa" && result.artist === "Jack Harlow")).toBeGreaterThan(0);
+  });
+
+  it("times out stalled Musixmatch searches instead of hanging", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
+    vi.stubEnv("MUSIXMATCH_TIMEOUT_MS", "3000");
+    const abortError = () => Object.assign(new Error("aborted"), { name: "AbortError" });
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+      signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { searchTracks } = await import("./musixmatch");
+    const result = searchTracks("dua");
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(result).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("track.search"),
+      expect.objectContaining({ signal: expect.any(Object) })
+    );
   });
 
   it("prefers the ranked lyric fingerprint result", async () => {
@@ -158,7 +185,10 @@ describe("subtitle timing", () => {
 
     const { getTrackLink } = await import("./musixmatch");
     await expect(getTrackLink("42")).resolves.toBe("https://www.musixmatch.com/lyrics/Correct-Artist/Correct-Song");
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("track.get"));
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("track.get"),
+      expect.objectContaining({ signal: expect.any(Object) })
+    );
   });
 });
 
