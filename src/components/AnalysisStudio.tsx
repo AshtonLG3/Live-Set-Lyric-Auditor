@@ -65,6 +65,7 @@ type Props = {
   onNarrate: () => Promise<void> | void;
   onCorrectTrack: (track: TrackCandidate) => Promise<void> | void;
   onRetranscribe: () => Promise<void> | void;
+  onVisitTrack: (track: TrackCandidate) => Promise<void> | void;
   onJoinLines: (current: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number], next: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number]) => void;
   onSplitLine: (comparison: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number]) => void;
 };
@@ -182,7 +183,7 @@ export function AnalysisStudio(props: Props) {
 
         <div className="studio-analysis-context">
           <ContextCard icon={<Fingerprint size={17} />} label="Track Anchor" status="Musixmatch">
-            <TrackAnchorTitle track={track} />
+            <TrackAnchorTitle track={track} onVisitTrack={props.onVisitTrack} />
             <span>{track?.artist ?? "Catalog search"}{track?.album ? ` · ${track.album}` : ""}</span>
             {(passport || recovery) && <button type="button" className="studio-correction-toggle" onClick={() => setCorrectionOpen((open) => !open)}><Pencil size={13} /> {passport ? "Correct match" : "Choose track"}</button>}
           </ContextCard>
@@ -236,10 +237,12 @@ export function AnalysisStudio(props: Props) {
           <section id="transcript-review" className="studio-rack-panel studio-transcript-panel" aria-label="Transcription Review">
             <header><span><AudioLines size={18} /> Transcription Review</span><small><i /> {transcript.length} segments</small></header>
             <div className="studio-rack-body">
-              <p className="studio-panel-intro">Segment list for ASR audit. Select a line to seek playback, or run ElevenLabs Scribe when the current transcript is weak.</p>
-              <button className="studio-secondary-button mb-3 w-full" type="button" disabled={active || !passport} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
-                <Sparkles size={16} /> Retranscribe with ElevenLabs Scribe
-              </button>
+              <div className="studio-transcript-toolbar">
+                <span>{formatAsrEngine(passport?.clip.asrEngine ?? recovery?.asrEngine)} · {Math.round(average(transcript.map((segment) => segment.confidence)) * 100)}% avg</span>
+                <button className="studio-secondary-button" type="button" disabled={active || !passport} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
+                  <Sparkles size={16} /> ElevenLabs Scribe
+                </button>
+              </div>
               <div className="studio-transcript-list">{transcript.map((segment) => <button key={segment.id} type="button" className={activeTranscriptId === segment.id ? "active" : ""} onClick={() => playerRef.current?.seekTo(segment.start, true)} aria-current={activeTranscriptId === segment.id ? "true" : undefined}><span className="studio-mono">{formatTime(segment.start)}</span><strong>{segment.text}</strong><small>{Math.round(segment.confidence * 100)}%</small></button>)}</div>
             </div>
           </section>
@@ -386,12 +389,12 @@ function ContextCard({ icon, label, status, tone = "active", children }: { icon:
   return <article className={`studio-context-card ${tone === "risk" ? "risk" : ""}`}><header><span>{icon}{label}</span><small><i />{status}</small></header><div>{children}</div></article>;
 }
 
-function TrackAnchorTitle({ track }: { track?: TrackCandidate }) {
+function TrackAnchorTitle({ track, onVisitTrack }: { track?: TrackCandidate; onVisitTrack: (track: TrackCandidate) => Promise<void> | void }) {
   if (!track) return <strong>Track match pending</strong>;
   const url = musixmatchTrackUrl(track);
   return url
     ? <a className="studio-context-link" href={url} target="_blank" rel="noreferrer" title="Open Musixmatch track"><strong>{track.title}</strong></a>
-    : <strong>{track.title}</strong>;
+    : <><strong>{track.title}</strong>{track.source === "musixmatch" && <button type="button" className="studio-correction-toggle" onClick={() => void onVisitTrack(track)}>Visit matched track</button>}</>;
 }
 
 function musixmatchTrackUrl(track: TrackCandidate): string | undefined {

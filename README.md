@@ -14,7 +14,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Demo Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.17`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.18`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a short rear-camera stage-performance video.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -25,7 +25,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## API Surfaces
 
-- **Musixmatch:** `track.search`, `track.get` track links, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
+- **Musixmatch:** `track.search`, lazy `track.get` track links, ranked `track.lyrics.fingerprint.post` rescue with compatibility fallback, recording/common-track metadata, `track.richsync.get`, `track.subtitle.get`, and `track.lyrics.get`.
 - **Audio ID:** optional Auto Match audio fingerprinting before ASR lyric rescue. Set `AUDIO_ID_PROVIDER=acrcloud` with ACRCloud credentials, or `AUDIO_ID_PROVIDER=custom` / `MUSIXMATCH_AUDIO_ID_API_URL` for a partner endpoint that accepts an uploaded clip and returns title, artist, and optional ISRC metadata.
 - **LALAL.AI:** faster vocal-split rescue when original-audio ASR/alignment is weak. The normal path no longer waits for a split before first-pass transcription.
 - **Demucs:** Replicate-hosted Demucs uses the same `REPLICATE_API_TOKEN` as ASR and remains a slow quality fallback after original ASR and LALAL rescue.

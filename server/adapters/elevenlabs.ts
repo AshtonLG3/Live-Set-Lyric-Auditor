@@ -9,6 +9,14 @@ type ElevenLabsWord = {
   logprob?: number;
 };
 
+type ParsedElevenLabsWord = {
+  text: string;
+  start: number;
+  end: number;
+  endsPhrase: boolean;
+  logprob?: number;
+};
+
 type ElevenLabsTranscriptResponse = {
   language_probability?: number;
   text?: string;
@@ -106,19 +114,23 @@ export async function transcribeWithElevenLabs(file: Express.Multer.File): Promi
   };
 }
 
-function parseElevenLabsSegments(json: ElevenLabsTranscriptResponse): TranscriptSegment[] {
+export function parseElevenLabsSegments(json: ElevenLabsTranscriptResponse): TranscriptSegment[] {
   const words = (json.words ?? [])
     .filter((word) => word.type === undefined || word.type === "word")
-    .map((word) => ({
-      text: String(word.text ?? "").trim(),
-      start: finite(word.start, 0),
-      end: finite(word.end, finite(word.start, 0) + 0.35),
-      logprob: typeof word.logprob === "number" ? word.logprob : undefined
-    }))
+    .map((word) => {
+      const rawText = String(word.text ?? "").trim();
+      return {
+        text: cleanElevenText(rawText),
+        start: finite(word.start, 0),
+        end: finite(word.end, finite(word.start, 0) + 0.35),
+        endsPhrase: /[.!?]$/.test(rawText),
+        logprob: typeof word.logprob === "number" ? word.logprob : undefined
+      };
+    })
     .filter((word) => word.text);
 
   if (words.length === 0) {
-    const text = json.text?.trim();
+    const text = cleanElevenText(json.text);
     return text
       ? [{ id: "EL1", start: 0, end: 4, text, confidence: normalizeElevenConfidence(json.language_probability) }]
       : [];
@@ -131,7 +143,7 @@ function parseElevenLabsSegments(json: ElevenLabsTranscriptResponse): Transcript
   for (const word of words) {
     const wouldExceedWindow = current.length > 0 && word.end - segmentStart > 4.5;
     const previous = current.at(-1);
-    const previousEndsPhrase = previous ? /[.!?]$/.test(previous.text) : false;
+    const previousEndsPhrase = previous?.endsPhrase ?? false;
     if (current.length > 0 && (wouldExceedWindow || previousEndsPhrase)) {
       segments.push(buildElevenSegment(segments.length, current, json.language_probability));
       current = [];
@@ -142,10 +154,10 @@ function parseElevenLabsSegments(json: ElevenLabsTranscriptResponse): Transcript
   if (current.length > 0) {
     segments.push(buildElevenSegment(segments.length, current, json.language_probability));
   }
-  return segments;
+  return markBackingVocalOverlaps(segments);
 }
 
-function buildElevenSegment(index: number, words: Array<{ text: string; start: number; end: number; logprob?: number }>, languageProbability?: number): TranscriptSegment {
+function buildElevenSegment(index: number, words: ParsedElevenLabsWord[], languageProbability?: number): TranscriptSegment {
   const logprobs = words.map((word) => word.logprob).filter((value): value is number => typeof value === "number");
   const confidence = logprobs.length
     ? clamp(Math.exp(logprobs.reduce((sum, value) => sum + value, 0) / logprobs.length), 0.45, 0.98)
@@ -154,9 +166,30 @@ function buildElevenSegment(index: number, words: Array<{ text: string; start: n
     id: `EL${index + 1}`,
     start: words[0]?.start ?? index * 4,
     end: words.at(-1)?.end ?? index * 4 + 4,
-    text: words.map((word) => word.text).join(" ").replace(/\s+([,.!?;:])/g, "$1"),
+    text: cleanElevenText(words.map((word) => word.text).join(" ")),
     confidence
   };
+}
+
+function markBackingVocalOverlaps(segments: TranscriptSegment[]): TranscriptSegment[] {
+  return segments.map((segment, index) => {
+    const previous = segments[index - 1];
+    if (!previous || Math.abs(segment.start - previous.start) > 0.75 || segment.text.startsWith("(")) {
+      return segment;
+    }
+    return {
+      ...segment,
+      text: `(${segment.text})`
+    };
+  });
+}
+
+function cleanElevenText(value?: string): string {
+  return String(value ?? "")
+    .replace(/\./g, "")
+    .replace(/\s+([,!?;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeElevenConfidence(value?: number): number {

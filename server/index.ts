@@ -4,7 +4,7 @@ import path from "node:path";
 import rateLimit from "express-rate-limit";
 import { env, getHealth } from "./config";
 import { searchEvents } from "./adapters/jambase";
-import { searchTracks } from "./adapters/musixmatch";
+import { getTrackLink, searchTracks } from "./adapters/musixmatch";
 import { createNarration, reanchorAnalysis, retranscribeAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobMedia, jobs } from "./store";
 import { addJobSubscriber } from "./sse";
@@ -45,6 +45,14 @@ app.get("/api/music/search", async (req, res, next) => {
       return;
     }
     res.json({ tracks: await searchTracks(query) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/music/track/:trackId/link", async (req, res, next) => {
+  try {
+    res.json({ url: await getTrackLink(paramString(req.params.trackId)) ?? null });
   } catch (error) {
     next(error);
   }

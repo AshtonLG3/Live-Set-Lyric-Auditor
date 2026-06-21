@@ -154,13 +154,12 @@ export async function getCanonicalReference(track: TrackCandidate): Promise<Cano
   }
 
   try {
-    const [richSyncLines, subtitleLines, lyrics, trackDetails] = await Promise.all([
+    const [richSyncLines, subtitleLines, lyrics] = await Promise.all([
       fetchRichSyncLines(track.id),
       fetchSubtitleLines(track.id),
-      fetchLyrics(track.id),
-      fetchTrackDetails(track.id)
+      fetchLyrics(track.id)
     ]);
-    const trackUrl = trackDetails?.url ?? track.url;
+    const trackUrl = track.url;
 
     if (lyrics.restricted && richSyncLines.length === 0 && subtitleLines.length === 0) {
       return {
@@ -455,11 +454,14 @@ function mapTrack(track?: RawTrack): TrackCandidate | null {
   };
 }
 
-async function fetchTrackDetails(trackId: string): Promise<TrackCandidate | undefined> {
+export async function getTrackLink(trackId: string): Promise<string | undefined> {
+  if (!env.musixmatchKey || !trackId.trim()) {
+    return undefined;
+  }
   const response = await fetchMethod("track.get", trackId);
   if (!response.ok) return undefined;
   const json = await response.json();
-  return mapTrack(json?.message?.body?.track) ?? undefined;
+  return mapTrack(json?.message?.body?.track)?.url;
 }
 
 async function fetchRichSyncLines(trackId: string): Promise<CanonicalLine[]> {

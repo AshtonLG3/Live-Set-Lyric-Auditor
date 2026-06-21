@@ -111,7 +111,7 @@ describe("subtitle timing", () => {
     ]);
   });
 
-  it("preserves the concrete Musixmatch track.get URL for the track anchor", async () => {
+  it("does not call track.get while building the canonical reference", async () => {
     vi.resetModules();
     vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
     const fetchMock = vi.fn(async (url: string) => {
@@ -141,7 +141,23 @@ describe("subtitle timing", () => {
       source: "musixmatch"
     });
 
-    expect(reference.trackUrl).toBe("https://www.musixmatch.com/lyrics/Correct-Artist/Correct-Song");
+    expect(reference.trackUrl).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("track.get"));
+  });
+
+  it("resolves the concrete Musixmatch track.get URL on demand", async () => {
+    vi.resetModules();
+    vi.stubEnv("MUSIXMATCH_API_KEY", "musixmatch-test-key");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("track.get")) {
+        return methodResponse({ track: track(42, "Correct Song", "Correct Artist", 80).track });
+      }
+      return methodResponse({});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { getTrackLink } = await import("./musixmatch");
+    await expect(getTrackLink("42")).resolves.toBe("https://www.musixmatch.com/lyrics/Correct-Artist/Correct-Song");
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("track.get"));
   });
 });

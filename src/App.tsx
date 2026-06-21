@@ -4,6 +4,7 @@ import {
   AudioLines,
   CalendarDays,
   Download,
+  ExternalLink,
   FileText,
   LayoutDashboard,
   Moon,
@@ -11,7 +12,7 @@ import {
   Search,
   Sun,
 } from "lucide-react";
-import { createNarration, getAnalysis, getHealth, reanchorAnalysis, retranscribeAnalysis, searchEvents, searchTracks, startAnalysis, subscribeToJob } from "./api";
+import { createNarration, getAnalysis, getHealth, getTrackLink, reanchorAnalysis, retranscribeAnalysis, searchEvents, searchTracks, startAnalysis, subscribeToJob } from "./api";
 import type { AnalysisJob, EventCandidate, HealthResponse, LineComparison, NarrationResponse, TrackCandidate, VariantCandidate } from "../shared/types";
 import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
@@ -41,7 +42,16 @@ export default function App() {
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecisions>({});
   const [manualVariants, setManualVariants] = useState<VariantCandidate[]>([]);
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
+  const [trackHistory, setTrackHistory] = useState<TrackCandidate[]>([]);
   const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
+
+  const rememberTrack = useCallback((track?: TrackCandidate) => {
+    if (!track) return;
+    setTrackHistory((current) => [
+      track,
+      ...current.filter((item) => item.id !== track.id)
+    ].slice(0, 6));
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -87,6 +97,7 @@ export default function App() {
     if (updated.passport) {
       setSelectedTrack(updated.passport.track);
       setSelectedEvent(updated.passport.event ?? null);
+      rememberTrack(updated.passport.track);
     }
     if (updated.status === "complete" || updated.status === "failed") {
       setBusy(false);
@@ -94,7 +105,7 @@ export default function App() {
         setError(updated.error ?? "Analysis stopped before completion.");
       }
     }
-  }, []);
+  }, [rememberTrack]);
 
   const handleJobError = useCallback((err: Error) => {
     setBusy(false);
@@ -146,7 +157,13 @@ export default function App() {
         eventCity,
         eventDate
       });
-      setJob(await getAnalysis(jobId));
+      const started = await getAnalysis(jobId);
+      setJob(started);
+      if (started.passport) {
+        setSelectedTrack(started.passport.track);
+        setSelectedEvent(started.passport.event ?? null);
+        rememberTrack(started.passport.track);
+      }
     } catch (analysisError) {
       setBusy(false);
       setError(analysisError instanceof Error ? analysisError.message : "Could not start analysis.");
@@ -169,8 +186,13 @@ export default function App() {
         eventDate
       });
       setJob(updated);
-      setSelectedTrack(track);
-      if (updated.passport) setSelectedEvent(updated.passport.event ?? null);
+      if (updated.passport) {
+        setSelectedTrack(updated.passport.track);
+        setSelectedEvent(updated.passport.event ?? null);
+        rememberTrack(updated.passport.track);
+      } else {
+        setSelectedTrack(track);
+      }
     } catch (correctionError) {
       setError(correctionError instanceof Error ? correctionError.message : "Could not correct the track anchor.");
     }
@@ -192,6 +214,7 @@ export default function App() {
       if (updated.passport) {
         setSelectedTrack(updated.passport.track);
         setSelectedEvent(updated.passport.event ?? null);
+        rememberTrack(updated.passport.track);
       }
     } catch (retranscribeError) {
       setError(retranscribeError instanceof Error ? retranscribeError.message : "Could not run ElevenLabs Scribe.");
@@ -225,7 +248,7 @@ export default function App() {
     const nextText = editedTexts[next.id] ?? next.liveText;
     setEditedTexts((prev) => ({
       ...prev,
-      [current.id]: `${currentText} ${nextText}`.replace(/\s+/g, " ").trim(),
+      [current.id]: `${currentText.trim()} ${lowercaseFirstLetter(nextText.trim())}`.replace(/\s+/g, " ").trim(),
       [next.id]: "[joined with previous line]"
     }));
   }
@@ -238,13 +261,13 @@ export default function App() {
     const second = rest.join("/").trim();
     if (!first.trim() || !second) return;
     const splitAt = comparison.start + Math.max(0.1, (comparison.end - comparison.start) / 2);
-    setEditedTexts((prev) => ({ ...prev, [comparison.id]: first.trim() }));
+    setEditedTexts((prev) => ({ ...prev, [comparison.id]: uppercaseFirstLetter(first.trim()) }));
     addManualVariant({
       id: `manual-split-${Date.now()}`,
       type: "adlib",
       start: splitAt,
       end: comparison.end,
-      liveText: second,
+      liveText: uppercaseFirstLetter(second),
       canonicalAlignmentReference: `Split from ${comparison.id}`,
       canonicalExcerpt: comparison.canonicalText,
       confidence: 0.75,
@@ -256,6 +279,41 @@ export default function App() {
       evidenceTier: "needs_review",
       reviewerNote: "Split from Passport Review."
     });
+  }
+
+  function updateTrackUrl(trackId: string, url: string) {
+    const patch = (track: TrackCandidate) => track.id === trackId ? { ...track, url } : track;
+    setTracks((current) => current.map(patch));
+    setTrackHistory((current) => current.map(patch));
+    setSelectedTrack((current) => current ? patch(current) : current);
+    setJob((current) => {
+      if (!current?.passport || current.passport.track.id !== trackId) return current;
+      return {
+        ...current,
+        passport: {
+          ...current.passport,
+          track: patch(current.passport.track)
+        }
+      };
+    });
+  }
+
+  async function handleVisitTrack(track: TrackCandidate) {
+    setError("");
+    let url = track.url;
+    if (!isHttpUrl(url) && track.source === "musixmatch") {
+      try {
+        url = await getTrackLink(track.id);
+        if (url) updateTrackUrl(track.id, url);
+      } catch {
+        url = undefined;
+      }
+    }
+    if (!isHttpUrl(url)) {
+      setError("Musixmatch did not return a track page for this matched track yet.");
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   function startNewSession() {
@@ -379,6 +437,11 @@ export default function App() {
               </>
             )}
           </nav>
+          <TrackHistoryPanel
+            tracks={trackHistory}
+            currentTrackId={job?.passport?.track.id ?? selectedTrack?.id}
+            onVisitTrack={handleVisitTrack}
+          />
         </aside>
 
         <div className="studio-app-content">
@@ -424,6 +487,7 @@ export default function App() {
               onSplitLine={splitComparisonLine}
               onCorrectTrack={handleCorrectTrack}
               onRetranscribe={handleRetranscribe}
+              onVisitTrack={handleVisitTrack}
             />
           )}
           </ErrorBoundary>
@@ -438,12 +502,63 @@ export default function App() {
   );
 }
 
+function TrackHistoryPanel({
+  tracks,
+  currentTrackId,
+  onVisitTrack
+}: {
+  tracks: TrackCandidate[];
+  currentTrackId?: string;
+  onVisitTrack: (track: TrackCandidate) => Promise<void> | void;
+}) {
+  if (tracks.length === 0) return null;
+  return (
+    <section className="studio-track-history" aria-label="Matched track history">
+      <p className="studio-sidebar-context-label">Matched Tracks</p>
+      <div>
+        {tracks.map((track) => {
+          const hasLink = isHttpUrl(track.url) || track.source === "musixmatch";
+          return (
+            <article key={track.id} className={track.id === currentTrackId ? "active" : ""}>
+              <div>
+                <strong>{track.title}</strong>
+                <small>{track.artist}</small>
+              </div>
+              <button
+                type="button"
+                disabled={!hasLink}
+                onClick={() => void onVisitTrack(track)}
+                title={hasLink ? "Open the Musixmatch track page" : "No Musixmatch track page available"}
+                aria-label={`Visit matched track ${track.title}`}
+              >
+                <ExternalLink size={13} />
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function TopNavButton({ label, active, disabled, onClick }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void }) {
   return <button type="button" className={active ? "active" : ""} disabled={disabled} onClick={onClick}>{label}</button>;
 }
 
 function SideNavButton({ label, icon, active, disabled, onClick }: { label: string; icon: React.ReactNode; active?: boolean; disabled?: boolean; onClick: () => void }) {
   return <button type="button" className={active ? "active" : ""} aria-current={active ? "location" : undefined} disabled={disabled} onClick={onClick}>{icon}<span>{label}</span></button>;
+}
+
+function isHttpUrl(value?: string): value is string {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
+function lowercaseFirstLetter(value: string): string {
+  return value.replace(/[A-Za-z]/, (letter) => letter.toLowerCase());
+}
+
+function uppercaseFirstLetter(value: string): string {
+  return value.replace(/[A-Za-z]/, (letter) => letter.toUpperCase());
 }
 
 function getRuntimeStatus(mode: HealthResponse["runtimeMode"] | undefined) {

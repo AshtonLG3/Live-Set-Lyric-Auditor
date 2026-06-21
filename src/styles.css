@@ -1224,6 +1224,75 @@ button {
   box-shadow: 0 0 18px color-mix(in srgb, var(--app-cyan) 25%, transparent);
 }
 
+.studio-track-history {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 18px;
+  border-top: 1px solid var(--app-border);
+}
+
+.studio-track-history .studio-sidebar-context-label {
+  margin-top: 16px;
+}
+
+.studio-track-history > div {
+  display: grid;
+  gap: 6px;
+}
+
+.studio-track-history article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 9px 9px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  background: var(--app-panel);
+}
+
+.studio-track-history article.active {
+  border-color: color-mix(in srgb, var(--app-cyan) 60%, var(--app-border));
+  background: color-mix(in srgb, var(--app-cyan) 10%, var(--app-panel));
+}
+
+.studio-track-history strong,
+.studio-track-history small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-track-history strong {
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.studio-track-history small {
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 10px;
+}
+
+.studio-track-history button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  color: var(--app-muted);
+  background: transparent;
+}
+
+.studio-track-history button:not(:disabled):hover,
+.studio-track-history button:not(:disabled):focus-visible {
+  border-color: var(--app-cyan);
+  color: var(--app-cyan);
+}
+
 .studio-app-content {
   min-width: 0;
   background: var(--app-bg);
@@ -2107,6 +2176,30 @@ button {
   margin-top: 4px;
   color: var(--studio-muted);
   font-size: 11px;
+}
+
+.studio-transcript-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.studio-transcript-toolbar > span {
+  min-width: 0;
+  color: var(--studio-muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.studio-transcript-toolbar .studio-secondary-button {
+  min-height: 34px;
+  margin: 0;
+  padding-inline: 12px;
+  white-space: nowrap;
 }
 
 .studio-transcript-list {

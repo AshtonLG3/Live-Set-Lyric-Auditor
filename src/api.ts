@@ -9,6 +9,11 @@ export async function searchTracks(query: string): Promise<TrackCandidate[]> {
   return response.tracks;
 }
 
+export async function getTrackLink(trackId: string): Promise<string | undefined> {
+  const response = await fetchJson<{ url: string | null }>(`/api/music/track/${encodeURIComponent(trackId)}/link`);
+  return response.url ?? undefined;
+}
+
 export async function searchEvents(input: { artist: string; city: string; date: string }): Promise<EventCandidate[]> {
   const params = new URLSearchParams(input);
   const response = await fetchJson<{ events: EventCandidate[] }>(`/api/events/search?${params.toString()}`);
