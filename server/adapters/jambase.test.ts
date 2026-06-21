@@ -69,6 +69,37 @@ describe("JamBase adapter", () => {
     await expect(searchEvents({ artist: "The Signal Keeps", city: "London", date: "2026-06-18" }))
       .resolves.toEqual([]);
   });
+
+  it("keeps the searched artist attached when a festival result lists another headliner first", async () => {
+    vi.stubEnv("JAMBASE_API_KEY", "jambase-test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({
+      events: [{
+        identifier: "festival-1",
+        name: "Tons Of Rock",
+        startDate: "2026-06-24",
+        url: "https://www.jambase.com/festival/tons-of-rock-2026",
+        performers: [{ identifier: "artist-bmth", name: "Bring Me the Horizon" }],
+        venue: { identifier: "venue-oslo", name: "Ekebergsletta", city: "Oslo" },
+        lineup: [
+          { identifier: "artist-bmth", name: "Bring Me the Horizon" },
+          { identifier: "artist-limp", name: "Limp Bizkit" }
+        ]
+      }, {
+        identifier: "show-1",
+        name: "Limp Bizkit at SparkassenPark",
+        startDate: "2026-06-23T18:15:00",
+        performers: [{ identifier: "artist-limp", name: "Limp Bizkit" }],
+        venue: { identifier: "venue-park", name: "SparkassenPark", city: "Monchengladbach" }
+      }]
+    })));
+
+    const { searchEvents } = await import("./jambase");
+    const events = await searchEvents({ artist: "Limp Bizkit" });
+
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => event.artist)).toEqual(["Limp Bizkit", "Limp Bizkit"]);
+    expect(events[0]).toMatchObject({ id: "festival-1", title: "Tons Of Rock", artistId: "artist-limp" });
+  });
 });
 
 function jsonResponse(body: unknown): Response {

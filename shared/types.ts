@@ -106,6 +106,9 @@ export type PerformanceContext = {
 export type AnalysisRecovery = {
   filename: string;
   durationSeconds: number;
+  track?: TrackCandidate;
+  trackQuery?: string;
+  autoMatch?: boolean;
   vocalIsolationSource: "lalalai" | "demucs" | "original" | "fixture";
   vocalIsolationConfidence: number;
   vocalQuality?: VocalQualityReport;

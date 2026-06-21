@@ -126,6 +126,7 @@ export function AnalysisStudio(props: Props) {
   const pendingCount = Math.max(0, variants.length - approvedCount - rejectedCount);
   const hasPassport = Boolean(passport);
   const needsTrackRecovery = Boolean(recovery && !passport);
+  const canRunScribeRecovery = Boolean(props.job?.status === "failed" && !passport);
   // A run that finished without a passport (e.g. failed track-match) must not borrow
   // the marketing-preview numbers and read as a valid high-confidence passport. Preview
   // defaults are only honest before any run (no job yet).
@@ -232,6 +233,17 @@ export function AnalysisStudio(props: Props) {
         </section>
 
         {(props.error || props.job?.error) && <p className="studio-error">{props.error || props.job?.error}</p>}
+        {canRunScribeRecovery && (
+          <section className="studio-scribe-recovery" aria-label="ElevenLabs Scribe recovery">
+            <div>
+              <strong>Whisper could not finish this transcript.</strong>
+              <span>Try ElevenLabs Scribe on the saved clip without importing it again.</span>
+            </div>
+            <button className="studio-secondary-button" type="button" disabled={active} onClick={() => void props.onRetranscribe()}>
+              <Sparkles size={16} /> Try ElevenLabs Scribe
+            </button>
+          </section>
+        )}
 
         {transcript.length > 0 && (
           <section id="transcript-review" className="studio-rack-panel studio-transcript-panel" aria-label="Transcription Review">
@@ -239,7 +251,7 @@ export function AnalysisStudio(props: Props) {
             <div className="studio-rack-body">
               <div className="studio-transcript-toolbar">
                 <span>{formatAsrEngine(passport?.clip.asrEngine ?? recovery?.asrEngine)} · {Math.round(average(transcript.map((segment) => segment.confidence)) * 100)}% avg</span>
-                <button className="studio-secondary-button" type="button" disabled={active || !passport} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
+                <button className="studio-secondary-button" type="button" disabled={active || (!passport && !recovery)} onClick={() => void props.onRetranscribe()} title="Runs ElevenLabs Scribe on the saved source media and refreshes the passport comparison">
                   <Sparkles size={16} /> ElevenLabs Scribe
                 </button>
               </div>

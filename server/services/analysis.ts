@@ -1,6 +1,6 @@
-import type { AnalysisJob, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
+import type { AnalysisJob, AnalysisRecovery, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
 import { formatBytes } from "../../shared/format";
-import { fixtureClipDuration, fixtureEvents, fixtureTracks } from "../data/fixtures";
+import { fixtureClipDuration, fixtureEvents, fixturePerformanceContext, fixtureTracks } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
 import type { TranscriptionResult } from "../adapters/asr";
 import { analyzePerformance } from "../adapters/cyanite";
@@ -119,6 +119,34 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       `${performanceContext.source === "cyanite" ? "Cyanite" : "Demo profile"} · ${Math.round(performanceContext.energyLevel * 100)}% energy · ${performanceContext.arrangement.replaceAll("_", " ")}`
     );
 
+    const recoveryBase = {
+      filename: analysisFile?.originalname ?? sourceFilename(input.source),
+      durationSeconds: input.durationSeconds ?? fixtureClipDuration,
+      track: input.track,
+      trackQuery: input.trackQuery,
+      autoMatch: input.autoMatch,
+      source: effectiveSource ?? {
+        kind: analysisFile ? "upload" as const : "fixture" as const,
+        processingMode: analysisFile ? "uploaded_media" as const : "fixture" as const
+      },
+      performanceContext,
+      event: input.event ?? null,
+      eventCity: input.eventCity,
+      eventDate: input.eventDate
+    };
+    updateJob(jobId, (job) => ({
+      ...job,
+      recovery: {
+        ...recoveryBase,
+        vocalIsolationSource: initialVocal.source,
+        vocalIsolationConfidence: initialVocal.confidence,
+        vocalQuality: assessVocalTranscript([], initialVocal.source),
+        asrSource: "replicate",
+        asrEngine: "Whisper",
+        transcript: []
+      }
+    }));
+
     setStep(jobId, "transcribe", "running");
     let selected = await selectVocalTranscription(jobId, analysisFile, initialVocal, recallSegments);
     setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
@@ -126,22 +154,13 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const persistRecovery = () => updateJob(jobId, (job) => ({
       ...job,
       recovery: {
-        filename: analysisFile?.originalname ?? sourceFilename(input.source),
-        durationSeconds: input.durationSeconds ?? fixtureClipDuration,
+        ...recoveryBase,
         vocalIsolationSource: selected.vocal.source,
         vocalIsolationConfidence: selected.vocal.confidence,
         vocalQuality: selected.vocalQuality,
         asrSource: selected.transcription.source,
         asrEngine: selected.transcription.engine,
-        transcript: selected.transcription.segments,
-        source: effectiveSource ?? {
-          kind: analysisFile ? "upload" : "fixture",
-          processingMode: analysisFile ? "uploaded_media" : "fixture"
-        },
-        performanceContext,
-        event: input.event ?? null,
-        eventCity: input.eventCity,
-        eventDate: input.eventDate
+        transcript: selected.transcription.segments
       }
     }));
     persistRecovery();
@@ -340,17 +359,25 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
   const job = jobs.get(jobId);
   const passport = job?.passport;
   const media = jobMedia.get(jobId);
-  if (!job || !passport) {
-    throw new Error("A completed passport is required before retranscribing.");
+  const recovery = job?.recovery ?? (job && media && !passport ? buildRecoveryFromSavedMedia(job, media) : undefined);
+  if (!job || (!passport && !recovery)) {
+    throw new Error("A completed passport or failed ASR recovery is required before retranscribing.");
   }
   if (!media) {
     throw new Error("No saved audio or video is available for retranscription.");
+  }
+  if (!passport && recovery && !job.recovery) {
+    updateJob(jobId, (current) => ({ ...current, recovery }));
   }
 
   setStep(jobId, "transcribe", "running", "Running ElevenLabs Scribe on the saved source media.");
   try {
     const file = mediaToMulterFile(media);
     const transcription = await transcribeWithElevenLabs(file);
+    if (!passport) {
+      return buildPassportFromScribeRecovery(jobId, recovery!, file, transcription);
+    }
+
     const canonical = await getCanonicalReference(passport.track);
     const track = enrichTrackWithCanonical(passport.track, canonical);
     const event = passport.event;
@@ -401,9 +428,131 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
     }
     return updated;
   } catch (error) {
-    setStep(jobId, "transcribe", "complete", `ElevenLabs Scribe retry failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    const message = error instanceof Error ? error.message : "unknown error";
+    updateJob(jobId, (current) => ({
+      ...current,
+      status: "failed",
+      error: `ElevenLabs Scribe retry failed: ${message}`,
+      progress: current.progress.map((step) =>
+        step.id === "transcribe" || step.status === "running"
+          ? { ...step, status: "failed", detail: `ElevenLabs Scribe retry failed: ${message}` }
+          : step
+      )
+    }));
     throw error;
   }
+}
+
+function buildRecoveryFromSavedMedia(
+  job: AnalysisJob,
+  media: { buffer: Buffer; mimetype: string; filename: string }
+): AnalysisRecovery {
+  const source: ClipSource = { kind: "upload", processingMode: "uploaded_media" };
+  const issue = job.error
+    ? `Previous run failed before recovery metadata was saved: ${job.error}`
+    : "Previous run failed before recovery metadata was saved.";
+  return {
+    filename: media.filename,
+    durationSeconds: fixtureClipDuration,
+    autoMatch: true,
+    vocalIsolationSource: "original",
+    vocalIsolationConfidence: 0.58,
+    vocalQuality: assessVocalTranscript([], "original", [issue]),
+    asrSource: "replicate",
+    asrEngine: "Whisper",
+    transcript: [],
+    source,
+    performanceContext: fixturePerformanceContext,
+    event: null
+  };
+}
+
+async function buildPassportFromScribeRecovery(
+  jobId: string,
+  recovery: NonNullable<AnalysisJob["recovery"]>,
+  analysisFile: Express.Multer.File,
+  transcription: TranscriptionResult
+): Promise<AnalysisJob> {
+  const selected: VocalTranscriptionSelection = {
+    transcription,
+    vocal: {
+      source: "original",
+      confidence: recovery.vocalIsolationConfidence,
+      detail: "ElevenLabs Scribe recovered the transcript after Whisper failed."
+    },
+    vocalQuality: assessVocalTranscript(transcription.segments, "original")
+  };
+  const retryInput: AnalyzeInput = {
+    track: recovery.track,
+    trackQuery: recovery.trackQuery,
+    event: recovery.event,
+    eventCity: recovery.eventCity,
+    eventDate: recovery.eventDate,
+    durationSeconds: recovery.durationSeconds,
+    autoMatch: recovery.autoMatch ?? !recovery.track,
+    source: recovery.source
+  };
+
+  setStep(jobId, "transcribe", "complete", `ElevenLabs Scribe recovered ${transcription.segments.length} segment${transcription.segments.length === 1 ? "" : "s"}.`);
+  setStep(jobId, "anchor", "running", "Matching recording from ElevenLabs transcript.");
+  let track: TrackCandidate;
+  let resolved: Awaited<ReturnType<typeof resolveTrack>>;
+  try {
+    resolved = await resolveTrack(retryInput, transcription.segments);
+    track = resolved.track;
+  } catch (error) {
+    throw new Error(`ElevenLabs Scribe produced a transcript, but the track still could not be anchored: ${error instanceof Error ? error.message : "unknown anchor error"}`);
+  }
+
+  const event = await resolveEvent(retryInput, track);
+  const liveContext = buildLiveContext(event, track);
+  setStep(
+    jobId,
+    "anchor",
+    "complete",
+    `${track.title} by ${track.artist} · ${resolved.matchMethod.replaceAll("_", " ")}${resolved.detail ? ` · ${resolved.detail}` : ""}${event ? ` · ${event.venue}` : ""}`
+  );
+
+  setStep(jobId, "compare", "running");
+  const canonical = await getCanonicalReference(track);
+  track = enrichTrackWithCanonical(track, canonical);
+  setStep(
+    jobId,
+    "compare",
+    "complete",
+    canonical.restricted
+      ? "Lyrics restricted; passport switched to metadata-only comparison."
+      : `${canonical.lines.length} reference lines from ${canonical.source}.`
+  );
+
+  setStep(jobId, "passport", "running", "Generating passport from ElevenLabs Scribe transcript.");
+  const passport = buildPassportForSelection({
+    jobId,
+    input: retryInput,
+    analysisFile,
+    effectiveSource: recovery.source,
+    track,
+    event,
+    canonical,
+    liveContext,
+    performanceContext: recovery.performanceContext,
+    resolved,
+    selected
+  });
+  assertSelectedTrackFitsTranscript(passport);
+
+  const updated = updateJob(jobId, (current) => ({
+    ...current,
+    status: "complete",
+    passport,
+    recovery: undefined,
+    error: undefined
+  }));
+  setStep(jobId, "passport", "complete", `${passport.variants.length} variant candidates flagged after ElevenLabs Scribe recovery.`);
+  if (!updated) {
+    throw new Error("Analysis job no longer exists.");
+  }
+  return jobs.get(jobId) ?? updated;
 }
 
 function mediaToMulterFile(media: { buffer: Buffer; mimetype: string; filename: string }): Express.Multer.File {

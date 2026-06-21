@@ -76,15 +76,16 @@ export default function App() {
   }, [trackQuery]);
 
   useEffect(() => {
-    if (!selectedTrack || (!eventCity.trim() && !eventDate.trim())) {
+    if (!selectedTrack) {
       setEvents([]);
       setSelectedEvent(null);
       return;
     }
+    const hasEventHint = Boolean(eventCity.trim() || eventDate.trim());
     void searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate })
       .then((items) => {
         setEvents(items);
-        setSelectedEvent(items[0] ?? null);
+        setSelectedEvent(hasEventHint ? items[0] ?? null : null);
       })
       .catch(() => {
         setEvents([]);
@@ -130,9 +131,10 @@ export default function App() {
   async function handleEventSearch() {
     if (!selectedTrack) return;
     setError("");
+    const hasEventHint = Boolean(eventCity.trim() || eventDate.trim());
     const items = await searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate });
     setEvents(items);
-    setSelectedEvent(items[0] ?? null);
+    setSelectedEvent(hasEventHint ? items[0] ?? null : null);
   }
 
   async function handleAnalyze(input?: IntakeAnalysisInput, useFixture = false) {
@@ -200,7 +202,12 @@ export default function App() {
 
   async function handleRetranscribe() {
     if (!job?.id) return;
-    const confirmed = window.confirm("Run ElevenLabs Scribe on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume ElevenLabs credits.");
+    const recoveryRun = job.status === "failed" && !job.passport;
+    const confirmed = window.confirm(
+      recoveryRun
+        ? "Try ElevenLabs Scribe on the saved source media? This can recover files that Whisper rejected and may consume ElevenLabs credits."
+        : "Run ElevenLabs Scribe on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume ElevenLabs credits."
+    );
     if (!confirmed) return;
     setBusy(true);
     setError("");

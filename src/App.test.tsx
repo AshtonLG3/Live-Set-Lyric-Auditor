@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import { inspectClip } from "./clip";
 import type { AnalysisJob, HealthResponse } from "../shared/types";
@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.19",
+  version: "0.11.20",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.19",
+    version: "0.11.20",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -263,12 +263,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
 });
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.19/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.20/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -305,6 +306,53 @@ it("shows selected-track anchor controls directly in clip intake", async () => {
 
   await waitFor(() => expect(within(anchor).getByText("Midnight Atlas")).toBeInTheDocument());
   expect(within(anchor).getByText(/The Signal Keeps/i)).toBeInTheDocument();
+});
+
+it("shows JamBase event suggestions for a selected track without requiring city or date", async () => {
+  const baseFetch = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.toString().startsWith("/api/music/search")) {
+      return jsonResponse({
+        tracks: [{
+          id: "mxm-limp-bizkit-break-stuff",
+          title: "Break Stuff",
+          artist: "Limp Bizkit",
+          album: "Significant Other",
+          hasLyrics: true,
+          hasSubtitles: true,
+          source: "musixmatch"
+        }]
+      });
+    }
+    if (url.toString().startsWith("/api/events/search")) {
+      return jsonResponse({
+        events: [{
+          id: "jambase-limp-berlin",
+          title: "Limp Bizkit at Parkbuhne Wuhlheide",
+          artist: "Limp Bizkit",
+          venue: "Parkbuhne Wuhlheide",
+          city: "Berlin",
+          date: "2026-06-24T18:15:00",
+          lineup: ["Limp Bizkit"],
+          setlist: { available: false },
+          url: "https://www.jambase.com/show/limp-bizkit-parkbuhne-wuhlheide-20260624",
+          source: "jambase"
+        }]
+      });
+    }
+    return baseFetch(url, init);
+  }));
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Selected track" }));
+  const anchor = screen.getByLabelText("Selected track anchor");
+  fireEvent.change(within(anchor).getByLabelText("Selected track search"), { target: { value: "Limp Bizkit" } });
+  fireEvent.click(within(anchor).getByRole("button", { name: "Search selected track" }));
+
+  await waitFor(() => expect(within(anchor).getByText("Break Stuff")).toBeInTheDocument());
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url.toString().startsWith("/api/events/search"))).toBe(true));
+  expect(await screen.findByText("Limp Bizkit at Parkbuhne Wuhlheide", undefined, { timeout: 7000 })).toBeInTheDocument();
+  expect(screen.getByText(/Parkbuhne Wuhlheide · Berlin/i)).toBeInTheDocument();
 });
 
 it("uses remembered words to rescue a track", async () => {
@@ -490,6 +538,44 @@ it("does not present a failed run as a valid high-confidence passport", async ()
   // A failed run must not borrow the preview placeholders to look like a valid passport.
   expect(screen.queryByText("Valid")).not.toBeInTheDocument();
   expect(screen.queryByText("81%")).not.toBeInTheDocument();
+}, 40000);
+
+it("offers ElevenLabs Scribe when Whisper fails before a transcript is available without recovery metadata", async () => {
+  const baseFetch = fetch;
+  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      return jsonResponse({
+        ...completeJob,
+        status: "failed",
+        passport: undefined,
+        error: "Live transcription failed: Replicate Whisper failed: Prediction failed: Soundfile is either not in the correct format or is malformed."
+      });
+    }
+    if (url === "/api/analyze/job-1/retranscribe") {
+      return jsonResponse({
+        ...completeJob,
+        passport: {
+          ...completeJob.passport!,
+          clip: {
+            ...completeJob.passport!.clip,
+            asrSource: "external",
+            asrEngine: "ElevenLabs Scribe"
+          }
+        }
+      });
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /Run judge-ready demo/i }));
+
+  expect(await screen.findByText(/Whisper could not finish this transcript/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Try ElevenLabs Scribe/i }));
+
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/analyze/job-1/retranscribe")).toBe(true));
+  expect((await screen.findAllByText(/ElevenLabs Scribe/i)).length).toBeGreaterThan(0);
 }, 40000);
 
 it("opens saved-transcript recovery when auto-match fails after Demucs and raw ASR", async () => {

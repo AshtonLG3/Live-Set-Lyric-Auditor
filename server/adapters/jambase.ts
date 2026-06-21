@@ -58,7 +58,9 @@ export async function searchEvents(input: {
   try {
     const events = await fetchEventPages(`${env.jambaseBaseUrl}/events?${params.toString()}`, hasEventHint(input));
     const mapped = events.map((event, index) => mapEvent(event, input, index));
-    return filterByEventHints(mapped, input).slice(0, 6);
+    return filterByEventHints(mapped, input)
+      .sort((a, b) => artistMatchRank(a, input.artist) - artistMatchRank(b, input.artist))
+      .slice(0, 6);
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown JamBase error";
     console.warn(`JamBase search unavailable. ${detail}`);
@@ -149,7 +151,7 @@ export function buildLiveContext(event: EventCandidate | null, track: TrackCandi
 function mapEvent(event: JamBaseEvent, input: { artist?: string; city?: string; date?: string }, index: number): EventCandidate {
   const performers = asEntities(event.performers ?? event.performer);
   const lineup = asEntities(event.lineup).length ? asEntities(event.lineup) : performers;
-  const artistEntity = performers[0];
+  const artistEntity = findMatchingArtistEntity([...performers, ...lineup], input.artist) ?? performers[0] ?? lineup[0];
   const artist = entityName(artistEntity) ?? input.artist ?? "Unknown artist";
   const venue = entityName(event.venue) ?? event.location?.name ?? "Unknown venue";
   const city = event.venue?.city ?? event.location?.address?.addressLocality ?? "Unknown city";
@@ -209,6 +211,26 @@ function entityId(value: JamBaseEntity | JamBaseEvent["location"] | JamBaseEvent
 function entityName(value: JamBaseEntity | string | undefined): string | undefined {
   if (typeof value === "string") return value;
   return value?.name ?? value?.title;
+}
+
+function findMatchingArtistEntity(entities: JamBaseEntity[], artist?: string): JamBaseEntity | undefined {
+  const target = normalize(artist ?? "");
+  if (!target) return undefined;
+  return entities.find((entity) => {
+    const name = normalize(entityName(entity) ?? "");
+    return name === target || name.includes(target) || target.includes(name);
+  });
+}
+
+function artistMatchRank(event: EventCandidate, artist?: string): number {
+  const target = normalize(artist ?? "");
+  if (!target) return 1;
+  const artistName = normalize(event.artist);
+  if (artistName === target || artistName.includes(target) || target.includes(artistName)) return 0;
+  return event.lineup?.some((item) => {
+    const name = normalize(item);
+    return name === target || name.includes(target) || target.includes(name);
+  }) ? 1 : 2;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

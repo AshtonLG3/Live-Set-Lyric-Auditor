@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     isolateVocalsWithDemucs: vi.fn(),
     transcribeLiveVocal: vi.fn(),
     transcribeRecallFragment: vi.fn(),
+    transcribeWithElevenLabs: vi.fn(),
     identifyTrackFromLyrics: vi.fn(),
     getCanonicalReference: vi.fn(),
     analyzePerformance: vi.fn(),
@@ -35,6 +36,11 @@ vi.mock("../adapters/lalal", () => ({
 vi.mock("../adapters/asr", () => ({
   transcribeLiveVocal: mocks.transcribeLiveVocal,
   transcribeRecallFragment: mocks.transcribeRecallFragment
+}));
+
+vi.mock("../adapters/elevenlabs", () => ({
+  transcribeWithElevenLabs: mocks.transcribeWithElevenLabs,
+  narratePassport: vi.fn()
 }));
 
 vi.mock("../adapters/musixmatch", () => ({
@@ -161,6 +167,106 @@ describe("analysis vocal quality fallback", () => {
     expect(mocks.isolateVocalsWithLalal).not.toHaveBeenCalled();
     expect(mocks.isolateVocalsWithDemucs).not.toHaveBeenCalled();
     expect(mocks.transcribeLiveVocal.mock.calls.map((call) => call[1])).toEqual([undefined]);
+  });
+
+  it("recovers a failed Whisper transcript with ElevenLabs Scribe and completes the passport", async () => {
+    mocks.transcribeLiveVocal.mockRejectedValue(new Error("Live transcription failed: Replicate Whisper failed: unsupported file format"));
+    mocks.transcribeWithElevenLabs.mockResolvedValue({
+      source: "external",
+      engine: "ElevenLabs Scribe",
+      segments: originalAudioSegments()
+    });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobs, jobMedia } = await import("../store");
+    const { retranscribeAnalysis, runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    const failed = jobs.get(job.id);
+    expect(failed?.status).toBe("failed");
+    expect(failed?.recovery?.transcript).toEqual([]);
+    expect(jobMedia.has(job.id)).toBe(true);
+
+    const recovered = await retranscribeAnalysis(job.id);
+
+    expect(recovered.status).toBe("complete");
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.passport?.clip.asrSource).toBe("external");
+    expect(recovered.passport?.clip.asrEngine).toBe("ElevenLabs Scribe");
+    expect(recovered.passport?.track.title).toBe("Have You Tried Talking to God? (Remix)");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
+    expect(recovered.progress.find((step) => step.id === "transcribe")?.detail).toContain("ElevenLabs Scribe recovered");
+  });
+
+  it("recovers a failed Whisper job from saved media when old recovery metadata is missing", async () => {
+    mocks.transcribeWithElevenLabs.mockResolvedValue({
+      source: "external",
+      engine: "ElevenLabs Scribe",
+      segments: originalAudioSegments()
+    });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+
+    const { createJob, jobs, jobMedia } = await import("../store");
+    const { retranscribeAnalysis } = await import("./analysis");
+    const job = createJob();
+    const file = audioFile();
+    jobMedia.set(job.id, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      filename: file.originalname
+    });
+    jobs.set(job.id, {
+      ...job,
+      status: "failed",
+      error: "Live transcription failed: Replicate Whisper failed: unsupported file format"
+    });
+
+    const recovered = await retranscribeAnalysis(job.id);
+
+    expect(recovered.status).toBe("complete");
+    expect(recovered.error).toBeUndefined();
+    expect(recovered.passport?.clip.filename).toBe("stage-clip.mp3");
+    expect(recovered.passport?.clip.asrSource).toBe("external");
+    expect(recovered.passport?.clip.asrEngine).toBe("ElevenLabs Scribe");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
   });
 });
 
