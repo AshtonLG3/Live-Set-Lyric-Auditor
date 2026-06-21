@@ -226,6 +226,68 @@ describe("analysis vocal quality fallback", () => {
     expect(retranscribed.progress.find((step) => step.id === "transcribe")?.detail).toContain("Whisper fallback retranscribed");
   });
 
+  it("rejects with the real reason when the Whisper fallback retry fails", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    mocks.transcribeWithElevenLabs.mockResolvedValue({
+      source: "external",
+      engine: "elevenlabs/scribe_v2",
+      segments: originalAudioSegments()
+    });
+    mocks.transcribeLiveVocal.mockRejectedValue(
+      new Error("No live speech-to-text provider is configured for this clip.")
+    );
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobs } = await import("../store");
+    const { retranscribeAnalysis, runAnalysis } = await import("./analysis");
+    const { PublicError } = await import("../errors");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+    expect(jobs.get(job.id)?.passport?.clip.asrEngine).toBe("elevenlabs/scribe_v2");
+
+    // The user clicks "Whisper fallback", but no Whisper provider is reachable.
+    // The thrown error must carry the precise reason so the route can surface it
+    // to the client, instead of being swallowed into a generic 500.
+    const rejection = await retranscribeAnalysis(job.id).then(
+      () => null,
+      (error) => error
+    );
+    expect(rejection).toBeInstanceOf(PublicError);
+    expect(rejection.message).toMatch(
+      /Whisper fallback retry failed: No live speech-to-text provider is configured/i
+    );
+    // The job keeps the same precise reason for any later refresh.
+    expect(jobs.get(job.id)?.status).toBe("failed");
+    expect(jobs.get(job.id)?.error).toContain("Whisper fallback retry failed");
+  });
+
   it("falls back to Whisper when primary ElevenLabs Scribe fails", async () => {
     vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
     mocks.transcribeWithElevenLabs.mockRejectedValue(new Error("ElevenLabs Scribe failed with 500"));

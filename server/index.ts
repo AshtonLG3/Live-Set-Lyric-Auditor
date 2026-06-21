@@ -7,10 +7,11 @@ import { searchEvents } from "./adapters/jambase";
 import { getTrackLink, searchTracks } from "./adapters/musixmatch";
 import { createNarration, reanchorAnalysis, retranscribeAnalysis, runAnalysis, runRecallRescue } from "./services/analysis";
 import { createJob, jobMedia, jobs } from "./store";
+import { apiErrorHandler } from "./errors";
 import { addJobSubscriber } from "./sse";
 import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
 import { MAX_CLIP_SECONDS, MAX_IMPORT_BYTES, MAX_IMPORT_SECONDS } from "../shared/version";
-import { MediaProbeError, probeMediaDuration, resolveAnalysisDuration } from "./services/media";
+import { probeMediaDuration, resolveAnalysisDuration } from "./services/media";
 import { isAllowedLiveSource } from "./source-validation";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -265,18 +266,7 @@ app.post("/api/narrate/:jobId", mutationLimiter, async (req, res, next) => {
   }
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
-    res.status(413).json({ error: `Clip is larger than ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB.` });
-    return;
-  }
-  if (error instanceof MediaProbeError) {
-    res.status(error.kind === "unavailable" ? 503 : 400).json({ error: error.message });
-    return;
-  }
-  console.error("Unhandled API error", error);
-  res.status(500).json({ error: "Unexpected server error." });
-});
+app.use(apiErrorHandler);
 
 const publicAssets = path.resolve(process.cwd(), "public");
 

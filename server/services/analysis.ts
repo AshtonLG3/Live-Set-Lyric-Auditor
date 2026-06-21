@@ -11,6 +11,7 @@ import type { AudioIdentityMatch } from "../adapters/audio-id";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
 import { extractYouTubeExcerpt } from "../adapters/youtube";
 import { env } from "../config";
+import { PublicError } from "../errors";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
 import { trimMediaExcerptToMp3 } from "./media";
@@ -432,17 +433,21 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
     return updated;
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
+    const failureMessage = `${label} retry failed: ${message}`;
     updateJob(jobId, (current) => ({
       ...current,
       status: "failed",
-      error: `${label} retry failed: ${message}`,
+      error: failureMessage,
       progress: current.progress.map((step) =>
         step.id === "transcribe" || step.status === "running"
-          ? { ...step, status: "failed", detail: `${label} retry failed: ${message}` }
+          ? { ...step, status: "failed", detail: failureMessage }
           : step
       )
     }));
-    throw error;
+    // Surface the precise reason to the client. A bare re-throw would reach the
+    // generic error handler and collapse to "Unexpected server error.", so the
+    // retry would look like it silently did nothing.
+    throw new PublicError(failureMessage, 502);
   }
 }
 
