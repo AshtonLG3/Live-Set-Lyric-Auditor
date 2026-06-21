@@ -131,6 +131,7 @@ export function AnalysisStudio(props: Props) {
   const hasPassport = Boolean(passport);
   const needsTrackRecovery = Boolean(recovery && !passport);
   const retranscriptionTarget = getRetranscriptionTarget(props.job);
+  const canForceTranscriptionRecovery = Boolean(props.job && isRunningTranscription(props.job) && !passport);
   const canRunTranscriptionRecovery = Boolean(props.job && isTranscriptionFailure(props.job));
   const autoOpenTrackRecovery = Boolean(props.job?.status === "failed" && needsTrackRecovery && dismissedCorrectionJobId !== props.job?.id);
   const showCorrectionPanel = correctionOpen || autoOpenTrackRecovery;
@@ -251,14 +252,14 @@ export function AnalysisStudio(props: Props) {
         </section>
 
         {(props.error || props.job?.error) && <p className="studio-error">{props.error || props.job?.error}</p>}
-        {canRunTranscriptionRecovery && (
+        {(canRunTranscriptionRecovery || canForceTranscriptionRecovery) && (
           <section className="studio-scribe-recovery" aria-label={`${retranscriptionTarget.label} recovery`}>
             <div>
-              <strong>Speech-to-text could not finish this transcript.</strong>
-              <span>Retry {retranscriptionTarget.label} on the saved clip without importing it again.</span>
+              <strong>{canForceTranscriptionRecovery ? "Transcription is still running." : "Speech-to-text could not finish this transcript."}</strong>
+              <span>{canForceTranscriptionRecovery ? `Force ${retranscriptionTarget.label} on the saved clip if this run is stuck.` : `Retry ${retranscriptionTarget.label} on the saved clip without importing it again.`}</span>
             </div>
-            <button className="studio-secondary-button" type="button" disabled={active} onClick={() => void props.onRetranscribe()}>
-              <Sparkles size={16} /> Retry {retranscriptionTarget.label}
+            <button className="studio-secondary-button" type="button" disabled={active && !canForceTranscriptionRecovery} onClick={() => void props.onRetranscribe()}>
+              <Sparkles size={16} /> {canForceTranscriptionRecovery ? "Force" : "Retry"} {retranscriptionTarget.label}
             </button>
           </section>
         )}
@@ -578,6 +579,10 @@ function getRetranscriptionTarget(job: AnalysisJob | null): { label: string } {
   return shouldRetryWithWhisper(job) ? { label: "Whisper fallback" } : { label: "ElevenLabs Scribe" };
 }
 
+function isRunningTranscription(job: AnalysisJob): boolean {
+  return job.status === "running" && job.progress.some((step) => step.id === "transcribe" && step.status === "running");
+}
+
 function isTranscriptionFailure(job: AnalysisJob): boolean {
   if (job.status !== "failed" || job.passport) return false;
   if (job.recovery?.transcript?.length) return false;
@@ -588,6 +593,9 @@ function isTranscriptionFailure(job: AnalysisJob): boolean {
 
 function shouldRetryWithWhisper(job: AnalysisJob): boolean {
   const error = job.error ?? "";
+  if (!job.passport && isRunningTranscription(job)) {
+    return true;
+  }
   if (job.status === "failed" && !job.passport && mentionsScribe(error) && !mentionsWhisper(error)) {
     return true;
   }

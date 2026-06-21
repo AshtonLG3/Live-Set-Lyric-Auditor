@@ -202,9 +202,12 @@ export default function App() {
   async function handleRetranscribe() {
     if (!job?.id) return;
     const recoveryRun = job.status === "failed" && !job.passport;
+    const forcedRunningRecovery = job.status === "running" && !job.passport;
     const target = getRetranscriptionTarget(job);
     const confirmed = window.confirm(
-      recoveryRun
+      forcedRunningRecovery
+        ? `Force ${target.label} on the saved source media? Use this only when the current transcription is stuck; it may consume provider credits.`
+        : recoveryRun
         ? `Retry ${target.label} on the saved source media? This can recover failed speech-to-text runs and may consume provider credits.`
         : `Run ${target.label} on the saved source media? This replaces the current ASR transcript, refreshes the passport comparison, and may consume provider credits.`
     );
@@ -574,6 +577,9 @@ function getRetranscriptionTarget(job: AnalysisJob): { label: string } {
 
 function shouldRetryWithWhisper(job: AnalysisJob): boolean {
   const error = job.error ?? "";
+  if (!job.passport && isRunningTranscription(job)) {
+    return true;
+  }
   if (job.status === "failed" && !job.passport && mentionsScribe(error) && !mentionsWhisper(error)) {
     return true;
   }
@@ -584,6 +590,10 @@ function shouldRetryWithWhisper(job: AnalysisJob): boolean {
   const engine = job.passport?.clip.asrEngine ?? job.recovery?.asrEngine;
   const source = job.passport?.clip.asrSource ?? job.recovery?.asrSource;
   return isScribeEngine(engine) || Boolean(job.passport && source === "external" && !engine);
+}
+
+function isRunningTranscription(job: AnalysisJob): boolean {
+  return job.status === "running" && job.progress.some((step) => step.id === "transcribe" && step.status === "running");
 }
 
 function isScribeEngine(engine?: string): boolean {

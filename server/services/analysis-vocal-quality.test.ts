@@ -492,6 +492,55 @@ describe("analysis vocal quality fallback", () => {
     expect(recovered.passport?.clip.asrEngine).toBe("ElevenLabs Scribe");
     expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
   });
+
+  it("forces Whisper fallback when retranscribing a stuck running Scribe job", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    mocks.transcribeLiveVocal.mockResolvedValue({
+      source: "replicate",
+      engine: "vaibhavs10/incredibly-fast-whisper:test",
+      segments: originalAudioSegments()
+    });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+
+    const { createJob, jobs, jobMedia } = await import("../store");
+    const { retranscribeAnalysis } = await import("./analysis");
+    const job = createJob();
+    const file = audioFile();
+    jobMedia.set(job.id, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      filename: file.originalname
+    });
+    jobs.set(job.id, {
+      ...job,
+      status: "running",
+      progress: job.progress.map((step) =>
+        step.id === "transcribe"
+          ? { ...step, status: "running", detail: "ElevenLabs Scribe is still processing." }
+          : step.id === "anchor" || step.id === "compare" || step.id === "passport"
+            ? { ...step, status: "queued" }
+            : { ...step, status: "complete" }
+      )
+    });
+
+    const recovered = await retranscribeAnalysis(job.id);
+
+    expect(recovered.status).toBe("complete");
+    expect(recovered.passport?.clip.asrSource).toBe("replicate");
+    expect(recovered.passport?.clip.asrEngine).toBe("vaibhavs10/incredibly-fast-whisper:test");
+    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeWithElevenLabs).not.toHaveBeenCalled();
+  });
 });
 
 function repeatedStemSegments() {

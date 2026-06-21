@@ -88,11 +88,11 @@ async function uploadLibraryTrack(file: Express.Multer.File): Promise<string | n
   const upload = uploadRequest.fileUploadRequest;
   if (!upload?.id || !upload.uploadUrl) return null;
 
-  const uploadResponse = await fetch(upload.uploadUrl, {
+  const uploadResponse = await fetchWithTimeout(upload.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": file.mimetype || "audio/mpeg" },
     body: new Uint8Array(file.buffer)
-  });
+  }, "upload");
   if (!uploadResponse.ok) return null;
 
   const createResponse = await graphql<{
@@ -204,14 +204,14 @@ function energyScore(value?: string): number {
 }
 
 async function graphql<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const response = await fetch(env.cyaniteBaseUrl, {
+  const response = await fetchWithTimeout(env.cyaniteBaseUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.cyaniteToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ query, variables })
-  });
+  }, "GraphQL");
   if (!response.ok) throw new Error(`Cyanite request failed with ${response.status}`);
   const payload = await response.json() as GraphQLResponse<T>;
   if (payload.errors?.length || !payload.data) {
@@ -245,4 +245,19 @@ function humanize(value: string): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, label: string): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.cyaniteRequestTimeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Cyanite ${label} timed out after ${Math.round(env.cyaniteRequestTimeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

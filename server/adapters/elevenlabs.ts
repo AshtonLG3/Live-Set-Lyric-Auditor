@@ -89,15 +89,11 @@ export async function transcribeWithElevenLabs(file: Express.Multer.File): Promi
   formData.append("tag_audio_events", "false");
   formData.append("no_verbatim", "false");
 
-  const response = await withTimeout(
-    fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-      method: "POST",
-      headers: { "xi-api-key": env.elevenlabsKey },
-      body: formData
-    }),
-    env.elevenlabsSttTimeoutMs,
-    `ElevenLabs Scribe timed out after ${Math.round(env.elevenlabsSttTimeoutMs / 1000)}s`
-  );
+  const response = await fetchWithTimeout("https://api.elevenlabs.io/v1/speech-to-text", {
+    method: "POST",
+    headers: { "xi-api-key": env.elevenlabsKey },
+    body: formData
+  });
   if (!response.ok) {
     throw new Error(`ElevenLabs Scribe failed with ${response.status}`);
   }
@@ -204,17 +200,18 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.elevenlabsSttTimeoutMs);
   try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-      })
-    ]);
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`ElevenLabs Scribe timed out after ${Math.round(env.elevenlabsSttTimeoutMs / 1000)}s`);
+    }
+    throw error;
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
 }
 

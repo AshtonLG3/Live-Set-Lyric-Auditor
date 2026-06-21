@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("Cyanite adapter", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.doUnmock("../services/media");
@@ -89,6 +90,43 @@ describe("Cyanite adapter", () => {
     const uploadRequest = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(uploadRequest.query).toContain("fileUploadRequest { id uploadUrl }");
     expect(uploadRequest.variables).toEqual({});
+  });
+
+  it("falls back when a Cyanite request stalls", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("CYANITE_API_TOKEN", "cyanite-test-token");
+    vi.stubEnv("CYANITE_REQUEST_TIMEOUT_MS", "3000");
+    vi.stubEnv("YOUTUBE_EXTRACTION_ENABLED", "true");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const abortError = () => Object.assign(new Error("aborted"), { name: "AbortError" });
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal?.aborted) {
+        reject(abortError());
+        return;
+      }
+      signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { analyzePerformance } = await import("./cyanite");
+    const pending = analyzePerformance({
+      source: {
+        kind: "live_link",
+        processingMode: "provider_excerpt",
+        provider: "youtube",
+        url: "https://www.youtube.com/watch?v=M7lc1UVf-VE"
+      }
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(pending).resolves.toMatchObject({ source: "fixture", status: "fallback" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.cyanite.ai/graphql",
+      expect.objectContaining({ signal: expect.any(Object) })
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Cyanite GraphQL timed out after 3s"));
+    warn.mockRestore();
   });
 
   it("converts non-MP3 uploads before requesting Cyanite analysis", async () => {

@@ -372,7 +372,7 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
     updateJob(jobId, (current) => ({ ...current, recovery }));
   }
 
-  const provider = chooseRetranscriptionProvider(passport, recovery, job.error);
+  const provider = chooseRetranscriptionProvider(passport, recovery, job.error, job);
   const label = retranscriptionProviderLabel(provider);
   setStep(jobId, "transcribe", "running", `Running ${label} on the saved source media.`);
   try {
@@ -454,9 +454,13 @@ export async function retranscribeAnalysis(jobId: string): Promise<AnalysisJob> 
 function chooseRetranscriptionProvider(
   passport: AnalysisJob["passport"] | undefined,
   recovery: AnalysisRecovery | undefined,
-  error?: string
+  error?: string,
+  job?: AnalysisJob
 ): RetranscriptionProvider {
   const errorText = error ?? "";
+  if (!passport && job && isTranscribeStepRunning(job)) {
+    return "whisper";
+  }
   if (!passport && mentionsScribe(errorText) && !mentionsWhisper(errorText)) {
     return "whisper";
   }
@@ -470,6 +474,10 @@ function chooseRetranscriptionProvider(
     return "whisper";
   }
   return "scribe";
+}
+
+function isTranscribeStepRunning(job: AnalysisJob): boolean {
+  return job.status === "running" && job.progress.some((step) => step.id === "transcribe" && step.status === "running");
 }
 
 async function runRetranscriptionProvider(provider: RetranscriptionProvider, file: Express.Multer.File): Promise<TranscriptionResult> {

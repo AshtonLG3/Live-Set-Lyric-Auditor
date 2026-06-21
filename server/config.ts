@@ -24,6 +24,7 @@ export const env = {
   cyaniteToken: process.env.CYANITE_API_TOKEN ?? process.env.CYANITE_API_KEY,
   cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
   cyaniteWebhookUrl: process.env.CYANITE_WEBHOOK_URL,
+  cyaniteRequestTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.CYANITE_REQUEST_TIMEOUT_MS ?? 12_000))),
   lalalKey: process.env.LALAL_LICENSE_KEY,
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
   lalalPollIntervalMs: Math.max(2_000, Number(process.env.LALAL_POLL_INTERVAL_MS ?? 3_000)),
@@ -66,7 +67,7 @@ export const env = {
   acrCloudAccessKey: process.env.ACRCLOUD_ACCESS_KEY?.trim(),
   acrCloudAccessSecret: process.env.ACRCLOUD_ACCESS_SECRET?.trim(),
   cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
-  cyanitePollTimeoutMs: Math.max(30_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 180_000)),
+  cyanitePollTimeoutMs: Math.min(60_000, Math.max(5_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 20_000))),
   asrApiUrl: process.env.ASR_API_URL,
   asrApiKey: process.env.ASR_API_KEY
 };
