@@ -1,5 +1,6 @@
 import type { EventCandidate, LiveContext, TrackCandidate } from "../../shared/types";
 import { env } from "../config";
+import { fetchWithTimeout } from "./timeout";
 
 type JamBaseEntity = {
   id?: string | number;
@@ -74,12 +75,12 @@ async function fetchEventPages(firstUrl: string, followPages: boolean): Promise<
   let page = 0;
 
   while (nextUrl && page < (followPages ? MAX_HINTED_EVENT_PAGES : 1)) {
-    const response = await fetch(nextUrl, {
+    const response = await fetchWithTimeout(nextUrl, {
       headers: {
         Authorization: `Bearer ${env.jambaseKey}`,
         Accept: "application/json"
       }
-    });
+    }, env.jambaseTimeoutMs, `JamBase search timed out after ${Math.round(env.jambaseTimeoutMs / 1000)}s`);
     if (!response.ok) {
       throw new Error(`JamBase search failed with ${response.status}`);
     }

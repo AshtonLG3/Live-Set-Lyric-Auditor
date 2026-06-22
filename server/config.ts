@@ -21,6 +21,7 @@ export const env = {
   musixmatchTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.MUSIXMATCH_TIMEOUT_MS ?? 12_000))),
   jambaseKey: process.env.JAMBASE_API_KEY,
   jambaseBaseUrl: process.env.JAMBASE_API_BASE_URL ?? "https://api.data.jambase.com/v3",
+  jambaseTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.JAMBASE_TIMEOUT_MS ?? 12_000))),
   cyaniteToken: process.env.CYANITE_API_TOKEN ?? process.env.CYANITE_API_KEY,
   cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
   cyaniteWebhookUrl: process.env.CYANITE_WEBHOOK_URL,
@@ -69,7 +70,8 @@ export const env = {
   cyanitePollIntervalMs: Math.max(1_000, Number(process.env.CYANITE_POLL_INTERVAL_MS ?? 2_500)),
   cyanitePollTimeoutMs: Math.min(60_000, Math.max(5_000, Number(process.env.CYANITE_POLL_TIMEOUT_MS ?? 20_000))),
   asrApiUrl: process.env.ASR_API_URL,
-  asrApiKey: process.env.ASR_API_KEY
+  asrApiKey: process.env.ASR_API_KEY,
+  asrExternalTimeoutMs: Math.min(120_000, Math.max(10_000, Number(process.env.ASR_EXTERNAL_TIMEOUT_MS ?? 45_000)))
 };
 
 export function isAudioIdConfigured(): boolean {

@@ -100,6 +100,22 @@ describe("JamBase adapter", () => {
     expect(events.map((event) => event.artist)).toEqual(["Limp Bizkit", "Limp Bizkit"]);
     expect(events[0]).toMatchObject({ id: "festival-1", title: "Tons Of Rock", artistId: "artist-limp" });
   });
+
+  it("returns no events when a JamBase request times out", async () => {
+    vi.stubEnv("JAMBASE_API_KEY", "jambase-test-key");
+    vi.stubEnv("JAMBASE_TIMEOUT_MS", "10000");
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => undefined)));
+
+    try {
+      const { searchEvents } = await import("./jambase");
+      const pending = searchEvents({ artist: "The Signal Keeps", city: "Cape Town" });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(pending).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function jsonResponse(body: unknown): Response {

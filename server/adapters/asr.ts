@@ -3,6 +3,7 @@ import type { TranscriptSegment } from "../../shared/types";
 import { env } from "../config";
 import { fixtureRecallTranscript, fixtureTranscript } from "../data/fixtures";
 import { assessVocalTranscript } from "../services/vocal-quality";
+import { fetchWithTimeout } from "./timeout";
 
 export type TranscriptionResult = {
   source: "replicate" | "external" | "fixture";
@@ -86,11 +87,11 @@ async function transcribe(
     } else if (file) {
       formData.append("file", new Blob([toBlobPart(file.buffer)], { type: file.mimetype || "audio/mpeg" }), file.originalname);
     }
-    const response = await fetch(env.asrApiUrl, {
+    const response = await fetchWithTimeout(env.asrApiUrl, {
       method: "POST",
       headers: env.asrApiKey ? { Authorization: `Bearer ${env.asrApiKey}` } : undefined,
       body: formData
-    });
+    }, env.asrExternalTimeoutMs, `External ASR timed out after ${Math.round(env.asrExternalTimeoutMs / 1000)}s`);
     if (!response.ok) {
       throw new Error(`ASR failed with ${response.status}`);
     }

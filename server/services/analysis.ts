@@ -1,4 +1,4 @@
-import type { AnalysisJob, AnalysisRecovery, ClipSource, EventCandidate, LiveVariantPassport, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
+import type { AnalysisJob, AnalysisRecovery, ClipSource, EventCandidate, LiveVariantPassport, PerformanceContext, RecallRescueResponse, RecordingMatchMethod, TrackCandidate, TranscriptSegment, VariantCandidate, VocalQualityReport } from "../../shared/types";
 import { formatBytes } from "../../shared/format";
 import { fixtureClipDuration, fixturePerformanceContext } from "../data/fixtures";
 import { transcribeLiveVocal, transcribeRecallFragment } from "../adapters/asr";
@@ -110,16 +110,12 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
           };
     setStep(jobId, "isolate", "complete", initialVocal.detail);
 
-    setStep(jobId, "profile", "running");
-    const performanceContext = await analyzePerformance({ file: analysisFile, source: effectiveSource });
-    setStep(
-      jobId,
-      "profile",
-      "complete",
-      `${performanceContext.source === "cyanite" ? "Cyanite" : "Fallback profile"} · ${Math.round(performanceContext.energyLevel * 100)}% energy · ${performanceContext.arrangement.replaceAll("_", " ")}`
-    );
+    setStep(jobId, "profile", "running", "Cyanite profile started in parallel with transcription.");
+    let performanceContext = fixturePerformanceContext;
+    const performanceContextPromise = analyzePerformance({ file: analysisFile, source: effectiveSource })
+      .catch((error) => fallbackPerformanceContext(error));
 
-    const recoveryBase = {
+    const recoveryBase = () => ({
       filename: analysisFile?.originalname ?? sourceFilename(input.source),
       durationSeconds: input.durationSeconds ?? fixtureClipDuration,
       track: input.track,
@@ -133,11 +129,11 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       event: input.event ?? null,
       eventCity: input.eventCity,
       eventDate: input.eventDate
-    };
+    });
     updateJob(jobId, (job) => ({
       ...job,
       recovery: {
-        ...recoveryBase,
+        ...recoveryBase(),
         vocalIsolationSource: initialVocal.source,
         vocalIsolationConfidence: initialVocal.confidence,
         vocalQuality: assessVocalTranscript([], initialVocal.source),
@@ -154,7 +150,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     const persistRecovery = () => updateJob(jobId, (job) => ({
       ...job,
       recovery: {
-        ...recoveryBase,
+        ...recoveryBase(),
         vocalIsolationSource: selected.vocal.source,
         vocalIsolationConfidence: selected.vocal.confidence,
         vocalQuality: selected.vocalQuality,
@@ -203,6 +199,10 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
         : `${canonical.lines.length} reference lines from ${canonical.source}.`
     );
 
+    performanceContext = await settlePerformanceContext(performanceContextPromise);
+    setStep(jobId, "profile", "complete", performanceContextDetail(performanceContext));
+    persistRecovery();
+
     setStep(jobId, "passport", "running");
     const passport = buildPassportForSelection({
       jobId,
@@ -238,6 +238,20 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
       )
     }));
   }
+}
+
+function fallbackPerformanceContext(error: unknown): PerformanceContext {
+  const detail = error instanceof Error ? error.message : "unknown Cyanite profile error";
+  console.warn(`Cyanite profile did not complete before passport generation; using fallback profile. ${detail}`);
+  return fixturePerformanceContext;
+}
+
+async function settlePerformanceContext(promise: Promise<PerformanceContext>): Promise<PerformanceContext> {
+  return promise;
+}
+
+function performanceContextDetail(context: PerformanceContext): string {
+  return `${context.source === "cyanite" ? "Cyanite" : "Fallback profile"} · ${Math.round(context.energyLevel * 100)}% energy · ${context.arrangement.replaceAll("_", " ")}`;
 }
 
 export async function reanchorAnalysis(

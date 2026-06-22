@@ -238,6 +238,22 @@ describe("ASR adapter", () => {
     expect(uploaded.name).toBe("demucs-vocals.mp3");
     expect(uploaded.type).toBe("audio/mpeg");
   });
+
+  it("times out a stalled external ASR endpoint", async () => {
+    vi.stubEnv("ASR_API_URL", "https://asr.example/transcribe");
+    vi.stubEnv("ASR_EXTERNAL_TIMEOUT_MS", "10000");
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => undefined)));
+
+    try {
+      const { transcribeLiveVocal } = await import("./asr");
+      const pending = expect(transcribeLiveVocal(audioFile())).rejects.toThrow("External ASR timed out after 10s");
+      await vi.advanceTimersByTimeAsync(10_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 function jsonResponse(body: unknown): Response {

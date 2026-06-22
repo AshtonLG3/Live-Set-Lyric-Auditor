@@ -541,6 +541,70 @@ describe("analysis vocal quality fallback", () => {
     expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
     expect(mocks.transcribeWithElevenLabs).not.toHaveBeenCalled();
   });
+
+  it("starts transcription while Cyanite profiling is still pending", async () => {
+    let releaseProfile: (() => void) | undefined;
+    const performanceContext = {
+      source: "cyanite" as const,
+      status: "complete" as const,
+      energyLevel: 0.88,
+      dominantEmotions: ["energetic"],
+      instruments: ["vocals"],
+      arrangement: "high_intensity" as const,
+      summary: "Cyanite profile completed after transcription had already started.",
+      confidence: 0.86
+    };
+    mocks.analyzePerformance.mockImplementation(() => new Promise((resolve) => {
+      releaseProfile = () => resolve(performanceContext);
+    }));
+    mocks.transcribeLiveVocal.mockImplementation(async () => {
+      releaseProfile?.();
+      return {
+        source: "replicate",
+        segments: originalAudioSegments()
+      };
+    });
+    mocks.identifyTrackFromLyrics.mockImplementation(async (segments: TranscriptSegment[]) =>
+      segments.some((segment) => String(segment.text).toLowerCase().includes("talk to god"))
+        ? mocks.track
+        : null
+    );
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+
+    const { createJob, jobs } = await import("../store");
+    const { runAnalysis } = await import("./analysis");
+    const job = createJob();
+    const running = runAnalysis(job.id, {
+      file: audioFile(),
+      autoMatch: true,
+      event: null,
+      durationSeconds: 28,
+      source: { kind: "upload", processingMode: "uploaded_media" }
+    });
+
+    for (let i = 0; i < 10 && mocks.transcribeLiveVocal.mock.calls.length === 0; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(mocks.analyzePerformance).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal).toHaveBeenCalledTimes(1);
+
+    await running;
+    expect(jobs.get(job.id)?.status).toBe("complete");
+    expect(jobs.get(job.id)?.passport?.performanceContext).toMatchObject({
+      source: "cyanite",
+      arrangement: "high_intensity"
+    });
+  });
 });
 
 function repeatedStemSegments() {

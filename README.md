@@ -28,7 +28,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Real Clip Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.27`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.28`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a rear-camera stage-performance video, then trim the selected analysis excerpt to 45 seconds or less.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -43,10 +43,10 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 - **Audio ID:** optional Auto Match audio fingerprinting before ASR lyric rescue. Set `AUDIO_ID_PROVIDER=acrcloud` with ACRCloud credentials, or `AUDIO_ID_PROVIDER=custom` / `MUSIXMATCH_AUDIO_ID_API_URL` for a partner endpoint that accepts an uploaded clip and returns title, artist, and optional ISRC metadata.
 - **LALAL.AI:** configured split support remains available for explicit fallback work, but normal analysis no longer launches hidden post-passport rescue.
 - **Demucs:** Replicate-hosted Demucs uses the same `REPLICATE_API_TOKEN` as ASR and is no longer run as an automatic post-passport rescue step.
-- **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied. City hints filter safely, and a selected date accepts matching shows in that calendar month so distant December dates remain discoverable.
-- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL.
+- **JamBase:** Bearer-authenticated event search against `api.data.jambase.com/v3`, mapping artist/venue IDs, lineup, tour/festival, and setlist evidence when supplied. City hints filter safely, and a selected date accepts matching shows in that calendar month so distant December dates remain discoverable. Event search is capped by `JAMBASE_TIMEOUT_MS` so live context cannot stall a run.
+- **Cyanite:** GraphQL analysis against `api.cyanite.ai/graphql`; MP3 signed upload feeds energy, BPM, mood, instrument, valence/arousal, and arrangement metadata. Supported non-MP3 uploads are converted to a temporary MP3 before profiling. Cyanite asynchronously posts completion events to the integration webhook configured in your local `.env`; the app still fetches results from GraphQL. Profiling starts in parallel with transcription and is joined before Passport assembly.
 - **ElevenLabs:** `POST /v1/text-to-speech/:voice_id` for narration and `POST /v1/speech-to-text` as the primary Scribe STT path when `ELEVENLABS_API_KEY` is configured, using `xi-api-key`.
-- **ASR:** Replicate `incredibly-fast-whisper` is the fallback path when Scribe fails or is not configured, and is capped by `ASR_REPLICATE_TIMEOUT_MS` so fallback runs do not wait on slow cold starts. The official `openai/whisper` endpoint is opt-in through `ASR_SLOW_FALLBACK_ENABLED=true`; set `ASR_COMPARE_ALL_MODELS=true` only for high-quality/offline comparisons. A custom Whisper-style endpoint remains available through `ASR_API_URL`. Segment confidence is kept conservative when the provider does not return real confidence values, and common low-confidence Whisper filler phrases are removed before alignment.
+- **ASR:** Replicate `incredibly-fast-whisper` is the fallback path when Scribe fails or is not configured, and is capped by `ASR_REPLICATE_TIMEOUT_MS` so fallback runs do not wait on slow cold starts. The official `openai/whisper` endpoint is opt-in through `ASR_SLOW_FALLBACK_ENABLED=true`; set `ASR_COMPARE_ALL_MODELS=true` only for high-quality/offline comparisons. A custom Whisper-style endpoint remains available through `ASR_API_URL` and is capped by `ASR_EXTERNAL_TIMEOUT_MS`. Segment confidence is kept conservative when the provider does not return real confidence values, and common low-confidence Whisper filler phrases are removed before alignment.
 - **Browser media:** `MediaRecorder` captures a short personal rendition for Recall Rescue on HTTPS. Mobile file capture can invoke the rear camera for a short live-performance video without replacing normal clip import.
 
 App endpoints include `POST /api/recall` for spoken/sung/typed lyric rescue and `POST /api/analyze` for uploaded, recorded, or recalled sources. Built-in fixtures remain for tests and explicitly labeled adapter fallback only; the visible app flow starts from user-provided media.
@@ -109,6 +109,7 @@ MUSIXMATCH_AUDIO_ID_API_URL=
 MUSIXMATCH_AUDIO_ID_API_KEY=
 JAMBASE_API_KEY=
 JAMBASE_API_BASE_URL=https://api.data.jambase.com/v3
+JAMBASE_TIMEOUT_MS=12000
 CYANITE_API_TOKEN=
 CYANITE_API_BASE_URL=https://api.cyanite.ai/graphql
 CYANITE_WEBHOOK_URL=https://your-domain.com/cyanite-webhook
@@ -134,6 +135,7 @@ REPLICATE_WHISPER_FALLBACK_VERSION=openai/whisper
 ASR_COMPARE_ALL_MODELS=false
 ASR_SLOW_FALLBACK_ENABLED=false
 ASR_REPLICATE_TIMEOUT_MS=45000
+ASR_EXTERNAL_TIMEOUT_MS=45000
 REPLICATE_DEMUCS_REF=cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81158fa03836d953
 REPLICATE_DEMUCS_MODEL=htdemucs_ft
 REPLICATE_DEMUCS_STEM=vocals
@@ -152,12 +154,12 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 | --- | --- | --- |
 | Musixmatch | `MUSIXMATCH_API_KEY` | `MUSIXMATCH_API_BASE_URL`, `MUSIXMATCH_TIMEOUT_MS` |
 | Audio ID | `ACRCLOUD_HOST`, `ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_ACCESS_SECRET` or `AUDIO_ID_API_URL` | `AUDIO_ID_PROVIDER`, `AUDIO_ID_API_KEY`, `AUDIO_ID_FILE_FIELD`, `MUSIXMATCH_AUDIO_ID_API_URL`, `MUSIXMATCH_AUDIO_ID_API_KEY` |
-| JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL` |
+| JamBase | `JAMBASE_API_KEY` | `JAMBASE_API_BASE_URL`, `JAMBASE_TIMEOUT_MS` |
 | Cyanite | `CYANITE_API_TOKEN` | `CYANITE_API_BASE_URL`, `CYANITE_WEBHOOK_URL`, `CYANITE_REQUEST_TIMEOUT_MS`, `CYANITE_POLL_INTERVAL_MS`, `CYANITE_POLL_TIMEOUT_MS` |
 | LALAL.AI | `LALAL_LICENSE_KEY` | `LALAL_API_BASE_URL`, `LALAL_LEAD_BACK_ENABLED`, `LALAL_DEREVERB_ENABLED`, `LALAL_EXTRACTION_LEVEL`, `LALAL_ENCODER_FORMAT`, `LALAL_SPLITTER` |
 | ElevenLabs | `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID`, `ELEVENLABS_STT_MODEL`, `ELEVENLABS_STT_TIMEOUT_MS` |
 | Replicate Demucs and ASR | `REPLICATE_API_TOKEN` | `REPLICATE_DEMUCS_REF`, `REPLICATE_DEMUCS_MODEL`, `REPLICATE_DEMUCS_STEM`, `REPLICATE_WHISPER_VERSION`, `REPLICATE_WHISPER_FALLBACK_VERSION` |
-| External ASR | `ASR_API_URL` | `ASR_API_KEY` |
+| External ASR | `ASR_API_URL` | `ASR_API_KEY`, `ASR_EXTERNAL_TIMEOUT_MS` |
 
 Restart the server after adding a key. The Dashboard partner strip and `/api/health` show whether each integration is live, pending, or using a labeled fallback. Songstats and n8n remain intentionally deferred.
 
