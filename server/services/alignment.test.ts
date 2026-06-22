@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTranscript, buildLineComparisons, buildPassport, classifyVariants, normalizeText, tokenSimilarity } from "./alignment";
+import { alignTranscript, buildLineComparisons, buildPassport, classifyVariants, normalizeText, phoneticSimilarity, tokenSimilarity } from "./alignment";
 import { fixtureCanonicalLines, fixtureEvents, fixtureTranscript, fixtureTracks } from "../data/fixtures";
 
 describe("alignment pipeline", () => {
@@ -144,6 +144,60 @@ describe("alignment pipeline", () => {
       removed: ["you", "love"],
       added: ["love", "you"]
     });
+  });
+
+  it("scores homophones as phonetically similar and distinct words as not", () => {
+    expect(phoneticSimilarity("their", "there")).toBeGreaterThan(0.85);
+    expect(phoneticSimilarity("i can hear you", "i can here you")).toBeGreaterThan(0.85);
+    expect(phoneticSimilarity("i love you", "i hate you")).toBeLessThan(0.7);
+  });
+
+  it("flags a phonetically near-identical divergence as a likely ASR mishear", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "i can hear you calling" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: "i can here you calling", confidence: 0.9 }
+    ], canonicalLines);
+    const comparisons = buildLineComparisons(alignments, canonicalLines);
+    expect(comparisons[0].status).toBe("changed");
+    expect(comparisons[0].phoneticSimilarity).toBeGreaterThan(0.85);
+    expect(comparisons[0].evidenceTier).toBe("likely_mishear");
+  });
+
+  it("keeps a phonetically distinct divergence as a real change, not a mishear", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "i can hear you calling" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: "i can help you falling", confidence: 0.9 }
+    ], canonicalLines);
+    const comparisons = buildLineComparisons(alignments, canonicalLines);
+    expect(comparisons[0].evidenceTier).not.toBe("likely_mishear");
+  });
+
+  it("auto-detects a crowd call-and-response moment", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "the night opens slowly under skies" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 8, end: 12, text: "everybody put your hands up", confidence: 0.9 }
+    ], canonicalLines);
+    const variants = classifyVariants(alignments, canonicalLines, 0.9);
+    expect(variants.some((variant) => variant.type === "crowd_response")).toBe(true);
+  });
+
+  it("classifies a sustained unmatched lyric span as an interpolation, not an ad-lib", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "the night opens slowly under skies" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 8, end: 14, text: "sweet dreams are made of this everybody", confidence: 0.9 }
+    ], canonicalLines);
+    const variants = classifyVariants(alignments, canonicalLines, 0.9);
+    expect(variants.some((variant) => variant.type === "interpolation")).toBe(true);
+    expect(variants.some((variant) => variant.type === "adlib")).toBe(false);
+  });
+
+  it("flags an explicit/clean word swap as a censored variant", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "i dont give a damn about it" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: "i dont give a hoot about it", confidence: 0.9 }
+    ], canonicalLines);
+    const variants = classifyVariants(alignments, canonicalLines, 0.9);
+    expect(variants.some((variant) => variant.type === "censored")).toBe(true);
   });
 
   it("anchors a chorus reprise in song order instead of an earlier duplicate", () => {

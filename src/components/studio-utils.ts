@@ -147,6 +147,7 @@ export function formatEvidenceTier(tier?: EvidenceTier) {
   const labels: Record<EvidenceTier, string> = {
     aligned: "Aligned evidence",
     likely_change: "Likely change",
+    likely_mishear: "Likely mishear",
     needs_review: "Needs review",
     asr_uncertain: "ASR uncertain",
     source_gap: "Source gap"

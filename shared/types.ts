@@ -166,6 +166,8 @@ export type VariantType =
   | "extension"
   | "city_shoutout"
   | "crowd_response"
+  | "interpolation"
+  | "censored"
   | "adlib"
   | "timing_drift"
   | "uncertain";
@@ -173,6 +175,7 @@ export type VariantType =
 export type EvidenceTier =
   | "aligned"
   | "likely_change"
+  | "likely_mishear"
   | "needs_review"
   | "asr_uncertain"
   | "source_gap";
@@ -220,6 +223,7 @@ export type LineComparison = {
   canonicalNextText?: string;
   liveText: string;
   similarity: number;
+  phoneticSimilarity?: number;
   timingDelta: number;
   rawTimingDelta?: number;
   clipOffset?: number;

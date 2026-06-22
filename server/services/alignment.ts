@@ -75,6 +75,59 @@ function longestCommonSubsequenceLength(a: string[], b: string[]): number {
   return prev[cols];
 }
 
+const PHONETIC_MISHEAR_FLOOR = 0.8;
+
+const SOUNDEX_CODES: Record<string, string> = {
+  b: "1", f: "1", p: "1", v: "1",
+  c: "2", g: "2", j: "2", k: "2", q: "2", s: "2", x: "2", z: "2",
+  d: "3", t: "3",
+  l: "4",
+  m: "5", n: "5",
+  r: "6"
+};
+
+// Soundex phonetic code: homophones and near-homophones collapse to the same key
+// ("their"/"there" -> T600), so a divergence that is textually different but
+// phonetically identical reads as an ASR mishearing rather than a real change.
+function soundex(word: string): string {
+  const letters = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (!letters) return "";
+  let result = letters[0].toUpperCase();
+  let previous = SOUNDEX_CODES[letters[0]] ?? "0";
+  for (let i = 1; i < letters.length && result.length < 4; i += 1) {
+    const code = SOUNDEX_CODES[letters[i]] ?? "0";
+    if (code !== "0" && code !== previous) {
+      result += code;
+    }
+    // h and w are transparent (do not reset the running code); vowels reset it.
+    if (letters[i] !== "h" && letters[i] !== "w") {
+      previous = code;
+    }
+  }
+  return `${result}000`.slice(0, 4);
+}
+
+// Phonetic similarity in [0,1] over the Soundex token streams of two phrases.
+// High here while token (spelling) similarity is low is the signature of a
+// transcription mishearing, not a performed lyric change.
+export function phoneticSimilarity(a: string, b: string): number {
+  const left = tokenize(a).map(soundex).filter(Boolean);
+  const right = tokenize(b).map(soundex).filter(Boolean);
+  if (left.length === 0 && right.length === 0) return 1;
+  if (left.length === 0 || right.length === 0) return 0;
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  const intersection = [...leftSet].filter((code) => rightSet.has(code)).length;
+  const union = new Set([...left, ...right]).size;
+  const jaccard = intersection / union;
+  const lcsRatio = longestCommonSubsequenceLength(left, right) / Math.max(left.length, right.length);
+  return round(jaccard * 0.5 + lcsRatio * 0.5);
+}
+
+function isLikelyMishear(status: LineComparisonStatus, phonetic?: number): boolean {
+  return status === "changed" && typeof phonetic === "number" && phonetic >= PHONETIC_MISHEAR_FLOOR;
+}
+
 export function alignTranscript(
   transcript: TranscriptSegment[],
   canonicalLines: CanonicalLine[],
@@ -199,8 +252,17 @@ export function classifyVariants(
       return;
     }
 
-    const confidence = scoreVariantConfidence(alignment.transcript.confidence, alignment.similarity, sourceCoverage, type);
-    const evidenceTier = variantEvidenceTier(alignment, type, sourceCoverage);
+    const phonetic = alignment.canonical ? phoneticSimilarity(alignment.transcript.text, alignment.canonical.text) : undefined;
+    // A substitution that is textually different but phonetically near-identical
+    // is almost always the transcriber mishearing, not the artist changing words.
+    // Demote its confidence and label it so a reviewer isn't sent chasing noise.
+    const mishearable = type === "substitution" && typeof phonetic === "number" && phonetic >= PHONETIC_MISHEAR_FLOOR;
+    const baseConfidence = scoreVariantConfidence(alignment.transcript.confidence, alignment.similarity, sourceCoverage, type);
+    const confidence = mishearable ? round(baseConfidence * 0.6) : baseConfidence;
+    const evidenceTier = mishearable ? "likely_mishear" : variantEvidenceTier(alignment, type, sourceCoverage);
+    const reviewerNote = mishearable
+      ? `Live and reference are ${Math.round((phonetic ?? 0) * 100)}% phonetically identical; likely an ASR mishearing rather than a performed change. Confirm by ear before flagging.`
+      : reviewerNoteForVariant(alignment, type, evidenceTier);
     variants.push({
       id: `V${variants.length + 1}`,
       type,
@@ -218,7 +280,7 @@ export function classifyVariants(
       severity: confidence >= 0.78 ? "high" : confidence >= 0.58 ? "medium" : "low",
       evidenceSource: "asr_alignment",
       evidenceTier,
-      reviewerNote: reviewerNoteForVariant(alignment, type, evidenceTier)
+      reviewerNote
     });
   });
 
@@ -297,6 +359,7 @@ export function buildLineComparisons(
     const canonicalPrevious = typeof canonicalIndex === "number" ? canonicalLines[canonicalIndex - 1] : undefined;
     const canonicalNext = typeof canonicalIndex === "number" ? canonicalLines[canonicalIndex + 1] : undefined;
     const status = lineComparisonStatus(alignment, alignments[index - 1]);
+    const phonetic = alignment.canonical ? phoneticSimilarity(alignment.transcript.text, alignment.canonical.text) : undefined;
     return {
       id: `C${index + 1}`,
       start: alignment.transcript.start,
@@ -307,12 +370,13 @@ export function buildLineComparisons(
       canonicalNextText: canonicalNext?.text,
       liveText: alignment.transcript.text,
       similarity: alignment.similarity,
+      phoneticSimilarity: phonetic,
       timingDelta: alignment.timingDelta,
       rawTimingDelta: alignment.rawTimingDelta,
       clipOffset: alignment.clipOffset,
       status,
       changedWords: wordDiff(alignment.canonical?.text ?? "", alignment.transcript.text),
-      evidenceTier: lineEvidenceTier(alignment, status),
+      evidenceTier: isLikelyMishear(status, phonetic) ? "likely_mishear" : lineEvidenceTier(alignment, status),
       variantId: variantByLiveKey.get(variantKey(alignment.transcript.start, alignment.transcript.end, trimSnippet(alignment.transcript.text)))
     };
   });
@@ -567,6 +631,7 @@ function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResul
   const canonicalTokens = alignment.canonical ? tokenize(alignment.canonical.text) : [];
   const extraTokens = tokens.filter((token) => !canonicalTokens.includes(token));
   const duration = alignment.transcript.end - alignment.transcript.start;
+  const weaklyAnchored = !alignment.canonical || alignment.similarity < 0.5;
 
   if (alignment.transcript.confidence < LOW_ASR_CONFIDENCE && alignment.similarity < 0.9) {
     return "uncertain";
@@ -574,14 +639,22 @@ function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResul
   if (citySignalSet(eventCity).some((city) => normalized.includes(city))) {
     return "city_shoutout";
   }
+  if (weaklyAnchored && matchesCrowdSignal(normalized, tokens)) {
+    return "crowd_response";
+  }
   if (!alignment.canonical || alignment.similarity < 0.28) {
-    return "adlib";
+    // A sustained unmatched lyric line is a snippet of another song (medley /
+    // interpolation); a short unmatched burst is an ad-lib.
+    return tokens.length >= 5 ? "interpolation" : "adlib";
   }
   if (previous?.canonical?.id === alignment.canonical.id && alignment.similarity >= 0.6) {
     return "repeated_hook";
   }
   if (containsRepeatedPhrase(tokens)) {
     return "repeated_hook";
+  }
+  if (hasProfanitySwap(tokens, canonicalTokens)) {
+    return "censored";
   }
   if (alignment.similarity >= 0.7 && alignment.timingDelta >= 2.5) {
     return "timing_drift";
@@ -598,6 +671,53 @@ function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResul
 function citySignalSet(eventCity?: string): string[] {
   const eventSignal = eventCity ? normalizeText(eventCity) : "";
   return [...new Set([...citySignals, eventSignal].filter(Boolean))];
+}
+
+const crowdSignals = [
+  "make some noise",
+  "put your hands up",
+  "hands up",
+  "let me hear you",
+  "let me hear ya",
+  "clap your hands",
+  "sing along",
+  "are you ready",
+  "scream"
+];
+
+// Audience-directed call-and-response, including a dominant repeated chant
+// ("hey hey hey"). Only meaningful when the line is not a solid canonical match.
+function matchesCrowdSignal(normalized: string, tokens: string[]): boolean {
+  if (crowdSignals.some((phrase) => normalized.includes(phrase))) {
+    return true;
+  }
+  if (tokens.length >= 3) {
+    const counts = new Map<string, number>();
+    for (const token of tokens) {
+      counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+    const dominant = Math.max(...counts.values());
+    if (dominant >= 3 && dominant / tokens.length >= 0.6) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const profanityWords = new Set([
+  "damn", "goddamn", "hell", "ass", "shit", "bullshit", "bitch", "bastard",
+  "fuck", "fucking", "fuckin", "motherfucker", "dick", "pussy", "nigga", "nigger"
+]);
+
+// A profanity present on exactly one side of an otherwise-matched line is a
+// clean<->explicit swap (radio edit or live self-censoring), not a generic
+// word substitution.
+function hasProfanitySwap(liveTokens: string[], canonicalTokens: string[]): boolean {
+  const live = new Set(liveTokens);
+  const canonical = new Set(canonicalTokens);
+  const liveOnly = [...live].some((token) => profanityWords.has(token) && !canonical.has(token));
+  const canonicalOnly = [...canonical].some((token) => profanityWords.has(token) && !live.has(token));
+  return liveOnly || canonicalOnly;
 }
 
 function variantEvidenceTier(alignment: AlignmentResult, type: VariantType, sourceCoverage: number): EvidenceTier {
@@ -650,6 +770,8 @@ function scoreVariantConfidence(asr: number, similarity: number, sourceCoverage:
     extension: 0.03,
     city_shoutout: 0.1,
     crowd_response: 0.07,
+    interpolation: 0.0,
+    censored: 0.04,
     adlib: -0.02,
     timing_drift: 0.02,
     uncertain: -0.18
@@ -667,6 +789,8 @@ function impactNote(type: VariantType, confidence: number): string {
     extension: "extended phrase or added tag that may require live-only caption coverage.",
     city_shoutout: "location-specific live change useful for event metadata and fan experiences.",
     crowd_response: "audience response or call-and-response moment missing from automated transcription.",
+    interpolation: "snippet of another song woven into the performance; flag for medley/interpolation handling and separate rights review.",
+    censored: "explicit/clean word swap (radio-style edit or live self-censoring) that matters for lyric QA and the right rights version.",
     adlib: "unmatched vocal phrase likely outside the canonical lyric reference.",
     timing_drift: "timing offset that can affect subtitle alignment.",
     uncertain: "weak signal that should remain in review rather than automation."
@@ -682,6 +806,8 @@ function recommendedAction(type: VariantType): string {
     extension: "Add a live-only caption segment or alternate-version note.",
     city_shoutout: "Attach event-specific metadata; no canonical lyric edit required.",
     crowd_response: "Add as an audience-response caption or live-performance annotation.",
+    interpolation: "Tag as an interpolation/medley and identify the source song separately.",
+    censored: "Confirm the clean/explicit swap and route it to the correct lyric version.",
     adlib: "Mark as live ad-lib after human review.",
     timing_drift: "Review RichSync timing against the performance tempo.",
     uncertain: "Keep in the review queue and avoid automated edits."
@@ -690,8 +816,8 @@ function recommendedAction(type: VariantType): string {
 }
 
 function translationRisk(type: VariantType): VariantCandidate["translationRisk"] {
-  if (type === "substitution" || type === "skipped_line") return "high";
-  if (type === "city_shoutout" || type === "crowd_response" || type === "extension" || type === "adlib") return "medium";
+  if (type === "substitution" || type === "skipped_line" || type === "censored") return "high";
+  if (type === "city_shoutout" || type === "crowd_response" || type === "extension" || type === "adlib" || type === "interpolation") return "medium";
   return "low";
 }
 
@@ -733,6 +859,8 @@ function structureLabel(type: VariantType): string {
     extension: "Extended phrase",
     city_shoutout: "City shoutout",
     crowd_response: "Crowd response",
+    interpolation: "Interpolation",
+    censored: "Censored swap",
     adlib: "Ad-lib",
     timing_drift: "Tempo drift",
     uncertain: "Uncertain section"
