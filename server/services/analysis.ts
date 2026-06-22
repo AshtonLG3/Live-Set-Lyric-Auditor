@@ -9,7 +9,8 @@ import { buildLiveContext, searchEvents } from "../adapters/jambase";
 import { identifyTrackFromAudio } from "../adapters/audio-id";
 import type { AudioIdentityMatch } from "../adapters/audio-id";
 import { getCanonicalReference, identifyTrackFromLyrics, searchTracksByLyrics } from "../adapters/musixmatch";
-import { extractYouTubeExcerpt } from "../adapters/youtube";
+import { extractProviderExcerpt } from "../adapters/youtube";
+import { detectLiveLinkProvider } from "../source-validation";
 import { env } from "../config";
 import { PublicError } from "../errors";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
@@ -246,8 +247,20 @@ function fallbackPerformanceContext(error: unknown): PerformanceContext {
   return fixturePerformanceContext;
 }
 
-async function settlePerformanceContext(promise: Promise<PerformanceContext>): Promise<PerformanceContext> {
-  return promise;
+const PASSPORT_PERFORMANCE_GRACE_MS = 2500;
+
+export async function settlePerformanceContext(
+  promise: Promise<PerformanceContext>,
+  graceMs: number = PASSPORT_PERFORMANCE_GRACE_MS
+): Promise<PerformanceContext> {
+  // Cyanite is a supplementary profile and routinely outlasts its own poll window, so it must
+  // never block the user-facing passport. It already ran in parallel with transcribe/anchor/
+  // compare; past a short grace, generate the passport with the labeled fallback. The configured
+  // Cyanite webhook can still deliver the real profile afterwards.
+  return Promise.race([
+    promise,
+    new Promise<PerformanceContext>((resolve) => setTimeout(() => resolve(fixturePerformanceContext), graceMs))
+  ]);
 }
 
 function performanceContextDetail(context: PerformanceContext): string {
@@ -268,21 +281,21 @@ export async function reanchorAnalysis(
 
   const canonical = await getCanonicalReference(track);
   const correctedTrack = enrichTrackWithCanonical(track, canonical);
-  const event = passport?.event
-    ?? await resolveEvent({
-      event: options.event !== undefined ? options.event : recovery?.event ?? null,
-      eventCity: options.eventCity ?? recovery?.eventCity,
-      eventDate: options.eventDate ?? recovery?.eventDate
-    }, correctedTrack);
+  const clip = passport?.clip;
+  const event = await resolveEvent({
+    event: options.event !== undefined ? options.event : passport?.event ?? recovery?.event ?? null,
+    eventCity: options.eventCity ?? recovery?.eventCity,
+    eventDate: options.eventDate ?? recovery?.eventDate
+  }, correctedTrack);
   const liveContext = buildLiveContext(event, correctedTrack);
   const corrected = buildPassport({
     id: jobId,
     track: correctedTrack,
     event,
-    filename: passport?.clip.filename ?? recovery!.filename,
-    durationSeconds: passport?.clip.durationSeconds ?? recovery!.durationSeconds,
+    filename: clip?.filename ?? recovery!.filename,
+    durationSeconds: clip?.durationSeconds ?? recovery!.durationSeconds,
     canonicalLines: canonical.lines,
-    transcript: passport?.clip.transcript ?? recovery!.transcript,
+    transcript: clip?.transcript ?? recovery!.transcript,
     sourceCoverage: canonical.sourceCoverage,
     canonicalSource: canonical.source,
     restricted: canonical.restricted,
@@ -290,12 +303,12 @@ export async function reanchorAnalysis(
     copyright: canonical.copyright,
     trackingUrl: canonical.trackingUrl,
     matchMethod: "selected_track",
-    vocalIsolationSource: passport?.clip.vocalIsolationSource ?? recovery!.vocalIsolationSource,
-    vocalIsolationConfidence: passport?.clip.vocalIsolationConfidence ?? recovery!.vocalIsolationConfidence,
-    vocalQuality: passport?.clip.vocalQuality ?? recovery!.vocalQuality,
-    asrSource: passport?.clip.asrSource ?? recovery!.asrSource,
-    asrEngine: passport?.clip.asrEngine ?? recovery!.asrEngine,
-    source: passport?.clip.source ?? recovery!.source,
+    vocalIsolationSource: clip?.vocalIsolationSource ?? recovery!.vocalIsolationSource,
+    vocalIsolationConfidence: clip?.vocalIsolationConfidence ?? recovery!.vocalIsolationConfidence,
+    vocalQuality: passport ? clip?.vocalQuality : recovery!.vocalQuality,
+    asrSource: clip?.asrSource ?? recovery!.asrSource,
+    asrEngine: passport ? clip?.asrEngine : recovery!.asrEngine,
+    source: clip?.source ?? recovery!.source,
     liveContext,
     performanceContext: passport?.performanceContext ?? recovery!.performanceContext
   });
@@ -990,11 +1003,11 @@ async function resolveAnalysisFile(input: AnalyzeInput): Promise<Express.Multer.
     }
     return input.file;
   }
-  if (input.source?.kind === "live_link" && input.source.provider === "youtube" && input.source.processingMode === "provider_excerpt") {
+  if (input.source?.kind === "live_link" && input.source.processingMode === "provider_excerpt" && detectLiveLinkProvider(input.source.url ?? "")) {
     if (!env.youtubeExtractionEnabled) {
-      throw new Error("YouTube extraction is disabled for this server. Attach an authorized excerpt instead.");
+      throw new Error("Live-link extraction is disabled for this server. Attach an authorized excerpt instead.");
     }
-    return extractYouTubeExcerpt(input.source);
+    return extractProviderExcerpt(input.source);
   }
   if (input.source?.kind === "live_link") {
     throw new Error("Attach an authorized excerpt for this provider so the app can run real vocal analysis.");

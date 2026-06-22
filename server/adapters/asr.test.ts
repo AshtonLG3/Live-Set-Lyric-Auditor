@@ -182,7 +182,7 @@ describe("ASR adapter", () => {
     const result = await transcribeLiveVocal(undefined, "https://cdn.example/demucs-vocals");
 
     expect(result.segments.map((segment) => segment.text)).toEqual(["talk to god wonder if he is mad"]);
-    expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/demucs-vocals");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://cdn.example/demucs-vocals");
     const audio = runMock.mock.calls[0]?.[1]?.input.audio as File;
     expect(audio).toBeInstanceOf(Blob);
     expect(audio.name).toBe("demucs-vocals.mp3");

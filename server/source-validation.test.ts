@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedLiveSource, isYouTubeUrl } from "./source-validation";
+import { detectLiveLinkProvider, isAllowedLiveSource, isYouTubeUrl } from "./source-validation";
 
 describe("live source validation", () => {
   it("accepts supported YouTube hosts", () => {
@@ -18,5 +18,28 @@ describe("live source validation", () => {
       startSeconds: 0,
       endSeconds: 30
     })).toBe(false);
+  });
+
+  it("identifies supported live-link providers by host", () => {
+    expect(detectLiveLinkProvider("https://www.youtube.com/watch?v=abc")).toBe("youtube");
+    expect(detectLiveLinkProvider("https://youtu.be/abc")).toBe("youtube");
+    expect(detectLiveLinkProvider("https://vimeo.com/123456")).toBe("vimeo");
+    expect(detectLiveLinkProvider("https://player.vimeo.com/video/123456")).toBe("vimeo");
+    expect(detectLiveLinkProvider("https://www.twitch.tv/videos/123456")).toBe("twitch");
+    expect(detectLiveLinkProvider("https://clips.twitch.tv/AwkwardHelplessSalamander")).toBe("twitch");
+  });
+
+  it("rejects unknown, insecure, and lookalike hosts for provider detection", () => {
+    expect(detectLiveLinkProvider("https://example.com/video")).toBeNull();
+    expect(detectLiveLinkProvider("http://www.youtube.com/watch?v=abc")).toBeNull();
+    expect(detectLiveLinkProvider("https://youtube.com.attacker.example/watch?v=1")).toBeNull();
+    expect(detectLiveLinkProvider("http://169.254.169.254/latest/meta-data")).toBeNull();
+  });
+
+  it("accepts authorized Vimeo and Twitch live links, not lookalikes", () => {
+    const base = { kind: "live_link" as const, processingMode: "provider_excerpt" as const, startSeconds: 0, endSeconds: 30 };
+    expect(isAllowedLiveSource({ ...base, provider: "vimeo", url: "https://vimeo.com/123456" })).toBe(true);
+    expect(isAllowedLiveSource({ ...base, provider: "twitch", url: "https://www.twitch.tv/videos/1" })).toBe(true);
+    expect(isAllowedLiveSource({ ...base, provider: "vimeo", url: "https://vimeo.com.attacker.example/123" })).toBe(false);
   });
 });

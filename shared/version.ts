@@ -1,5 +1,5 @@
 export const APP_NAME = "Live-Set Lyric Auditor";
-export const APP_VERSION = "0.11.29";
+export const APP_VERSION = "0.11.30";
 export const MAX_CLIP_SECONDS = 45;
 export const MAX_IMPORT_SECONDS = 10 * 60;
 export const TARGET_CLIP_SECONDS = "15-30";

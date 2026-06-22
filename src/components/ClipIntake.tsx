@@ -7,6 +7,7 @@ import {
   FileCheck2,
   FileVideo,
   Fingerprint,
+  Link2,
   Mic,
   Play,
   Search,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import type { ClipSource, RecallRescueResponse, TrackCandidate, TranscriptSegment } from "../../shared/types";
 import { MAX_CLIP_SECONDS, MAX_IMPORT_BYTES, MAX_RECALL_SECONDS, TARGET_CLIP_SECONDS } from "../../shared/version";
+import { detectLiveLinkProvider } from "../../shared/live-link";
 import { rescueRecall } from "../api";
 import { formatFileSize, inspectClip, type ClipSelection } from "../clip";
 
@@ -28,7 +30,7 @@ export type IntakeAnalysisInput = {
   recallSegments?: TranscriptSegment[];
 };
 
-type IntakeMode = "upload" | "recall";
+type IntakeMode = "upload" | "recall" | "live_link";
 
 type ClipTrimRange = {
   start: number;
@@ -80,6 +82,14 @@ export function ClipIntake({
   const [recallBusy, setRecallBusy] = useState(false);
   const [recallResult, setRecallResult] = useState<RecallRescueResponse>();
   const [matchedTrackId, setMatchedTrackId] = useState("");
+  const [liveLinkUrl, setLiveLinkUrl] = useState("");
+  const [liveLinkStart, setLiveLinkStart] = useState(0);
+  const [liveLinkEnd, setLiveLinkEnd] = useState(20);
+
+  const liveLinkProvider = detectLiveLinkProvider(liveLinkUrl.trim());
+  const liveLinkDuration = liveLinkEnd - liveLinkStart;
+  const liveLinkRangeValid = liveLinkDuration > 0 && liveLinkDuration <= MAX_CLIP_SECONDS;
+  const liveLinkReady = Boolean(liveLinkProvider) && liveLinkRangeValid && (autoMatch || Boolean(selectedTrack));
 
   const microphoneUnavailableMessage = getMicrophoneUnavailableMessage();
   const matchedTrack = recallResult?.candidates.find((track) => track.id === matchedTrackId);
@@ -203,9 +213,10 @@ export function ClipIntake({
 
   return (
     <div>
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
+      <div className="mb-4 grid grid-cols-3 gap-1 rounded-md bg-slate-50 p-1 dark:bg-slate-900">
         <ModeButton active={mode === "upload"} onClick={() => setMode("upload")} icon={<Upload size={15} />} label="Upload clip" />
         <ModeButton active={mode === "recall"} onClick={() => setMode("recall")} icon={<Mic size={15} />} label="Recall lyric fragment" />
+        <ModeButton active={mode === "live_link"} onClick={() => setMode("live_link")} icon={<Link2 size={15} />} label="Live link" />
       </div>
 
       {mode === "upload" && (
@@ -359,6 +370,58 @@ export function ClipIntake({
         </div>
       )}
 
+      {mode === "live_link" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+            <Link2 size={17} className="shrink-0 text-violetmark" />
+            <input
+              className="w-full bg-transparent text-sm outline-none"
+              value={liveLinkUrl}
+              onChange={(event) => setLiveLinkUrl(event.target.value)}
+              aria-label="Live performance link"
+              placeholder="Paste a YouTube, Vimeo, or Twitch link"
+            />
+          </div>
+
+          {liveLinkUrl.trim() && (liveLinkProvider
+            ? <InlineNotice tone="neutral" text={`${formatProviderName(liveLinkProvider)} link recognized. Only the selected range below is fetched — never the whole video.`} />
+            : <InlineNotice tone="warning" text="That is not a supported, secure YouTube, Vimeo, or Twitch URL. Check the link, or attach an authorized excerpt instead." />
+          )}
+
+          <section className="studio-trim-panel" aria-label="Live link range">
+            <header>
+              <span>Excerpt range</span>
+              <strong>{liveLinkRangeValid ? `${liveLinkDuration.toFixed(0)}s selected` : `Max ${MAX_CLIP_SECONDS}s`}</strong>
+            </header>
+            <label>
+              <span>Start (s)</span>
+              <input type="number" min={0} step={1} value={liveLinkStart} className="field"
+                onChange={(event) => setLiveLinkStart(Math.max(0, Number(event.target.value) || 0))}
+                aria-label="Live link start seconds" />
+            </label>
+            <label>
+              <span>End (s)</span>
+              <input type="number" min={1} step={1} value={liveLinkEnd} className="field"
+                onChange={(event) => setLiveLinkEnd(Math.max(1, Number(event.target.value) || 0))}
+                aria-label="Live link end seconds" />
+            </label>
+          </section>
+
+          {liveLinkUrl.trim() && liveLinkProvider && !liveLinkRangeValid && (
+            <InlineNotice tone="warning" text={`Set an end after the start and within ${MAX_CLIP_SECONDS} seconds.`} />
+          )}
+
+          <p className="flex items-start gap-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
+            <ShieldCheck className="mt-0.5 shrink-0 text-lagoon" size={14} />
+            Authorized excerpts only. If the host blocks the server, attach an excerpt instead.
+          </p>
+
+          <button type="button" className="button-secondary w-full" onClick={() => setMode("upload")}>
+            <Upload size={16} /> Attach an authorized excerpt instead
+          </button>
+        </div>
+      )}
+
       {fileError && <p className="mt-2 text-sm text-ember">{fileError}</p>}
       {recordingError && <p className="mt-2 text-sm text-ember">{recordingError}</p>}
 
@@ -436,6 +499,27 @@ export function ClipIntake({
             })}
           >
             <Play size={17} /> {matchedTrack ? `Analyze as ${matchedTrack.title}` : "Audit this rendition"}
+          </button>
+        )}
+        {mode === "live_link" && (
+          <button
+            type="button"
+            className="button-primary w-full"
+            disabled={busy || !liveLinkReady}
+            onClick={() => void onAnalyze({
+              durationSeconds: liveLinkDuration,
+              autoMatch,
+              source: {
+                kind: "live_link",
+                provider: liveLinkProvider ?? undefined,
+                url: liveLinkUrl.trim(),
+                startSeconds: liveLinkStart,
+                endSeconds: liveLinkEnd,
+                processingMode: "provider_excerpt"
+              }
+            })}
+          >
+            <Play size={17} /> {!liveLinkProvider ? "Paste a supported link" : !liveLinkRangeValid ? "Set a valid range" : (!autoMatch && !selectedTrack) ? "Choose track to analyze" : "Fetch & analyze live link"}
           </button>
         )}
       </div>
@@ -625,4 +709,10 @@ function formatClock(value: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatProviderName(provider: string): string {
+  if (provider === "youtube") return "YouTube";
+  if (provider === "soundcloud") return "SoundCloud";
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
 }

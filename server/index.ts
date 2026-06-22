@@ -12,7 +12,7 @@ import { addJobSubscriber } from "./sse";
 import type { ClipSource, EventCandidate, TrackCandidate, TranscriptSegment } from "../shared/types";
 import { MAX_CLIP_SECONDS, MAX_IMPORT_BYTES, MAX_IMPORT_SECONDS } from "../shared/version";
 import { probeMediaDuration, resolveAnalysisDuration } from "./services/media";
-import { isAllowedLiveSource } from "./source-validation";
+import { detectLiveLinkProvider, isAllowedLiveSource } from "./source-validation";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -96,13 +96,13 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
     const recallSegments = parseTranscriptSegments(req.body.recallSegments);
     const hasRecallTranscript = source?.kind === "recall_recording" && recallSegments.length > 0;
     const canUseProviderExtraction = source?.kind === "live_link"
-      && source.provider === "youtube"
+      && Boolean(detectLiveLinkProvider(source.url ?? ""))
       && source.processingMode === "provider_excerpt"
       && env.youtubeExtractionEnabled;
     const requestedDuration = Number(req.body.durationSeconds || 0);
     const rangedDuration = sourceRangeDuration(source);
     if (source?.kind === "live_link" && source.processingMode === "provider_excerpt" && !canUseProviderExtraction) {
-      res.status(400).json({ error: "YouTube extraction is unavailable on this server. Attach an authorized excerpt instead." });
+      res.status(400).json({ error: "Live-link extraction is disabled on this server. Attach an authorized excerpt instead." });
       return;
     }
     if (!req.file && !canUseProviderExtraction && !hasRecallTranscript) {
@@ -114,7 +114,7 @@ app.post("/api/analyze", mutationLimiter, upload.single("clip"), async (req, res
       return;
     }
     if (source?.kind === "live_link" && !isAllowedLiveSource(source)) {
-      res.status(400).json({ error: source.provider === "youtube" ? "Enter a valid YouTube performance URL." : "Enter a valid HTTP or HTTPS live-performance link." });
+      res.status(400).json({ error: "Enter a valid YouTube, Vimeo, or Twitch performance URL." });
       return;
     }
     if (source?.kind === "live_link" && (rangedDuration ?? 0) <= 0) {

@@ -2328,6 +2328,67 @@ button {
   font-size: 12px;
 }
 
+.studio-context-event-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.studio-event-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.studio-event-actions .studio-secondary-button {
+  min-height: 38px;
+  margin: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.studio-context-event-results {
+  display: grid;
+  gap: 6px;
+  max-height: 188px;
+  overflow: auto;
+}
+
+.studio-context-event-results button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  border: 1px solid var(--studio-border);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.26);
+  padding: 8px;
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.studio-context-event-results button:hover,
+.studio-context-event-results button.active {
+  border-color: rgba(34, 211, 238, 0.55);
+  background: rgba(8, 145, 178, 0.16);
+}
+
+.studio-context-event-results button > span {
+  color: var(--studio-cyan);
+}
+
+.studio-context-event-results strong,
+.studio-context-event-results small {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.studio-context-event-results small {
+  color: var(--studio-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .studio-analysis-rack .studio-rack-body {
   padding: 16px;
 }

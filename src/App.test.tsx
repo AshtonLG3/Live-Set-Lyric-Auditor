@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.29",
+  version: "0.11.30",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.29",
+    version: "0.11.30",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -276,7 +276,7 @@ async function runUploadedClip(fileName = "concert-snippet.mp3") {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.29/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.30/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -290,13 +290,12 @@ it("shows the app version and theme toggle", async () => {
   expect(localStorage.getItem("lal-theme")).toBe("light");
 });
 
-it("keeps intake focused on uploaded clips and recall", async () => {
+it("offers upload, recall, and live-link intake without demo shortcuts", async () => {
   render(<App />);
   expect(await screen.findByRole("button", { name: "Upload clip" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Recall lyric fragment" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Live link" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /judge-ready demo|seeded demo/i })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Live link" })).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Live performance URL")).not.toBeInTheDocument();
 });
 
 it("shows selected-track anchor controls directly in clip intake", async () => {
@@ -363,6 +362,76 @@ it("shows JamBase event suggestions for a selected track without requiring city 
   expect(screen.getByText(/Parkbuhne Wuhlheide · Berlin/i)).toBeInTheDocument();
 });
 
+it("lets reviewers add JamBase event context from the analysis view", async () => {
+  const baseFetch = fetch;
+  const jambaseEvent = {
+    id: "jambase-thomas-fenway",
+    title: "Thomas Rhett at Fenway Park",
+    artist: "Thomas Rhett",
+    venue: "Fenway Park",
+    city: "Boston",
+    date: "2026-07-18T19:30:00",
+    tourName: "Better In Boots Tour",
+    lineup: ["Thomas Rhett", "Teddy Swims"],
+    setlist: { available: false },
+    url: "https://www.jambase.com/show/thomas-rhett-fenway-park-20260718",
+    source: "jambase" as const
+  };
+  const noEventJob: AnalysisJob = {
+    ...completeJob,
+    passport: {
+      ...completeJob.passport!,
+      event: null,
+      liveContext: null
+    }
+  };
+  let reanchorBody: Record<string, unknown> | undefined;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") {
+      return jsonResponse(noEventJob);
+    }
+    if (url.toString().startsWith("/api/events/search")) {
+      return jsonResponse({ events: [jambaseEvent] });
+    }
+    if (url === "/api/analyze/job-1/reanchor") {
+      reanchorBody = JSON.parse(String(init?.body ?? "{}"));
+      return jsonResponse({
+        ...completeJob,
+        passport: {
+          ...completeJob.passport!,
+          event: jambaseEvent,
+          liveContext: {
+            source: "jambase",
+            eventId: jambaseEvent.id,
+            tourName: jambaseEvent.tourName,
+            lineup: jambaseEvent.lineup,
+            setlist: { available: false },
+            summary: "Better In Boots Tour. No setlist was available for this event; venue and lineup evidence remain attached.",
+            confidence: 0.76
+          }
+        }
+      });
+    }
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  await runUploadedClip();
+
+  expect(await screen.findByText("No event selected")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Analysis event city"), { target: { value: "Boston" } });
+  fireEvent.click(screen.getByRole("button", { name: /Find JamBase/i }));
+
+  await waitFor(() => expect(screen.getByText("Thomas Rhett at Fenway Park")).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: /Thomas Rhett at Fenway Park/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Apply to Passport/i }));
+
+  await waitFor(() => expect(reanchorBody?.eventCity).toBe("Boston"));
+  expect(reanchorBody?.event).toMatchObject({ id: jambaseEvent.id });
+  expect((await screen.findAllByText(/Fenway Park/)).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Boston/).length).toBeGreaterThan(0);
+}, 40000);
+
 it("uses remembered words to rescue a track", async () => {
   render(<App />);
   fireEvent.click(screen.getByRole("button", { name: "Recall lyric fragment" }));
@@ -374,7 +443,6 @@ it("uses remembered words to rescue a track", async () => {
   const matches = screen.getAllByRole("button", { name: /Midnight Atlas/i });
   fireEvent.click(matches[0]);
   expect(screen.getByRole("button", { name: /Upload performance clip/i })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Use live link/i })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /Analyze recalled fragment as Midnight Atlas/i }));
   await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
@@ -411,6 +479,93 @@ it("offers rear-camera capture and imports the recorded video", async () => {
   expect(screen.getByText(/video ·/i)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Record another/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Analyze clip/i })).toBeEnabled();
+});
+
+it("merges a live line into the previous one without leaving a placeholder void", async () => {
+  render(<App />);
+  await runUploadedClip();
+  await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
+  const joinButton = await screen.findByRole("button", { name: /^Join next$/i });
+  fireEvent.click(joinButton);
+  // The reported bug wrote the sentinel "[joined with previous line]" into the absorbed
+  // row, leaving a void that blocked the next join. The merged-away line must simply
+  // disappear, and that sentinel must never reach the rendered diff.
+  await waitFor(() => expect(document.body.textContent).not.toContain("joined with previous line"));
+  // The two rows collapsed into one: the absorbed line is gone, so the only remaining
+  // line is last and offers no further "Join next" (no lingering void to join through).
+  expect(screen.queryByRole("button", { name: /^Join next$/i })).not.toBeInTheDocument();
+}, 60000);
+
+it("exports the corrected lyrics in the variant findings, not the original ASR text", async () => {
+  let exportedJson = "";
+  const OrigBlob = globalThis.Blob;
+  const origCreate = URL.createObjectURL;
+  const origRevoke = URL.revokeObjectURL;
+  class CapturingBlob extends OrigBlob {
+    constructor(parts: BlobPart[] = [], options?: BlobPropertyBag) {
+      super(parts, options);
+      exportedJson = parts.map((part) => String(part)).join("");
+    }
+  }
+  globalThis.Blob = CapturingBlob as typeof Blob;
+  URL.createObjectURL = (() => "blob:mock") as typeof URL.createObjectURL;
+  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  try {
+    render(<App />);
+    await runUploadedClip();
+    await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
+
+    // Hand-correct the city-shoutout line (comparison C2 / variant V1).
+    const editable = document.querySelectorAll('[title="Click to edit"]');
+    fireEvent.click(editable[1]);
+    const input = await screen.findByLabelText("Edit live transcription");
+    fireEvent.change(input, { target: { value: "carry this chorus through the avenue" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Export Passport/i })[0]);
+
+    expect(exportedJson).not.toBe("");
+    const json = JSON.parse(exportedJson);
+    const v1 = json.variants.find((variant: { id: string }) => variant.id === "V1");
+    // The exported finding must carry the reviewer's correction, not the original ASR text.
+    expect(v1.liveText).toBe("carry this chorus through the avenue");
+    expect(JSON.stringify(json.variants)).not.toContain("Cape Town carry this chorus");
+  } finally {
+    globalThis.Blob = OrigBlob;
+    URL.createObjectURL = origCreate;
+    URL.revokeObjectURL = origRevoke;
+  }
+}, 60000);
+
+it("accepts an authorized YouTube live link and submits a provider excerpt for analysis", async () => {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Live link" }));
+  fireEvent.change(screen.getByLabelText("Live performance link"), {
+    target: { value: "https://www.youtube.com/watch?v=abc123" }
+  });
+  expect(await screen.findByText(/YouTube link recognized/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Fetch & analyze live link/i }));
+  await waitFor(() => {
+    const call = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/analyze");
+    expect(call).toBeTruthy();
+    const source = JSON.parse(String((call![1]!.body as FormData).get("source")));
+    expect(source).toMatchObject({
+      kind: "live_link",
+      provider: "youtube",
+      url: "https://www.youtube.com/watch?v=abc123",
+      processingMode: "provider_excerpt"
+    });
+  });
+});
+
+it("warns and blocks analysis for an unsupported or unsafe live link", async () => {
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Live link" }));
+  fireEvent.change(screen.getByLabelText("Live performance link"), {
+    target: { value: "https://youtube.com.attacker.example/watch?v=1" }
+  });
+  expect(await screen.findByText(/not a supported, secure/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Paste a supported link/i })).toBeDisabled();
 });
 
 it("runs an uploaded clip and renders a passport", async () => {

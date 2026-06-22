@@ -18,6 +18,7 @@ import { APP_NAME, APP_VERSION } from "../shared/version";
 import { AnalysisStudio, type ReviewDecision, type ReviewDecisions } from "./components/AnalysisStudio";
 import { SessionWorkspace } from "./components/SessionWorkspace";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { applyLineJoin, buildReviewedComparisons, buildReviewedVariants } from "./components/studio-utils";
 import type { IntakeAnalysisInput } from "./components/ClipIntake";
 
 type Theme = "light" | "dark";
@@ -42,6 +43,7 @@ export default function App() {
   const [reviewDecisions, setReviewDecisions] = useState<ReviewDecisions>({});
   const [manualVariants, setManualVariants] = useState<VariantCandidate[]>([]);
   const [editedTexts, setEditedTexts] = useState<Record<string, string>>({});
+  const [joinedLineIds, setJoinedLineIds] = useState<Record<string, true>>({});
   const [trackHistory, setTrackHistory] = useState<TrackCandidate[]>([]);
   const runtimeStatus = getRuntimeStatus(health?.runtimeMode);
 
@@ -165,6 +167,9 @@ export default function App() {
         setSelectedEvent(started.passport.event ?? null);
         rememberTrack(started.passport.track);
       }
+      if (started.status === "complete" || started.status === "failed") {
+        setBusy(false);
+      }
     } catch (analysisError) {
       setBusy(false);
       setError(analysisError instanceof Error ? analysisError.message : "Could not start analysis.");
@@ -199,6 +204,38 @@ export default function App() {
     }
   }
 
+  async function handleApplyEventContext() {
+    if (!job?.id) return;
+    const track = job.passport?.track ?? selectedTrack;
+    if (!track) {
+      setError("Choose a track before applying event context.");
+      return;
+    }
+    if (!selectedEvent && !eventCity.trim() && !eventDate.trim()) {
+      setError("Enter a city/date or choose a JamBase event before applying event context.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await reanchorAnalysis(job.id, track, {
+        event: selectedEvent ?? null,
+        eventCity,
+        eventDate
+      });
+      setJob(updated);
+      if (updated.passport) {
+        setSelectedTrack(updated.passport.track);
+        setSelectedEvent(updated.passport.event ?? null);
+        rememberTrack(updated.passport.track);
+      }
+    } catch (eventError) {
+      setError(eventError instanceof Error ? eventError.message : "Could not apply the event context.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleRetranscribe() {
     if (!job?.id) return;
     const recoveryRun = job.status === "failed" && !job.passport;
@@ -218,6 +255,7 @@ export default function App() {
     setReviewDecisions({});
     setManualVariants([]);
     setEditedTexts({});
+    setJoinedLineIds({});
     try {
       const updated = await retranscribeAnalysis(job.id);
       setJob(updated);
@@ -254,13 +292,13 @@ export default function App() {
   }
 
   function joinComparisonLines(current: LineComparison, next: LineComparison) {
-    const currentText = editedTexts[current.id] ?? current.liveText;
-    const nextText = editedTexts[next.id] ?? next.liveText;
-    setEditedTexts((prev) => ({
-      ...prev,
-      [current.id]: `${currentText.trim()} ${lowercaseFirstLetter(nextText.trim())}`.replace(/\s+/g, " ").trim(),
-      [next.id]: "[joined with previous line]"
-    }));
+    const result = applyLineJoin(
+      { editedTexts, joinedLineIds },
+      { id: current.id, liveText: current.liveText },
+      { id: next.id, liveText: next.liveText }
+    );
+    setEditedTexts(result.editedTexts);
+    setJoinedLineIds(result.joinedLineIds);
   }
 
   function splitComparisonLine(comparison: LineComparison) {
@@ -334,6 +372,7 @@ export default function App() {
     setReviewDecisions({});
     setManualVariants([]);
     setEditedTexts({});
+    setJoinedLineIds({});
     setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -351,15 +390,12 @@ export default function App() {
 
   function exportPassport() {
     if (!job?.passport) return;
-    const variants = [...job.passport.variants, ...manualVariants];
+    const variants = buildReviewedVariants([...job.passport.variants, ...manualVariants], job.passport.lineComparisons, editedTexts);
     const review = variants.map((variant) => ({
       variantId: variant.id,
       decision: reviewDecisions[variant.id] ?? "pending"
     }));
-    const editedComparisons = job.passport.lineComparisons.map((lc) => {
-      const edited = editedTexts[lc.id];
-      return edited && edited !== lc.liveText ? { ...lc, liveText: edited } : lc;
-    });
+    const editedComparisons = buildReviewedComparisons(job.passport.lineComparisons, editedTexts, joinedLineIds);
     const editedTranscript = job.passport.clip.transcript.map((seg) => {
       const match = editedComparisons.find((lc) => lc.canonicalId && Math.abs(lc.start - seg.start) < 0.5);
       return match && editedTexts[match.id] ? { ...seg, text: editedTexts[match.id] } : seg;
@@ -484,18 +520,28 @@ export default function App() {
               health={health}
               selectedTrack={selectedTrack}
               selectedEvent={selectedEvent}
+              events={events}
+              eventCity={eventCity}
+              eventDate={eventDate}
               narration={narration}
               error={error}
+              busy={busy}
               decisions={reviewDecisions}
               manualVariants={manualVariants}
               onDecision={decideVariant}
               onAddManualVariant={addManualVariant}
               onNarrate={handleNarration}
               editedTexts={editedTexts}
+              joinedLineIds={joinedLineIds}
               onEditLiveText={(id, text) => setEditedTexts((prev) => ({ ...prev, [id]: text }))}
               onJoinLines={joinComparisonLines}
               onSplitLine={splitComparisonLine}
               onCorrectTrack={handleCorrectTrack}
+              onEventCityChange={setEventCity}
+              onEventDateChange={setEventDate}
+              onEventSearch={handleEventSearch}
+              onEventSelect={setSelectedEvent}
+              onApplyEventContext={handleApplyEventContext}
               onRetranscribe={handleRetranscribe}
               onVisitTrack={handleVisitTrack}
             />
@@ -561,10 +607,6 @@ function SideNavButton({ label, icon, active, disabled, onClick }: { label: stri
 
 function isHttpUrl(value?: string): value is string {
   return Boolean(value && /^https?:\/\//i.test(value));
-}
-
-function lowercaseFirstLetter(value: string): string {
-  return value.replace(/[A-Za-z]/, (letter) => letter.toLowerCase());
 }
 
 function uppercaseFirstLetter(value: string): string {

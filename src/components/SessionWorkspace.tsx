@@ -107,7 +107,7 @@ export function SessionWorkspace(props: Props) {
           <RackPanel id="event-anchor" title="Event Anchor" icon={<CalendarDays size={18} />} status={props.selectedEvent ? "Event Found" : "Optional"}>
             <p className="studio-panel-intro">City or date also auto-finds JamBase context after track identification.</p>
             <div className="studio-event-fields">
-              <input className="field" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" />
+              <input className="field" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" placeholder="City, venue, or market" />
               <input className="field" type="date" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} aria-label="Event date" />
             </div>
             <button className="studio-ghost-button" onClick={() => void props.onEventSearch()}><CalendarDays size={16} /> Find JamBase event</button>

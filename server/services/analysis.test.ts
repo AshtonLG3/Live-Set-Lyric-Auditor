@@ -1,8 +1,22 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { TrackCandidate } from "../../shared/types";
-import { fixturePerformanceContext, fixtureTracks } from "../data/fixtures";
+import type { PerformanceContext, TrackCandidate } from "../../shared/types";
+import { fixtureEvents, fixturePerformanceContext, fixtureTracks } from "../data/fixtures";
 import { createJob, jobs, updateJob } from "../store";
-import { reanchorAnalysis, runAnalysis } from "./analysis";
+import { reanchorAnalysis, runAnalysis, settlePerformanceContext } from "./analysis";
+
+describe("performance context settling", () => {
+  it("returns the labeled fallback when Cyanite does not settle within the grace window", async () => {
+    const never = new Promise<PerformanceContext>(() => {});
+    const result = await settlePerformanceContext(never, 10);
+    expect(result).toBe(fixturePerformanceContext);
+  });
+
+  it("uses the real performance context when it settles within the grace window", async () => {
+    const cyanite: PerformanceContext = { ...fixturePerformanceContext, source: "cyanite" };
+    const result = await settlePerformanceContext(Promise.resolve(cyanite), 1000);
+    expect(result.source).toBe("cyanite");
+  });
+});
 
 describe("analysis recovery", () => {
   beforeEach(() => {
@@ -39,6 +53,25 @@ describe("analysis recovery", () => {
       { id: "R1", start: 0, end: 5, text: "How you broke my heart", confidence: 0.9 }
     ]);
     expect(corrected.progress.find((step) => step.id === "anchor")?.status).toBe("complete");
+  });
+
+  it("lets an explicit event correction override the current passport event", async () => {
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      track: fixtureTracks[0],
+      event: fixtureEvents[0],
+      autoMatch: false,
+      source: { kind: "recall_recording", processingMode: "recall_recording" },
+      recallSegments: [{ id: "R1", start: 0, end: 0, text: "The night opens slowly under electric skies", confidence: 1 }]
+    });
+
+    expect(jobs.get(job.id)?.passport?.event?.id).toBe(fixtureEvents[0].id);
+
+    const corrected = await reanchorAnalysis(job.id, fixtureTracks[0], { event: null });
+
+    expect(corrected.passport?.event).toBeNull();
+    expect(corrected.passport?.liveContext).toBeNull();
   });
 
   it("analyzes a typed recall fragment without requiring an uploaded clip", async () => {

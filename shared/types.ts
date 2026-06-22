@@ -148,7 +148,7 @@ export type TranscriptSegment = {
   confidence: number;
 };
 
-export type SourceProvider = "youtube" | "vimeo" | "soundcloud" | "direct_media" | "other";
+export type SourceProvider = "youtube" | "vimeo" | "twitch" | "soundcloud" | "direct_media" | "other";
 
 export type ClipSource = {
   kind: "upload" | "live_link" | "recall_recording" | "fixture";

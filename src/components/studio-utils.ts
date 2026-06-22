@@ -89,6 +89,78 @@ export function manualVariantToComparison(variant: VariantCandidate): LineCompar
   };
 }
 
+export type LineEditState = {
+  editedTexts: Record<string, string>;
+  joinedLineIds: Record<string, true>;
+};
+
+export function lowercaseFirstLetter(value: string): string {
+  return value.replace(/[A-Za-z]/, (letter) => letter.toLowerCase());
+}
+
+// Merge `next` into `current`: append next's text to current's and record next's id as
+// joined-away. The absorbed line keeps NO text of its own — joins are tracked as structure
+// (joinedLineIds), never as a placeholder string smuggled into editedTexts. That is what lets
+// chained joins and exports stay clean: there is no sentinel to concatenate or leak.
+// Returns new state; the input is left untouched.
+export function applyLineJoin(
+  state: LineEditState,
+  current: { id: string; liveText: string },
+  next: { id: string; liveText: string }
+): LineEditState {
+  const currentText = state.editedTexts[current.id] ?? current.liveText;
+  const nextText = state.editedTexts[next.id] ?? next.liveText;
+  const merged = `${currentText.trim()} ${lowercaseFirstLetter(nextText.trim())}`.replace(/\s+/g, " ").trim();
+  const editedTexts = { ...state.editedTexts, [current.id]: merged };
+  delete editedTexts[next.id];
+  return {
+    editedTexts,
+    joinedLineIds: { ...state.joinedLineIds, [next.id]: true }
+  };
+}
+
+// Remove rows that have been merged into a previous line, so merged-away lines never render
+// as editable rows, never feed the diff counts, and never reach an export.
+export function dropJoinedLines<T extends { id: string }>(rows: T[], joinedLineIds: Record<string, true>): T[] {
+  return rows.filter((row) => !joinedLineIds[row.id]);
+}
+
+// Apply a reviewer's text edit to a single comparison: replace the live text, recompute the
+// word-level diff, and re-derive the status. This is the ONE place an edit is applied to a row,
+// so the on-screen diff and the exported passport can never drift apart. No edit -> same object.
+export function applyEditToComparison(comparison: LineComparison, editedTexts: Record<string, string>): LineComparison {
+  const edited = editedTexts[comparison.id];
+  if (!edited || edited === comparison.liveText) return comparison;
+  const changedWords = wordDiffSummary(comparison.canonicalText ?? "", edited);
+  const hasChanges = changedWords.removed.length > 0 || changedWords.added.length > 0;
+  const status: LineComparisonStatus = !comparison.canonicalText ? comparison.status : hasChanges ? "changed" : "matched";
+  return { ...comparison, liveText: edited, status, changedWords };
+}
+
+// Corrected comparison rows for display or export: merged-away lines dropped, every remaining
+// row's edit applied (text + diff + status).
+export function buildReviewedComparisons(
+  lineComparisons: LineComparison[],
+  editedTexts: Record<string, string>,
+  joinedLineIds: Record<string, true>
+): LineComparison[] {
+  return dropJoinedLines(lineComparisons, joinedLineIds).map((comparison) => applyEditToComparison(comparison, editedTexts));
+}
+
+// A detected variant carries its own copy of the live text, so an edit on the variant's line
+// must be mirrored onto the variant or the exported findings keep the original ASR wording.
+export function buildReviewedVariants(
+  variants: VariantCandidate[],
+  lineComparisons: LineComparison[],
+  editedTexts: Record<string, string>
+): VariantCandidate[] {
+  return variants.map((variant) => {
+    const comparison = lineComparisons.find((line) => line.variantId === variant.id);
+    const edited = comparison ? editedTexts[comparison.id] : undefined;
+    return edited && edited !== variant.liveText ? { ...variant, liveText: edited } : variant;
+  });
+}
+
 export function summarizeComparisons(comparisons: LineComparison[]) {
   return {
     matched: comparisons.filter((comparison) => comparison.status === "matched").length,

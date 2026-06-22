@@ -78,7 +78,7 @@ async function transcribe(
   if (env.asrApiUrl) try {
     const formData = new FormData();
     if (vocalUrl) {
-      const vocalResponse = await fetch(vocalUrl);
+      const vocalResponse = await fetchWithTimeout(vocalUrl, undefined, env.asrExternalTimeoutMs, `Vocal stem download timed out after ${Math.round(env.asrExternalTimeoutMs / 1000)}s`);
       if (!vocalResponse.ok) {
         throw new Error(`Separated vocal download failed with ${vocalResponse.status}`);
       }
@@ -283,7 +283,7 @@ function shouldDownloadBeforeReplicate(url: string): boolean {
 }
 
 async function downloadAudioFile(url: string): Promise<Blob> {
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url, undefined, env.asrReplicateTimeoutMs, `Audio download timed out after ${Math.round(env.asrReplicateTimeoutMs / 1000)}s`);
   if (!response.ok) {
     throw new Error(`audio download failed with ${response.status}`);
   }

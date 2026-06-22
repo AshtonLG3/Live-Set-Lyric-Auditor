@@ -13,6 +13,7 @@ import {
   Link2,
   ListMusic,
   Pencil,
+  Search,
   ShieldCheck,
   Sparkles
 } from "lucide-react";
@@ -42,9 +43,11 @@ import {
   formatSignedSeconds,
   formatSetlistPosition,
   manualVariantToComparison,
+  dropJoinedLines,
+  applyEditToComparison,
+  buildReviewedVariants,
   summarizeComparisons,
-  comparisonStatusOrder,
-  wordDiffSummary
+  comparisonStatusOrder
 } from "./studio-utils";
 
 export type { ReviewDecision, ReviewDecisions };
@@ -54,16 +57,26 @@ type Props = {
   health: HealthResponse | null;
   selectedTrack?: TrackCandidate;
   selectedEvent?: EventCandidate | null;
+  events: EventCandidate[];
+  eventCity: string;
+  eventDate: string;
   narration: NarrationResponse | null;
   error: string;
+  busy: boolean;
   decisions: ReviewDecisions;
   manualVariants: VariantCandidate[];
   onDecision: (id: string, decision: ReviewDecision) => void;
   editedTexts: Record<string, string>;
+  joinedLineIds: Record<string, true>;
   onEditLiveText: (comparisonId: string, newText: string) => void;
   onAddManualVariant: (variant: VariantCandidate) => void;
   onNarrate: () => Promise<void> | void;
   onCorrectTrack: (track: TrackCandidate) => Promise<void> | void;
+  onEventCityChange: (value: string) => void;
+  onEventDateChange: (value: string) => void;
+  onEventSearch: () => Promise<void> | void;
+  onEventSelect: (event: EventCandidate) => void;
+  onApplyEventContext: () => Promise<void> | void;
   onRetranscribe: () => Promise<void> | void;
   onVisitTrack: (track: TrackCandidate) => Promise<void> | void;
   onJoinLines: (current: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number], next: NonNullable<AnalysisJob["passport"]>["lineComparisons"][number]) => void;
@@ -78,33 +91,23 @@ export function AnalysisStudio(props: Props) {
   const [dismissedCorrectionJobId, setDismissedCorrectionJobId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [insertAfterTime, setInsertAfterTime] = useState(0);
+  const [eventEditorOpen, setEventEditorOpen] = useState(false);
   const passport = props.job?.passport;
   const recovery = props.job?.recovery;
   const clipSource = passport?.clip.source ?? recovery?.source;
   const track = passport?.track ?? (recovery ? undefined : props.selectedTrack);
   const event = passport ? passport.event : props.selectedEvent ?? null;
   const detectedVariants = passport?.variants ?? (props.job ? [] : previewVariants);
-  const variants = useMemo(() => [...detectedVariants, ...props.manualVariants], [detectedVariants, props.manualVariants]);
+  const variants = useMemo(
+    () => buildReviewedVariants([...detectedVariants, ...props.manualVariants], passport?.lineComparisons ?? [], props.editedTexts),
+    [detectedVariants, props.manualVariants, passport?.lineComparisons, props.editedTexts]
+  );
   const comparisonRows = useMemo(() => {
     const detectedRows = passport?.lineComparisons ?? [];
-    const merged = [...detectedRows, ...props.manualVariants.map(manualVariantToComparison)]
+    const merged = dropJoinedLines([...detectedRows, ...props.manualVariants.map(manualVariantToComparison)], props.joinedLineIds)
       .sort((a, b) => a.start - b.start || comparisonStatusOrder(a.status) - comparisonStatusOrder(b.status));
-    return merged.map((row) => {
-      const edited = props.editedTexts[row.id];
-      if (!edited || edited === row.liveText) return row;
-      const changedWords = wordDiffSummary(row.canonicalText ?? "", edited);
-      const hasChanges = changedWords.removed.length > 0 || changedWords.added.length > 0;
-      const newStatus = !row.canonicalText ? row.status
-        : hasChanges ? "changed" as const
-        : "matched" as const;
-      return {
-        ...row,
-        liveText: edited,
-        status: newStatus,
-        changedWords
-      };
-    });
-  }, [passport?.lineComparisons, props.manualVariants, props.editedTexts]);
+    return merged.map((row) => applyEditToComparison(row, props.editedTexts));
+  }, [passport?.lineComparisons, props.manualVariants, props.editedTexts, props.joinedLineIds]);
   const steps = props.job?.progress ?? defaultSteps;
   const completeSteps = steps.filter((step) => step.status === "complete").length;
   const progress = Math.round((completeSteps / Math.max(1, steps.length)) * 100);
@@ -141,6 +144,13 @@ export function AnalysisStudio(props: Props) {
   const ranWithoutResult = Boolean(props.job) && !hasPassport;
   const metricValue = (value: number) => (ranWithoutResult ? "—" : `${value}%`);
   const passportNeedsReview = Boolean(passport && (riskCount > 0 || overallConfidence < 70));
+  const canApplyEventContext = Boolean(
+    track &&
+    props.job &&
+    !active &&
+    !props.busy &&
+    (props.selectedEvent || props.eventCity.trim() || props.eventDate.trim())
+  );
   const waveStatus = active
     ? undefined
     : ranWithoutResult
@@ -211,6 +221,32 @@ export function AnalysisStudio(props: Props) {
               ? <a className="studio-context-link" href={event.url} target="_blank" rel="noreferrer"><strong>{event.venue}</strong></a>
               : <strong>{event?.venue ?? "No event selected"}</strong>}
             <span>{event ? `${event.city} · ${formatEventDate(event.date)}` : "Add city and date for event context"}</span>
+            <button type="button" className="studio-correction-toggle" onClick={() => setEventEditorOpen((open) => !open)}>
+              <CalendarDays size={13} /> {event ? "Change event" : "Add event context"}
+            </button>
+            {(!event || eventEditorOpen) && (
+              <div className="studio-context-event-editor">
+                <div className="studio-event-fields">
+                  <input className="field" value={props.eventCity} onChange={(change) => props.onEventCityChange(change.target.value)} aria-label="Analysis event city" placeholder="City, venue, or market" />
+                  <input className="field" type="date" value={props.eventDate} onChange={(change) => props.onEventDateChange(change.target.value)} aria-label="Analysis event date" />
+                </div>
+                <div className="studio-event-actions">
+                  <button type="button" className="studio-secondary-button" disabled={!track || props.busy} onClick={() => void props.onEventSearch()}><Search size={14} /> Find JamBase</button>
+                  <button type="button" className="studio-secondary-button" disabled={!canApplyEventContext} onClick={() => void props.onApplyEventContext()}><CheckCircle2 size={14} /> {props.busy ? "Applying" : "Apply to Passport"}</button>
+                </div>
+                {props.events.length > 0 && (
+                  <div className="studio-context-event-results" aria-label="JamBase event results">
+                    {props.events.map((candidate) => (
+                      <button type="button" key={candidate.id} className={props.selectedEvent?.id === candidate.id ? "active" : ""} onClick={() => props.onEventSelect(candidate)}>
+                        <span>{props.selectedEvent?.id === candidate.id ? <CheckCircle2 size={14} /> : null}</span>
+                        <strong>{candidate.title}</strong>
+                        <small>{candidate.venue} · {candidate.city} · {formatEventDate(candidate.date)}</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </ContextCard>
           <ContextCard icon={<Link2 size={17} />} label="Clip Evidence" status={clipSource ? formatSourceMode(clipSource.processingMode) : "Pending"}>
             <strong>{clipSource ? formatSourceMode(clipSource.kind) : "Pending"}</strong>

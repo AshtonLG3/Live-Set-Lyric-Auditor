@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { buildYouTubeExtractArgs, describeYouTubeExtractionFailure } from "./youtube";
+import { buildYouTubeExtractArgs, describeYouTubeExtractionFailure, extractProviderExcerpt } from "./youtube";
 
 describe("YouTube excerpt extraction", () => {
+  it("rejects an unsupported or lookalike live-link host before shelling out to yt-dlp", async () => {
+    await expect(extractProviderExcerpt({
+      kind: "live_link",
+      processingMode: "provider_excerpt",
+      provider: "youtube",
+      url: "https://youtube.com.attacker.example/watch?v=1",
+      startSeconds: 0,
+      endSeconds: 30
+    })).rejects.toThrow(/supported, authorized live-link/i);
+  });
+
   it("builds a bounded audio-only yt-dlp command without a shell", () => {
     expect(buildYouTubeExtractArgs(
       "https://www.youtube.com/watch?v=video-1",

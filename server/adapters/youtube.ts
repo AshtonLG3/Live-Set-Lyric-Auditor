@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { ClipSource } from "../../shared/types";
 import { env } from "../config";
 import { assertYouTubeTooling } from "../services/media";
-import { isYouTubeUrl } from "../source-validation";
+import { detectLiveLinkProvider } from "../source-validation";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,9 +14,10 @@ type YouTubeExtractOptions = {
   cookiesFile?: string;
 };
 
-export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express.Multer.File> {
-  if (source.kind !== "live_link" || source.provider !== "youtube" || !source.url || !isYouTubeUrl(source.url)) {
-    throw new Error("A valid YouTube source is required for provider extraction.");
+export async function extractProviderExcerpt(source: ClipSource): Promise<Express.Multer.File> {
+  const provider = source.kind === "live_link" && source.url ? detectLiveLinkProvider(source.url) : null;
+  if (!source.url || !provider || (source.provider && source.provider !== provider)) {
+    throw new Error("A supported, authorized live-link URL (YouTube, Vimeo, or Twitch) is required for provider extraction.");
   }
 
   const start = Math.max(0, Number(source.startSeconds ?? 0));
@@ -41,7 +42,7 @@ export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express
     }
     return {
       fieldname: "clip",
-      originalname: `youtube-${Math.round(start)}-${Math.round(end)}.mp3`,
+      originalname: `${provider}-${Math.round(start)}-${Math.round(end)}.mp3`,
       encoding: "7bit",
       mimetype: "audio/mpeg",
       size: buffer.length,
@@ -53,9 +54,9 @@ export async function extractYouTubeExcerpt(source: ClipSource): Promise<Express
     };
   } catch (error) {
     if (isTimeoutError(error)) {
-      throw new Error(`Could not retrieve the selected YouTube range: extraction timed out after ${Math.round(env.youtubeExtractTimeoutMs / 1000)} seconds. Attach an authorized excerpt instead.`);
+      throw new Error(`Could not retrieve the selected ${provider} range: extraction timed out after ${Math.round(env.youtubeExtractTimeoutMs / 1000)} seconds. Attach an authorized excerpt instead.`);
     }
-    throw new Error(`Could not retrieve the selected YouTube range: ${describeYouTubeExtractionFailure(error, hasConfiguredYouTubeCookies())}`);
+    throw new Error(`Could not retrieve the selected ${provider} range: ${describeYouTubeExtractionFailure(error, hasConfiguredYouTubeCookies())}`);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
