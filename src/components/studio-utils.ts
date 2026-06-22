@@ -7,7 +7,7 @@ export type ReviewDecisions = Partial<Record<string, ReviewDecision>>;
 export function matchesFilter(variant: VariantCandidate, filter: FilterMode) {
   if (filter === "all") return true;
   if (filter === "risk") return variant.confidence < 0.7 || variant.translationRisk === "high" || variant.type === "uncertain" || variant.type === "skipped_line";
-  return ["adlib", "city_shoutout", "crowd_response", "extension", "repeated_hook", "timing_drift"].includes(variant.type);
+  return ["adlib", "city_shoutout", "crowd_response", "extension", "repeated_hook", "timing_drift", "interpolation", "censored", "code_switching"].includes(variant.type);
 }
 
 export function filterDescription(filter: FilterMode) {

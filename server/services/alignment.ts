@@ -656,6 +656,9 @@ function classifyAlignment(alignment: AlignmentResult, previous?: AlignmentResul
   if (hasProfanitySwap(tokens, canonicalTokens)) {
     return "censored";
   }
+  if (hasCodeSwitchingSignal(alignment.transcript.text, tokens) && alignment.similarity < 0.82) {
+    return "code_switching";
+  }
   if (alignment.similarity >= 0.7 && alignment.timingDelta >= 2.5) {
     return "timing_drift";
   }
@@ -709,6 +712,20 @@ const profanityWords = new Set([
   "fuck", "fucking", "fuckin", "motherfucker", "dick", "pussy", "nigga", "nigger"
 ]);
 
+const codeSwitchSignals = new Set([
+  "amor", "baila", "bailando", "beso", "corazon", "mami", "vamos", "vida",
+  "bonjour", "merci", "nuit", "oui",
+  "habibi", "habibti", "yalla",
+  "sawubona", "ngiyabonga", "ubuntu",
+  "amapiano", "shukran", "namaste"
+]);
+
+const codeSwitchPhrases = [
+  "mi amor",
+  "mon amour",
+  "te amo"
+];
+
 // A profanity present on exactly one side of an otherwise-matched line is a
 // clean<->explicit swap (radio edit or live self-censoring), not a generic
 // word substitution.
@@ -718,6 +735,14 @@ function hasProfanitySwap(liveTokens: string[], canonicalTokens: string[]): bool
   const liveOnly = [...live].some((token) => profanityWords.has(token) && !canonical.has(token));
   const canonicalOnly = [...canonical].some((token) => profanityWords.has(token) && !live.has(token));
   return liveOnly || canonicalOnly;
+}
+
+function hasCodeSwitchingSignal(liveText: string, liveTokens: string[]): boolean {
+  if (/[\p{Script=Arabic}\p{Script=Cyrillic}\p{Script=Devanagari}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hebrew}]/u.test(liveText)) {
+    return true;
+  }
+  const normalized = normalizeText(liveText);
+  return codeSwitchPhrases.some((phrase) => normalized.includes(phrase)) || liveTokens.some((token) => codeSwitchSignals.has(token));
 }
 
 function variantEvidenceTier(alignment: AlignmentResult, type: VariantType, sourceCoverage: number): EvidenceTier {
@@ -772,6 +797,7 @@ function scoreVariantConfidence(asr: number, similarity: number, sourceCoverage:
     crowd_response: 0.07,
     interpolation: 0.0,
     censored: 0.04,
+    code_switching: 0.03,
     adlib: -0.02,
     timing_drift: 0.02,
     uncertain: -0.18
@@ -791,6 +817,7 @@ function impactNote(type: VariantType, confidence: number): string {
     crowd_response: "audience response or call-and-response moment missing from automated transcription.",
     interpolation: "snippet of another song woven into the performance; flag for medley/interpolation handling and separate rights review.",
     censored: "explicit/clean word swap (radio-style edit or live self-censoring) that matters for lyric QA and the right rights version.",
+    code_switching: "multilingual or code-switched live wording that needs language-aware lyric review.",
     adlib: "unmatched vocal phrase likely outside the canonical lyric reference.",
     timing_drift: "timing offset that can affect subtitle alignment.",
     uncertain: "weak signal that should remain in review rather than automation."
@@ -808,6 +835,7 @@ function recommendedAction(type: VariantType): string {
     crowd_response: "Add as an audience-response caption or live-performance annotation.",
     interpolation: "Tag as an interpolation/medley and identify the source song separately.",
     censored: "Confirm the clean/explicit swap and route it to the correct lyric version.",
+    code_switching: "Confirm the language switch and route it to language-aware lyric review.",
     adlib: "Mark as live ad-lib after human review.",
     timing_drift: "Review RichSync timing against the performance tempo.",
     uncertain: "Keep in the review queue and avoid automated edits."
@@ -816,7 +844,7 @@ function recommendedAction(type: VariantType): string {
 }
 
 function translationRisk(type: VariantType): VariantCandidate["translationRisk"] {
-  if (type === "substitution" || type === "skipped_line" || type === "censored") return "high";
+  if (type === "substitution" || type === "skipped_line" || type === "censored" || type === "code_switching") return "high";
   if (type === "city_shoutout" || type === "crowd_response" || type === "extension" || type === "adlib" || type === "interpolation") return "medium";
   return "low";
 }
@@ -861,6 +889,7 @@ function structureLabel(type: VariantType): string {
     crowd_response: "Crowd response",
     interpolation: "Interpolation",
     censored: "Censored swap",
+    code_switching: "Code-switching",
     adlib: "Ad-lib",
     timing_drift: "Tempo drift",
     uncertain: "Uncertain section"

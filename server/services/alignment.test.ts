@@ -200,6 +200,15 @@ describe("alignment pipeline", () => {
     expect(variants.some((variant) => variant.type === "censored")).toBe(true);
   });
 
+  it("flags a multilingual code-switched live line", () => {
+    const canonicalLines = [{ id: "L1", start: 0, end: 4, text: "dance with me under the lights tonight" }];
+    const alignments = alignTranscript([
+      { id: "T1", start: 0, end: 4, text: "baila with me under the lights tonight", confidence: 0.9 }
+    ], canonicalLines);
+    const variants = classifyVariants(alignments, canonicalLines, 0.9);
+    expect(variants.some((variant) => variant.type === "code_switching")).toBe(true);
+  });
+
   it("anchors a chorus reprise in song order instead of an earlier duplicate", () => {
     const canonicalLines = [
       { id: "L1", start: 0, end: 4, text: "verse one alpha bravo" },

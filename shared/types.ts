@@ -168,6 +168,7 @@ export type VariantType =
   | "crowd_response"
   | "interpolation"
   | "censored"
+  | "code_switching"
   | "adlib"
   | "timing_drift"
   | "uncertain";
