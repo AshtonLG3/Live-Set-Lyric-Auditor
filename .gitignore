@@ -22,3 +22,4 @@ demo/slides/
 demo/tmp/
 demo/*.wav
 demo/*.webm
+.assistant-local/
