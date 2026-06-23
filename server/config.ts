@@ -57,7 +57,9 @@ export const env = {
   youtubeCookiesFile: process.env.YOUTUBE_COOKIES_FILE?.trim() || process.env.YOUTUBE_COOKIES_PATH?.trim(),
   youtubeCookiesBase64: process.env.YOUTUBE_COOKIES_BASE64?.trim(),
   youtubeCookies: process.env.YOUTUBE_COOKIES?.trim(),
-  youtubeExtractionEnabled: youtubeExtractionFlag ?? youtubeCookiesConfigured,
+  youtubeExtractionEnabled: youtubeExtractionFlag ?? (youtubeCookiesConfigured || configured("EXTRACT_WORKER_URL")),
+  extractWorkerUrl: process.env.EXTRACT_WORKER_URL?.trim(),
+  extractWorkerToken: process.env.EXTRACT_WORKER_TOKEN?.trim(),
   audioIdProvider: audioIdProvider
     ?? (acrCloudConfigured ? "acrcloud" : customAudioIdConfigured ? "custom" : undefined),
   audioIdApiUrl: process.env.AUDIO_ID_API_URL?.trim() || process.env.MUSIXMATCH_AUDIO_ID_API_URL?.trim(),

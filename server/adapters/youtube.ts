@@ -7,6 +7,7 @@ import type { ClipSource } from "../../shared/types";
 import { env } from "../config";
 import { assertYouTubeTooling } from "../services/media";
 import { detectLiveLinkProvider } from "../source-validation";
+import { fetchWithTimeout } from "./timeout";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,13 @@ export async function extractProviderExcerpt(source: ClipSource): Promise<Expres
   const end = Number(source.endSeconds ?? 0);
   if (!Number.isFinite(end) || end <= start) {
     throw new Error("The YouTube excerpt end must be after its start.");
+  }
+
+  // When a residential-IP extraction worker is configured (e.g. for a hosted demo whose
+  // datacenter IP YouTube blocks), delegate the actual yt-dlp run to it. Everything downstream
+  // is identical — the worker just returns the mp3 from an IP YouTube trusts.
+  if (env.extractWorkerUrl) {
+    return extractViaWorker(env.extractWorkerUrl, source.url, provider, start, end);
   }
 
   const directory = await mkdtemp(join(tmpdir(), "lsla-youtube-"));
@@ -60,6 +68,39 @@ export async function extractProviderExcerpt(source: ClipSource): Promise<Expres
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+async function extractViaWorker(workerUrl: string, url: string, provider: string, start: number, end: number): Promise<Express.Multer.File> {
+  const response = await fetchWithTimeout(
+    `${workerUrl.replace(/\/+$/, "")}/extract`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-worker-token": env.extractWorkerToken ?? "" },
+      body: JSON.stringify({ url, start, end, provider })
+    },
+    120_000,
+    `Could not retrieve the selected ${provider} range: the extraction worker timed out. Attach an authorized excerpt instead.`
+  );
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).trim().slice(0, 200);
+    throw new Error(`Could not retrieve the selected ${provider} range: extraction worker returned ${response.status}${detail ? ` (${detail})` : ""}. Attach an authorized excerpt instead.`);
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) {
+    throw new Error("The extraction worker returned an empty excerpt.");
+  }
+  return {
+    fieldname: "clip",
+    originalname: `${provider}-${Math.round(start)}-${Math.round(end)}.mp3`,
+    encoding: "7bit",
+    mimetype: "audio/mpeg",
+    size: buffer.length,
+    buffer,
+    stream: undefined as never,
+    destination: "",
+    filename: "",
+    path: ""
+  };
 }
 
 export function buildYouTubeExtractArgs(

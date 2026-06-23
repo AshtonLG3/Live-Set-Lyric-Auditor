@@ -1,7 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildYouTubeExtractArgs, describeYouTubeExtractionFailure, extractProviderExcerpt } from "./youtube";
 
 describe("YouTube excerpt extraction", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("delegates extraction to a configured worker instead of running yt-dlp locally", async () => {
+    vi.stubEnv("EXTRACT_WORKER_URL", "https://worker.example");
+    vi.stubEnv("EXTRACT_WORKER_TOKEN", "secret");
+    vi.resetModules();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { "Content-Type": "audio/mpeg" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { extractProviderExcerpt: extract } = await import("./youtube");
+    const file = await extract({ kind: "live_link", processingMode: "provider_excerpt", provider: "youtube", url: "https://www.youtube.com/watch?v=abc123", startSeconds: 0, endSeconds: 20 });
+
+    expect(file).toMatchObject({ mimetype: "audio/mpeg", size: 4 });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("https://worker.example/extract");
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)["x-worker-token"]).toBe("secret");
+    expect(JSON.parse(String(init.body))).toMatchObject({ url: "https://www.youtube.com/watch?v=abc123", start: 0, end: 20 });
+  });
+
   it("rejects an unsupported or lookalike live-link host before shelling out to yt-dlp", async () => {
     await expect(extractProviderExcerpt({
       kind: "live_link",

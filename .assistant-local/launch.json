@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mangezi-site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "C:/Users/mangezi/mangezi.xyz"],
+      "port": 8765
+    },
+    {
+      "name": "lyric-auditor",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 4242,
+      "autoPort": true
+    }
+  ]
+}
