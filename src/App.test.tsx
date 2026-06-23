@@ -568,6 +568,22 @@ it("warns and blocks analysis for an unsupported or unsafe live link", async () 
   expect(screen.getByRole("button", { name: /Paste a supported link/i })).toBeDisabled();
 });
 
+it("shows a no-events message when JamBase returns nothing for the city and date", async () => {
+  const baseFetch = fetch;
+  const noEventJob: AnalysisJob = { ...completeJob, passport: { ...completeJob.passport!, event: null, liveContext: null } };
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") return jsonResponse(noEventJob);
+    if (url.toString().startsWith("/api/events/search")) return jsonResponse({ events: [] });
+    return baseFetch(url, init);
+  }));
+  render(<App />);
+  await runUploadedClip();
+  expect(await screen.findByText("No event selected")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Analysis event city"), { target: { value: "Liberty Lunch, Austin" } });
+  fireEvent.click(screen.getByRole("button", { name: /Find JamBase/i }));
+  expect(await screen.findByText(/No JamBase events found for this artist near Liberty Lunch, Austin/i)).toBeInTheDocument();
+}, 60000);
+
 it("collapses the empty Live Context to a single value-prop prompt when no event is anchored", async () => {
   const noEventJob = { ...completeJob, passport: { ...completeJob.passport, event: null, liveContext: null } };
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {

@@ -36,6 +36,7 @@ export default function App() {
   const [eventDate, setEventDate] = useState("");
   const [events, setEvents] = useState<EventCandidate[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<EventCandidate | null | undefined>();
+  const [eventSearched, setEventSearched] = useState(false);
   const [job, setJob] = useState<AnalysisJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -81,6 +82,7 @@ export default function App() {
     if (!selectedTrack) {
       setEvents([]);
       setSelectedEvent(null);
+      setEventSearched(false);
       return;
     }
     const hasEventHint = Boolean(eventCity.trim() || eventDate.trim());
@@ -88,10 +90,12 @@ export default function App() {
       .then((items) => {
         setEvents(items);
         setSelectedEvent(hasEventHint ? items[0] ?? null : null);
+        setEventSearched(hasEventHint);
       })
       .catch(() => {
         setEvents([]);
         setSelectedEvent(null);
+        setEventSearched(hasEventHint);
       });
   }, [selectedTrack, eventCity, eventDate]);
 
@@ -137,6 +141,7 @@ export default function App() {
     const items = await searchEvents({ artist: selectedTrack.artist, city: eventCity, date: eventDate });
     setEvents(items);
     setSelectedEvent(hasEventHint ? items[0] ?? null : null);
+    setEventSearched(true);
   }
 
   async function handleAnalyze(input: IntakeAnalysisInput) {
@@ -502,6 +507,7 @@ export default function App() {
               selectedEvent={selectedEvent}
               eventCity={eventCity}
               eventDate={eventDate}
+              eventSearched={eventSearched}
               busy={busy}
               error={error}
               onAnalyze={handleAnalyze}
@@ -523,6 +529,7 @@ export default function App() {
               events={events}
               eventCity={eventCity}
               eventDate={eventDate}
+              eventSearched={eventSearched}
               narration={narration}
               error={error}
               busy={busy}

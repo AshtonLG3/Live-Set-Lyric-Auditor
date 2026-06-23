@@ -47,7 +47,8 @@ import {
   applyEditToComparison,
   buildReviewedVariants,
   summarizeComparisons,
-  comparisonStatusOrder
+  comparisonStatusOrder,
+  normalizePartialDate
 } from "./studio-utils";
 
 export type { ReviewDecision, ReviewDecisions };
@@ -60,6 +61,7 @@ type Props = {
   events: EventCandidate[];
   eventCity: string;
   eventDate: string;
+  eventSearched: boolean;
   narration: NarrationResponse | null;
   error: string;
   busy: boolean;
@@ -228,12 +230,15 @@ export function AnalysisStudio(props: Props) {
               <div className="studio-context-event-editor">
                 <div className="studio-event-fields">
                   <input className="field" value={props.eventCity} onChange={(change) => props.onEventCityChange(change.target.value)} aria-label="Analysis event city" placeholder="City, venue, or market" />
-                  <input className="field" type="date" value={props.eventDate} onChange={(change) => props.onEventDateChange(change.target.value)} aria-label="Analysis event date" />
+                  <input className="field" value={props.eventDate} onChange={(change) => props.onEventDateChange(change.target.value)} onBlur={() => props.onEventDateChange(normalizePartialDate(props.eventDate))} aria-label="Analysis event date" placeholder="Year, month, or date (2023 · 2023-09 · 2023-09-11)" />
                 </div>
                 <div className="studio-event-actions">
                   <button type="button" className="studio-secondary-button" disabled={!track || props.busy} onClick={() => void props.onEventSearch()}><Search size={14} /> Find JamBase</button>
                   <button type="button" className="studio-secondary-button" disabled={!canApplyEventContext} onClick={() => void props.onApplyEventContext()}><CheckCircle2 size={14} /> {props.busy ? "Applying" : "Apply to Passport"}</button>
                 </div>
+                {props.eventSearched && props.events.length === 0 && (props.eventCity.trim() || props.eventDate.trim()) && !props.busy && (
+                  <p className="studio-event-empty">No JamBase events found for this artist near {[props.eventCity.trim(), props.eventDate.trim()].filter(Boolean).join(" · ")}. JamBase lists current and recent tours, so older or unlisted shows won't appear here.</p>
+                )}
                 {props.events.length > 0 && (
                   <div className="studio-context-event-results" aria-label="JamBase event results">
                     {props.events.map((candidate) => (

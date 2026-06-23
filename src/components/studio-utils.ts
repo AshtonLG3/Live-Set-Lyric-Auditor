@@ -125,6 +125,22 @@ export function dropJoinedLines<T extends { id: string }>(rows: T[], joinedLineI
   return rows.filter((row) => !joinedLineIds[row.id]);
 }
 
+// Canonicalize a partial show date a reviewer typed into "YYYY", "YYYY-MM", or "YYYY-MM-DD"
+// (zero-padded; "/" or "-" separators accepted). The day — and even the month — are optional,
+// because exact show dates are hard to recall; JamBase event search prefix-matches these, so a
+// month is enough to find the show. Unparseable input is returned trimmed and unchanged.
+export function normalizePartialDate(value: string): string {
+  const parts = value.trim().split(/[/.\s-]+/).filter(Boolean);
+  const [year, month, day] = parts;
+  if (!year || !/^\d{4}$/.test(year)) {
+    return value.trim();
+  }
+  const segments = [year];
+  if (month) segments.push(String(month).padStart(2, "0"));
+  if (month && day) segments.push(String(day).padStart(2, "0"));
+  return segments.join("-");
+}
+
 // Apply a reviewer's text edit to a single comparison: replace the live text, recompute the
 // word-level diff, and re-derive the status. This is the ONE place an edit is applied to a row,
 // so the on-screen diff and the exported passport can never drift apart. No edit -> same object.

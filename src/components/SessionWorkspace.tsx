@@ -11,6 +11,7 @@ import {
 import type { EventCandidate, HealthResponse, IntegrationName, TrackCandidate } from "../../shared/types";
 import { formatEventDate } from "../../shared/format";
 import { ClipIntake, type IntakeAnalysisInput } from "./ClipIntake";
+import { normalizePartialDate } from "./studio-utils";
 
 type Props = {
   health: HealthResponse | null;
@@ -21,6 +22,7 @@ type Props = {
   selectedEvent?: EventCandidate | null;
   eventCity: string;
   eventDate: string;
+  eventSearched: boolean;
   busy: boolean;
   error: string;
   onAnalyze: (input: IntakeAnalysisInput) => Promise<void> | void;
@@ -108,9 +110,12 @@ export function SessionWorkspace(props: Props) {
             <p className="studio-panel-intro">City or date also auto-finds JamBase context after track identification.</p>
             <div className="studio-event-fields">
               <input className="field" value={props.eventCity} onChange={(event) => props.onEventCityChange(event.target.value)} aria-label="Event city" placeholder="City, venue, or market" />
-              <input className="field" type="date" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} aria-label="Event date" />
+              <input className="field" value={props.eventDate} onChange={(event) => props.onEventDateChange(event.target.value)} onBlur={() => props.onEventDateChange(normalizePartialDate(props.eventDate))} aria-label="Event date" placeholder="Year, month, or date" />
             </div>
             <button className="studio-ghost-button" onClick={() => void props.onEventSearch()}><CalendarDays size={16} /> Find JamBase event</button>
+            {props.eventSearched && props.events.length === 0 && (props.eventCity.trim() || props.eventDate.trim()) && !props.busy && (
+              <p className="studio-event-empty">No JamBase events found near {[props.eventCity.trim(), props.eventDate.trim()].filter(Boolean).join(" · ")}. JamBase lists current and recent tours, so older or unlisted shows won't appear.</p>
+            )}
             <div className="studio-choice-list">
               {props.events.map((event) => (
                 <button key={event.id} className={`studio-choice-row ${props.selectedEvent?.id === event.id ? "active" : ""}`} onClick={() => props.onEventSelect(event)}>

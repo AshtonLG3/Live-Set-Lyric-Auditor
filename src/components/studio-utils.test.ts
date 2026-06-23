@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { applyEditToComparison, applyLineJoin, buildReviewedVariants, dropJoinedLines } from "./studio-utils";
+import { applyEditToComparison, applyLineJoin, buildReviewedVariants, dropJoinedLines, normalizePartialDate } from "./studio-utils";
 import type { LineComparison, VariantCandidate } from "../../shared/types";
+
+describe("normalizePartialDate", () => {
+  it("canonicalizes a full date, padding single digits and unifying separators", () => {
+    expect(normalizePartialDate("1993/9/1")).toBe("1993-09-01");
+    expect(normalizePartialDate("2023-09-11")).toBe("2023-09-11");
+  });
+
+  it("allows a year-month with the day omitted", () => {
+    expect(normalizePartialDate("2023-9")).toBe("2023-09");
+    expect(normalizePartialDate("2023/09")).toBe("2023-09");
+  });
+
+  it("allows a bare year when that is all the reviewer remembers", () => {
+    expect(normalizePartialDate("1993")).toBe("1993");
+  });
+
+  it("returns unparseable input trimmed and unchanged", () => {
+    expect(normalizePartialDate("  not a date ")).toBe("not a date");
+    expect(normalizePartialDate("")).toBe("");
+  });
+});
 
 function comparison(overrides: Partial<LineComparison> = {}): LineComparison {
   return {
