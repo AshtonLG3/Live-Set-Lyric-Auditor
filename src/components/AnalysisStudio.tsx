@@ -344,15 +344,21 @@ export function AnalysisStudio(props: Props) {
 
         <section className="studio-intelligence-grid" aria-label="Live and performance context">
           <article className="studio-panel studio-intelligence-card">
-            <div className="studio-panel-heading"><span><ListMusic size={17} /> Live Context</span><span className="studio-mono">{liveContext?.source === "jambase" ? "JamBase" : liveContext ? "Fallback" : "Pending"}</span></div>
+            <div className="studio-panel-heading"><span><ListMusic size={17} /> Live Context</span><span className="studio-mono">{liveContext?.source === "jambase" ? "JamBase" : liveContext ? "Fallback" : "Optional"}</span></div>
             <div className="studio-intelligence-body">
-              <div className="studio-data-list">
-                <DataLine label="Event" value={event ? `${event.venue}, ${event.city}` : "Event anchor pending"} />
-                <DataLine label="Tour / festival" value={liveContext?.tourName ?? liveContext?.festivalName ?? "Not supplied"} />
-                <DataLine label="Setlist position" value={formatSetlistPosition(liveContext?.setlist.position, liveContext?.setlist.songCount)} />
-                <DataLine label="Lineup" value={liveContext?.lineup.join(", ") || event?.artist || "Not supplied"} />
-              </div>
-              <p>{liveContext?.summary ?? "JamBase event, venue, lineup, and setlist evidence will appear after anchoring."}</p>
+              {event ? (
+                <>
+                  <div className="studio-data-list">
+                    <DataLine label="Event" value={`${event.venue}, ${event.city}`} />
+                    <DataLine label="Tour / festival" value={liveContext?.tourName ?? liveContext?.festivalName ?? "Not supplied"} />
+                    <DataLine label="Setlist position" value={formatSetlistPosition(liveContext?.setlist.position, liveContext?.setlist.songCount)} />
+                    <DataLine label="Lineup" value={liveContext?.lineup.join(", ") || event?.artist || "Not supplied"} />
+                  </div>
+                  <p>{liveContext?.summary ?? "JamBase event, venue, lineup, and setlist evidence will appear after anchoring."}</p>
+                </>
+              ) : (
+                <p>Optional: add the show's city and date in the Event Anchor to ground these variants to a verified JamBase event — venue, setlist position, and lineup then become part of the Passport evidence.</p>
+              )}
             </div>
           </article>
 

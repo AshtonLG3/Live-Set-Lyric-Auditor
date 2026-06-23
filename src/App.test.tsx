@@ -568,6 +568,23 @@ it("warns and blocks analysis for an unsupported or unsafe live link", async () 
   expect(screen.getByRole("button", { name: /Paste a supported link/i })).toBeDisabled();
 });
 
+it("collapses the empty Live Context to a single value-prop prompt when no event is anchored", async () => {
+  const noEventJob = { ...completeJob, passport: { ...completeJob.passport, event: null, liveContext: null } };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+    if (url === "/api/health") return jsonResponse(health);
+    if (url === "/api/analyze") return jsonResponse({ jobId: "job-1" }, 202);
+    if (url === "/api/analyze/job-1") return jsonResponse(noEventJob);
+    return jsonResponse({});
+  }));
+  render(<App />);
+  await runUploadedClip();
+  await waitFor(() => expect(screen.getByText("Passport Preview / Diff View")).toBeInTheDocument());
+  // The four-row pending grid is replaced by one actionable value-prop line.
+  expect(screen.getByText(/ground these variants to a verified JamBase event/i)).toBeInTheDocument();
+  expect(screen.queryByText("Setlist position")).not.toBeInTheDocument();
+  expect(screen.queryByText("Event anchor pending")).not.toBeInTheDocument();
+}, 60000);
+
 it("runs an uploaded clip and renders a passport", async () => {
   render(<App />);
   await runUploadedClip();
