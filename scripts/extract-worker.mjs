@@ -2,15 +2,16 @@
 // a home box, a Pi) so the hosted app can extract YouTube/Vimeo/Twitch clips from an IP those
 // hosts trust. The hosted app POSTs {url, start, end} here; this runs yt-dlp and returns the mp3.
 //
-// Requires: Node 20+, Python with yt-dlp (`python -m yt_dlp`), and ffmpeg on PATH.
+// Requires: Node 20+, Python with yt-dlp (`py -m yt_dlp` on Windows or `python3 -m yt_dlp`), and ffmpeg on PATH.
 //
 // Run it:
 //   $env:EXTRACT_WORKER_TOKEN = "pick-a-long-random-secret"      # PowerShell
+//   $env:YT_COOKIES_FROM_BROWSER = "firefox"                     # optional, helps YouTube bot/login checks
 //   node scripts/extract-worker.mjs
-// Then expose it with a stable tunnel (Cloudflare Tunnel recommended for judging week):
-//   cloudflared tunnel --url http://localhost:8745
+// Then expose it with a stable tunnel:
+//   ngrok http --domain=uptown-slush-ice.ngrok-free.dev 8745
 // Finally, in Replit Secrets set:
-//   EXTRACT_WORKER_URL  = <the https URL cloudflared prints>
+//   EXTRACT_WORKER_URL  = https://uptown-slush-ice.ngrok-free.dev
 //   EXTRACT_WORKER_TOKEN = <the same secret as above>
 // Stop the tunnel + this script when judging ends.
 
@@ -22,7 +23,10 @@ import { join } from "node:path";
 
 const PORT = Number(process.env.PORT ?? 8745);
 const TOKEN = (process.env.EXTRACT_WORKER_TOKEN ?? "").trim();
-const PYTHON = (process.env.PYTHON_COMMAND ?? "python").trim();
+const DEFAULT_PYTHON = process.platform === "win32" ? "py" : "python3";
+const PYTHON = (process.env.PYTHON_COMMAND ?? DEFAULT_PYTHON).trim();
+const YT_COOKIES_FILE = (process.env.YT_COOKIES_FILE ?? "").trim();
+const YT_COOKIES_FROM_BROWSER = (process.env.YT_COOKIES_FROM_BROWSER ?? "").trim();
 const MAX_RANGE_SECONDS = 60;
 
 // Only these hosts may be fetched — a yt-dlp run on an arbitrary URL would be an SSRF hole.
@@ -39,9 +43,16 @@ function isAllowed(value) {
   }
 }
 
+function cookieArgs() {
+  if (YT_COOKIES_FILE) return ["--cookies", YT_COOKIES_FILE];
+  if (YT_COOKIES_FROM_BROWSER) return ["--cookies-from-browser", YT_COOKIES_FROM_BROWSER];
+  return [];
+}
+
 function runYtDlp(url, start, end, outputPath) {
   const args = [
     "-m", "yt_dlp", "--no-playlist", "--no-warnings",
+    ...cookieArgs(),
     "--download-sections", `*${start}-${end}`, "--force-keyframes-at-cuts",
     "-x", "--audio-format", "mp3", "--audio-quality", "5",
     "-o", outputPath, url
@@ -110,4 +121,5 @@ if (!TOKEN) {
   process.exit(1);
 }
 
-server.listen(PORT, () => console.log(`Live-link extraction worker listening on http://localhost:${PORT}`));
+const cookieSource = YT_COOKIES_FILE ? `cookies file ${YT_COOKIES_FILE}` : (YT_COOKIES_FROM_BROWSER ? `browser cookies ${YT_COOKIES_FROM_BROWSER}` : "no cookies");
+server.listen(PORT, () => console.log(`Live-link extraction worker listening on http://localhost:${PORT} (${cookieSource})`));
