@@ -51,8 +51,14 @@ function cookieArgs() {
 
 function runYtDlp(url, start, end, outputPath) {
   const args = [
-    "-m", "yt_dlp", "--no-playlist", "--no-warnings",
+    "-m", "yt_dlp",
+    // Do not let a user's global yt-dlp config force a video-only or unavailable format.
+    "--ignore-config",
+    "--no-playlist", "--no-warnings",
     ...cookieArgs(),
+    // Force an audio-capable format. Some YouTube videos do not satisfy yt-dlp's default
+    // format choice after cookies/client changes, which shows up as "Requested format is not available".
+    "-f", "bestaudio[acodec!=none]/best[acodec!=none]/best",
     "--download-sections", `*${start}-${end}`, "--force-keyframes-at-cuts",
     "-x", "--audio-format", "mp3", "--audio-quality", "5",
     "-o", outputPath, url
