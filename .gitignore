@@ -12,6 +12,7 @@ uploads/
 tmp/
 .playwright-mcp/
 dev-server*.log
+prod-server*.log
 .codex-dev*.log
 .codex-qa/
 .remember/
