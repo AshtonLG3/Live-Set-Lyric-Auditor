@@ -45,8 +45,11 @@ describe("YouTube excerpt extraction", () => {
     )).toEqual([
       "-m",
       "yt_dlp",
+      "--ignore-config",
       "--no-playlist",
       "--no-warnings",
+      "-f",
+      "bestaudio[acodec!=none]/best[acodec!=none]/best",
       "--download-sections",
       "*12-42",
       "--force-keyframes-at-cuts",

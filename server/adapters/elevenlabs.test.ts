@@ -52,6 +52,20 @@ describe("ElevenLabs Scribe transcription", () => {
       expect.objectContaining({ signal: expect.any(Object) })
     );
   });
+
+  it("includes the provider error body when Scribe rejects an upload", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "elevenlabs-test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ detail: "Invalid media file. Try a supported audio format." }),
+      { status: 400 }
+    )));
+
+    const { transcribeWithElevenLabs } = await import("./elevenlabs");
+
+    await expect(transcribeWithElevenLabs(audioFile())).rejects.toThrow(
+      /ElevenLabs Scribe failed with 400: .*Invalid media file/i
+    );
+  });
 });
 
 function audioFile(): Express.Multer.File {

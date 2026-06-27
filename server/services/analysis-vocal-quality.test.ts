@@ -21,7 +21,9 @@ const mocks = vi.hoisted(() => {
     identifyTrackFromLyrics: vi.fn(),
     getCanonicalReference: vi.fn(),
     analyzePerformance: vi.fn(),
-    isolateVocalsWithLalal: vi.fn()
+    isolateVocalsWithLalal: vi.fn(),
+    extractProviderExcerpt: vi.fn(),
+    transcodeMediaToMp3: vi.fn()
   };
 });
 
@@ -51,6 +53,15 @@ vi.mock("../adapters/musixmatch", () => ({
 
 vi.mock("../adapters/cyanite", () => ({
   analyzePerformance: mocks.analyzePerformance
+}));
+
+vi.mock("../adapters/youtube", () => ({
+  extractProviderExcerpt: mocks.extractProviderExcerpt
+}));
+
+vi.mock("./media", () => ({
+  transcodeMediaToMp3: mocks.transcodeMediaToMp3,
+  trimMediaExcerptToMp3: vi.fn(async (file: Express.Multer.File) => file)
 }));
 
 describe("analysis vocal quality fallback", () => {
@@ -164,6 +175,75 @@ describe("analysis vocal quality fallback", () => {
     expect(analyzed?.passport?.clip.asrSource).toBe("external");
     expect(analyzed?.passport?.clip.asrEngine).toBe("elevenlabs/scribe_v2");
     expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(1);
+    expect(mocks.transcribeLiveVocal).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a provider excerpt and retries Scribe before using Whisper fallback", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "eleven-test-key");
+    vi.stubEnv("YOUTUBE_EXTRACTION_ENABLED", "true");
+    const providerFile = { ...audioFile(), originalname: "youtube-0-20.mp3" };
+    const normalizedFile = {
+      ...providerFile,
+      originalname: "youtube-0-20-normalized.mp3",
+      buffer: Buffer.from([5, 6, 7, 8]),
+      size: 4
+    };
+    mocks.extractProviderExcerpt.mockResolvedValue(providerFile);
+    mocks.transcodeMediaToMp3.mockResolvedValue(normalizedFile);
+    mocks.transcribeWithElevenLabs
+      .mockRejectedValueOnce(new Error("ElevenLabs Scribe failed with 400: Invalid media file."))
+      .mockResolvedValueOnce({
+        source: "external",
+        engine: "elevenlabs/scribe_v2",
+        segments: originalAudioSegments()
+      });
+    mocks.identifyTrackFromLyrics.mockResolvedValue(mocks.track);
+    mocks.getCanonicalReference.mockResolvedValue({
+      lines: [
+        { id: "L1", start: 0, end: 4, text: "Talk to God wonder if he's mad or angry" },
+        { id: "L2", start: 4, end: 8, text: "Listen God I know I've been sinning lately" }
+      ],
+      source: "lyrics",
+      sourceCoverage: 0.74,
+      restricted: false,
+      language: "en"
+    });
+    mocks.analyzePerformance.mockResolvedValue({
+      source: "fixture",
+      status: "fallback",
+      energyLevel: 0.62,
+      dominantEmotions: [],
+      instruments: [],
+      arrangement: "uncertain",
+      summary: "Fallback profile.",
+      confidence: 0.4
+    });
+
+    const { createJob, jobMedia, jobs } = await import("../store");
+    const { runAnalysis } = await import("./analysis");
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      autoMatch: true,
+      event: null,
+      durationSeconds: 20,
+      source: {
+        kind: "live_link",
+        processingMode: "provider_excerpt",
+        provider: "youtube",
+        url: "https://www.youtube.com/watch?v=abc123",
+        startSeconds: 0,
+        endSeconds: 20
+      }
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.passport?.clip.asrEngine).toBe("elevenlabs/scribe_v2");
+    expect(analyzed?.passport?.clip.vocalQuality?.detail).toContain("normalizing the provider excerpt");
+    expect(jobMedia.get(job.id)?.filename).toBe("youtube-0-20-normalized.mp3");
+    expect(mocks.transcribeWithElevenLabs).toHaveBeenCalledTimes(2);
+    expect(mocks.transcodeMediaToMp3).toHaveBeenCalledWith(providerFile, "scribe");
     expect(mocks.transcribeLiveVocal).not.toHaveBeenCalled();
   });
 

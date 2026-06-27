@@ -95,7 +95,8 @@ export async function transcribeWithElevenLabs(file: Express.Multer.File): Promi
     body: formData
   });
   if (!response.ok) {
-    throw new Error(`ElevenLabs Scribe failed with ${response.status}`);
+    const detail = await readErrorDetail(response);
+    throw new Error(`ElevenLabs Scribe failed with ${response.status}${detail ? `: ${detail}` : ""}`);
   }
 
   const json = await response.json() as ElevenLabsTranscriptResponse;
@@ -212,6 +213,19 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
     throw error;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function readErrorDetail(response: Response): Promise<string> {
+  try {
+    const body = await response.text();
+    return body
+      .replace(/\s+/g, " ")
+      .replace(/https?:\/\/\S+/g, "provider URL")
+      .slice(0, 240)
+      .trim();
+  } catch {
+    return "";
   }
 }
 

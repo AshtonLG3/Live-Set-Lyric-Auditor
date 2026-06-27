@@ -113,8 +113,11 @@ export function buildYouTubeExtractArgs(
   const args = [
     "-m",
     "yt_dlp",
+    "--ignore-config",
     "--no-playlist",
     "--no-warnings",
+    "-f",
+    "bestaudio[acodec!=none]/best[acodec!=none]/best",
     "--download-sections",
     `*${start}-${end}`,
     "--force-keyframes-at-cuts",

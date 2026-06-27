@@ -26,6 +26,7 @@ export const env = {
   cyaniteBaseUrl: process.env.CYANITE_API_BASE_URL ?? "https://api.cyanite.ai/graphql",
   cyaniteWebhookUrl: process.env.CYANITE_WEBHOOK_URL,
   cyaniteRequestTimeoutMs: Math.min(30_000, Math.max(3_000, Number(process.env.CYANITE_REQUEST_TIMEOUT_MS ?? 12_000))),
+  passportPerformanceGraceMs: Math.min(5_000, Math.max(0, Number(process.env.PASSPORT_PERFORMANCE_GRACE_MS ?? 800))),
   lalalKey: process.env.LALAL_LICENSE_KEY,
   lalalBaseUrl: process.env.LALAL_API_BASE_URL ?? "https://www.lalal.ai/api/v1",
   lalalPollIntervalMs: Math.max(2_000, Number(process.env.LALAL_POLL_INTERVAL_MS ?? 3_000)),

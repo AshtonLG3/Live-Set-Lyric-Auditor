@@ -15,7 +15,7 @@ import { env } from "../config";
 import { PublicError } from "../errors";
 import { jobMedia, jobs, setStep, updateJob } from "../store";
 import { buildPassport } from "./alignment";
-import { trimMediaExcerptToMp3 } from "./media";
+import { transcodeMediaToMp3, trimMediaExcerptToMp3 } from "./media";
 import { assessVocalTranscript, buildFallbackQualityReport, shouldRejectSeparatedStem } from "./vocal-quality";
 
 export type AnalyzeInput = {
@@ -66,6 +66,9 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
 
     setStep(jobId, "ingest", "running");
     const recallSegments = normalizeRecallSegments(input.recallSegments);
+    if (input.source?.kind === "live_link" && input.source.processingMode === "provider_excerpt") {
+      setStep(jobId, "ingest", "running", `Fetching selected ${providerLabel(input.source)} range for the live-link excerpt.`);
+    }
     const analysisFile = await resolveAnalysisFile(input);
     const effectiveSource = analysisFile && !input.file && input.source?.kind === "live_link"
       ? { ...input.source, processingMode: "provider_excerpt" as const }
@@ -145,7 +148,7 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     }));
 
     setStep(jobId, "transcribe", "running");
-    let selected = await selectVocalTranscription(jobId, analysisFile, initialVocal, recallSegments);
+    let selected = await selectVocalTranscription(jobId, analysisFile, initialVocal, recallSegments, effectiveSource);
     setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
 
     const persistRecovery = () => updateJob(jobId, (job) => ({
@@ -247,11 +250,9 @@ function fallbackPerformanceContext(error: unknown): PerformanceContext {
   return fixturePerformanceContext;
 }
 
-const PASSPORT_PERFORMANCE_GRACE_MS = 2500;
-
 export async function settlePerformanceContext(
   promise: Promise<PerformanceContext>,
-  graceMs: number = PASSPORT_PERFORMANCE_GRACE_MS
+  graceMs: number = env.passportPerformanceGraceMs
 ): Promise<PerformanceContext> {
   // Cyanite is a supplementary profile and routinely outlasts its own poll window, so it must
   // never block the user-facing passport. It already ran in parallel with transcribe/anchor/
@@ -673,7 +674,8 @@ async function selectVocalTranscription(
   jobId: string,
   analysisFile: Express.Multer.File | undefined,
   vocal: VocalIsolationResult,
-  recallSegments: TranscriptSegment[]
+  recallSegments: TranscriptSegment[],
+  effectiveSource?: ClipSource
 ): Promise<VocalTranscriptionSelection> {
   if (recallSegments.length && !analysisFile) {
     const transcription = { source: "external" as const, segments: recallSegments };
@@ -686,16 +688,19 @@ async function selectVocalTranscription(
 
   let scribeError: string | undefined;
   if (analysisFile && !vocal.vocalUrl && env.elevenlabsKey) {
-    const scribeVocal = {
-      ...vocal,
-      detail: "ElevenLabs Scribe selected as the primary ASR engine on original audio."
-    };
     try {
-      const transcription = await transcribeWithElevenLabs(analysisFile);
+      const scribe = await transcribeWithPrimaryScribe(jobId, analysisFile, effectiveSource);
+      const scribeVocal = {
+        ...vocal,
+        detail: scribe.normalized
+          ? "ElevenLabs Scribe selected as the primary ASR engine after normalizing the provider excerpt."
+          : "ElevenLabs Scribe selected as the primary ASR engine on original audio."
+      };
+      const vocalQuality = addIsolationDetail(assessVocalTranscript(scribe.transcription.segments, vocal.source), scribeVocal);
       return {
-        transcription,
+        transcription: scribe.transcription,
         vocal: scribeVocal,
-        vocalQuality: addIsolationDetail(assessVocalTranscript(transcription.segments, vocal.source), scribeVocal)
+        vocalQuality: scribe.normalized ? appendVocalDetail(vocalQuality, scribeVocal.detail) : vocalQuality
       };
     } catch (error) {
       scribeError = error instanceof Error ? error.message : "ElevenLabs Scribe transcription failed";
@@ -768,6 +773,44 @@ async function selectVocalTranscription(
   }
 
   return primary;
+}
+
+async function transcribeWithPrimaryScribe(
+  jobId: string,
+  file: Express.Multer.File,
+  effectiveSource?: ClipSource
+): Promise<{ transcription: TranscriptionResult; normalized: boolean }> {
+  try {
+    return { transcription: await transcribeWithElevenLabs(file), normalized: false };
+  } catch (error) {
+    const firstError = error instanceof Error ? error.message : "ElevenLabs Scribe transcription failed";
+    if (!isProviderExcerptSource(effectiveSource) || !shouldRetryScribeWithNormalizedExcerpt(firstError)) {
+      throw new Error(firstError);
+    }
+
+    setStep(jobId, "transcribe", "running", `Scribe rejected the provider excerpt; normalizing MP3 and retrying. ${firstError}`);
+    try {
+      const normalized = await transcodeMediaToMp3(file, "scribe");
+      const transcription = await transcribeWithElevenLabs(normalized);
+      jobMedia.set(jobId, {
+        buffer: normalized.buffer,
+        mimetype: normalized.mimetype || "audio/mpeg",
+        filename: normalized.originalname
+      });
+      return { transcription, normalized: true };
+    } catch (retryError) {
+      const retryDetail = retryError instanceof Error ? retryError.message : "normalized provider excerpt retry failed";
+      throw new Error(`${firstError}; normalized provider excerpt retry failed: ${retryDetail}`);
+    }
+  }
+}
+
+function isProviderExcerptSource(source?: ClipSource): boolean {
+  return source?.kind === "live_link" && source.processingMode === "provider_excerpt";
+}
+
+function shouldRetryScribeWithNormalizedExcerpt(message: string): boolean {
+  return !/timed out|401|403|429|unauthorized|forbidden|api key|auth|quota|credit|rate limit|too many requests|model not found/i.test(message);
 }
 
 async function maybeRetryOriginalForAnchor(
@@ -913,6 +956,13 @@ function addIsolationDetail(report: VocalQualityReport, vocal: VocalIsolationRes
   return {
     ...report,
     detail: `${report.detail} ${vocal.detail}`
+  };
+}
+
+function appendVocalDetail(report: VocalQualityReport, detail: string): VocalQualityReport {
+  return {
+    ...report,
+    detail: `${report.detail} ${detail}`
   };
 }
 
