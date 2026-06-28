@@ -864,7 +864,9 @@ function scoreVersionConfidence(
         ? 0.86
         : matchMethod === "lyrics_rescue"
           ? 0.82
-          : 0.78;
+          : matchMethod === "fixture_rescue"
+            ? 0.78
+            : 0.42;
   return round(identitySignals * 0.38 + sourceBoost * 0.34 + methodBoost * 0.28);
 }
 

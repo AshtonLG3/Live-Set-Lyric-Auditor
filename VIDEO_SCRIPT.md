@@ -35,7 +35,7 @@
 
 ## Scene 2 — The problem + the product (0:12–0:32)
 
-**On screen:** App open on the **Dashboard**. Slowly pan the top bar — show `Live-Set Lyric Auditor v0.11.31`, the **runtime badge** ("API mode"), Dashboard/Analysis nav, and **Export Passport**. Land on the **Clip Intake** hero ("Start a Live Variant Passport") showing the two intake modes.
+**On screen:** App open on the **Dashboard**. Slowly pan the top bar — show `Live-Set Lyric Auditor v0.11.32`, the **runtime badge** ("API mode"), Dashboard/Analysis nav, and **Export Passport**. Land on the **Clip Intake** hero ("Start a Live Variant Passport") showing the two intake modes.
 
 **VO:** "Start with a short, noisy concert clip — uploaded, recorded on a phone, or even a lyric you half-remember. The app turns it into a timestamped *Live Variant Passport*: a line-by-line record of how the live performance differs from the studio canonical, with the evidence to back it up."
 

@@ -93,6 +93,36 @@ describe("analysis recovery", () => {
     expect(analyzed?.progress.find((step) => step.id === "isolate")?.detail).toContain("no vocal isolation needed");
   });
 
+  it("writes a metadata-only fallback passport when auto-match cannot anchor the saved transcript", async () => {
+    const job = createJob();
+
+    await runAnalysis(job.id, {
+      autoMatch: true,
+      trackQuery: "Roadside Fire by Unknown Opener",
+      source: { kind: "recall_recording", processingMode: "recall_recording" },
+      recallSegments: [
+        { id: "R1", start: 0, end: 3, text: "roadside fire keeps burning through the rain", confidence: 0.86 },
+        { id: "R2", start: 3, end: 7, text: "everybody sings the line we never wrote", confidence: 0.84 }
+      ]
+    });
+
+    const analyzed = jobs.get(job.id);
+    expect(analyzed?.status).toBe("complete");
+    expect(analyzed?.error).toBeUndefined();
+    expect(analyzed?.recovery).toBeUndefined();
+    expect(analyzed?.passport?.track).toMatchObject({
+      title: "Roadside Fire",
+      artist: "Unknown Opener",
+      source: "manual"
+    });
+    expect(analyzed?.passport?.recordingIdentity.matchMethod).toBe("fallback_writer");
+    expect(analyzed?.passport?.recordingIdentity.canonicalSource).toBe("metadata-only");
+    expect(analyzed?.passport?.rights.status).toBe("restricted");
+    expect(analyzed?.progress.find((step) => step.id === "anchor")?.status).toBe("complete");
+    expect(analyzed?.progress.find((step) => step.id === "compare")?.status).toBe("complete");
+    expect(analyzed?.progress.find((step) => step.id === "passport")?.status).toBe("complete");
+  });
+
   it("fails selected-track analysis when the transcript does not fit the chosen canonical song", async () => {
     const job = createJob();
 

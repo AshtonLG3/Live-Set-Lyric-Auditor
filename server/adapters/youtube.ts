@@ -78,7 +78,7 @@ async function extractViaWorker(workerUrl: string, url: string, provider: string
       headers: { "Content-Type": "application/json", "x-worker-token": env.extractWorkerToken ?? "" },
       body: JSON.stringify({ url, start, end, provider })
     },
-    120_000,
+    env.youtubeExtractTimeoutMs,
     `Could not retrieve the selected ${provider} range: the extraction worker timed out. Attach an authorized excerpt instead.`
   );
   if (!response.ok) {

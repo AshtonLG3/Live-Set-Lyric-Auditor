@@ -39,7 +39,7 @@ export const env = {
   elevenlabsKey: process.env.ELEVENLABS_API_KEY,
   elevenlabsVoiceId: process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
   elevenlabsSttModel: process.env.ELEVENLABS_STT_MODEL?.trim() || "scribe_v2",
-  elevenlabsSttTimeoutMs: Math.min(120_000, Math.max(10_000, Number(process.env.ELEVENLABS_STT_TIMEOUT_MS ?? 60_000))),
+  elevenlabsSttTimeoutMs: Math.min(60_000, Math.max(5_000, Number(process.env.ELEVENLABS_STT_TIMEOUT_MS ?? 20_000))),
   replicateToken: process.env.REPLICATE_API_TOKEN,
   replicateWhisperVersion: process.env.REPLICATE_WHISPER_VERSION
     ?? "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
@@ -54,7 +54,7 @@ export const env = {
   replicateDemucsStem: process.env.REPLICATE_DEMUCS_STEM?.trim() || "vocals",
   pythonCommand: process.env.PYTHON_COMMAND?.trim() || "python",
   ffmpegLocation: process.env.FFMPEG_LOCATION?.trim(),
-  youtubeExtractTimeoutMs: Math.min(60_000, Math.max(15_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 45_000))),
+  youtubeExtractTimeoutMs: Math.min(45_000, Math.max(8_000, Number(process.env.YOUTUBE_EXTRACT_TIMEOUT_MS ?? 25_000))),
   youtubeCookiesFile: process.env.YOUTUBE_COOKIES_FILE?.trim() || process.env.YOUTUBE_COOKIES_PATH?.trim(),
   youtubeCookiesBase64: process.env.YOUTUBE_COOKIES_BASE64?.trim(),
   youtubeCookies: process.env.YOUTUBE_COOKIES?.trim(),

@@ -2,7 +2,7 @@
   "name": "live-set-lyric-auditor",
   "private": true,
   "description": "A music-tech tool for documenting what artists actually sing live and turning live performance lyric changes into Live Variant Passports.",
-  "version": "0.11.31",
+  "version": "0.11.32",
   "type": "module",
   "engines": {
     "node": ">=20.6"

@@ -172,14 +172,15 @@ export async function runAnalysis(jobId: string, input: AnalyzeInput): Promise<v
     } catch (error) {
       const fallback = await maybeRetryOriginalForAnchor(jobId, input, analysisFile, selected, error);
       if (!fallback) {
-        throw error;
+        resolved = resolveFallbackWriterTrack(input, selected.transcription.segments, error);
+      } else {
+        selected = fallback;
+        setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
+        persistRecovery();
+        resolved = await resolveTrack(input, selected.transcription.segments, await audioIdentity).catch((retryError) =>
+          resolveFallbackWriterTrack(input, selected.transcription.segments, retryError)
+        );
       }
-      selected = fallback;
-      setStep(jobId, "transcribe", "complete", transcriptionDetail(selected));
-      persistRecovery();
-      resolved = await resolveTrack(input, selected.transcription.segments, await audioIdentity).catch(() => {
-        throw new Error("Auto-match could not confirm a Musixmatch track from the saved ASR transcript. The transcript was saved; choose the track manually to generate the Live Variant Passport without reprocessing the clip.");
-      });
     }
     let track = resolved.track;
     const event = await resolveEvent(input, track);
@@ -1044,6 +1045,75 @@ async function resolveTrack(
     throw new Error("The live transcript did not produce a confident Musixmatch track match. Select the track manually or use a clearer vocal excerpt.");
   }
   throw new Error("Choose a catalog track before running Selected track mode.");
+}
+
+function resolveFallbackWriterTrack(
+  input: AnalyzeInput,
+  transcript: TranscriptSegment[],
+  anchorError: unknown
+): {
+  track: TrackCandidate;
+  matchMethod: RecordingMatchMethod;
+  detail: string;
+} {
+  if (!input.autoMatch || transcript.length === 0) {
+    throw anchorError instanceof Error ? anchorError : new Error("Track matching failed before a fallback passport could be written.");
+  }
+  const track = buildFallbackWriterTrack(input, transcript);
+  const reason = anchorError instanceof Error ? anchorError.message : "Auto-match did not return a confident catalog track.";
+  return {
+    track,
+    matchMethod: "fallback_writer",
+    detail: `metadata-only fallback writer used after auto-match miss: ${shortenDetail(reason)}`
+  };
+}
+
+function buildFallbackWriterTrack(input: AnalyzeInput, transcript: TranscriptSegment[]): TrackCandidate {
+  const explicit = input.track && input.track.title.trim() && input.track.artist.trim()
+    ? { title: input.track.title.trim(), artist: input.track.artist.trim() }
+    : parseTrackQuery(input.trackQuery) ?? fallbackLabelsFromTranscript(transcript);
+  return {
+    id: `fallback-writer-${stableId(`${explicit.artist}-${explicit.title}`)}`,
+    title: explicit.title,
+    artist: explicit.artist,
+    hasLyrics: false,
+    hasSubtitles: false,
+    source: "manual"
+  };
+}
+
+function parseTrackQuery(value?: string): { title: string; artist: string } | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const byMatch = /^(.+?)\s+by\s+(.+)$/i.exec(trimmed);
+  if (byMatch?.[1] && byMatch[2]) {
+    return { title: byMatch[1].trim(), artist: byMatch[2].trim() };
+  }
+  const dashMatch = /^(.+?)\s+-\s+(.+)$/.exec(trimmed);
+  if (dashMatch?.[1] && dashMatch[2]) {
+    return { artist: dashMatch[1].trim(), title: dashMatch[2].trim() };
+  }
+  return { title: trimmed, artist: "Unknown artist" };
+}
+
+function fallbackLabelsFromTranscript(transcript: TranscriptSegment[]): { title: string; artist: string } {
+  const firstLine = transcript.map((segment) => segment.text.trim()).find(Boolean);
+  return {
+    title: firstLine ? `Unmatched live excerpt: ${firstLine.slice(0, 48)}` : "Unmatched live excerpt",
+    artist: "Unknown artist"
+  };
+}
+
+function stableId(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "unmatched-live-excerpt";
+}
+
+function shortenDetail(value: string): string {
+  return value.replace(/\s+/g, " ").slice(0, 180);
 }
 
 async function resolveAnalysisFile(input: AnalyzeInput): Promise<Express.Multer.File | undefined> {

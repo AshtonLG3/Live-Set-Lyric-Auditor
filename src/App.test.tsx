@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.31",
+  version: "0.11.32",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.31",
+    version: "0.11.32",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -276,7 +276,7 @@ async function runUploadedClip(fileName = "concert-snippet.mp3") {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.31/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v0.11.32/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();

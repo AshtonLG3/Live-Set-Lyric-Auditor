@@ -236,7 +236,7 @@ export type LineComparison = {
 
 export type CanonicalSource = "richsync" | "subtitles" | "lyrics" | "metadata-only" | "fixture";
 
-export type RecordingMatchMethod = "selected_track" | "audio_identify" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue";
+export type RecordingMatchMethod = "selected_track" | "audio_identify" | "lyrics_rescue" | "recall_rescue" | "fixture_rescue" | "fallback_writer";
 
 export type RecordingIdentity = {
   trackId: string;
