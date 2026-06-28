@@ -28,7 +28,7 @@ Version `0.9.0` makes the live-vs-studio comparison the center of the product: t
 
 ## Real Clip Flow
 
-1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v0.11.32`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
+1. Open the app and confirm the menu shows `Live-Set Lyric Auditor v1.0.0`, dark/light theme control, the focused Dashboard / Analysis navigation, and one reviewed export action.
 2. Import an audio/video clip or use **Record live** on a phone to capture a rear-camera stage-performance video, then trim the selected analysis excerpt to 45 seconds or less.
 3. Use Recall Rescue over HTTPS to speak or sing a remembered lyric fragment, or type the words when microphone capture is unavailable. Once a track is found, **Analyze recalled fragment** sends it into the same Analysis review queue as uploaded clips.
 4. Run analysis and move into Analysis to watch the timeline isolate, profile the arrangement, transcribe, match, compare, and generate the Passport.
@@ -142,6 +142,7 @@ REPLICATE_DEMUCS_MODEL=htdemucs_ft
 REPLICATE_DEMUCS_STEM=vocals
 FFMPEG_LOCATION=
 YOUTUBE_EXTRACT_TIMEOUT_MS=25000
+EXTRACT_WORKER_TIMEOUT_MS=12000
 CYANITE_POLL_INTERVAL_MS=2500
 CYANITE_POLL_TIMEOUT_MS=20000
 ```

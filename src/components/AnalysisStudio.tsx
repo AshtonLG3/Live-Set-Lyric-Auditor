@@ -288,7 +288,7 @@ export function AnalysisStudio(props: Props) {
             <div className="studio-timeline" aria-label="Analysis timeline">
               {steps.map((step) => <StudioStep key={step.id} step={step} />)}
             </div>
-            <AnalysisLog steps={steps} active={active} />
+            <AnalysisLog steps={steps} active={active} status={status} hasPassport={hasPassport} />
           </div>
         </section>
 
@@ -573,9 +573,31 @@ function MetricCard({ icon, label, value, detail, tone }: { icon: React.ReactNod
   return <article className={`studio-analysis-metric ${tone ? `tone-${tone}` : ""}`}><p>{icon}{label}</p><strong>{value}</strong><small>{detail}</small><span><i /></span></article>;
 }
 
-function AnalysisLog({ steps, active }: { steps: AnalysisStep[]; active: boolean }) {
-  const current = steps.find((step) => step.status === "running") ?? steps.at(-1);
-  return <div className="studio-analysis-log" aria-label="Analysis processing log"><p><span>[SYS]</span> Source evidence validated and secured in memory.</p><p><span>[PIPE]</span> {current?.label ?? "Passport assembly"} {active ? "is active" : "complete"}.</p><p><span>[MXM]</span> Canonical reference aligned without persisting lyric content.<i /></p></div>;
+function AnalysisLog({ steps, active, status, hasPassport }: { steps: AnalysisStep[]; active: boolean; status: AnalysisJob["status"]; hasPassport: boolean }) {
+  const ingest = steps.find((step) => step.id === "ingest");
+  const current = steps.find((step) => step.status === "running") ?? steps.find((step) => step.status === "failed") ?? steps.at(-1);
+  const compareComplete = steps.some((step) => step.id === "compare" && step.status === "complete");
+  const sysText = hasPassport && !ingest
+    ? "Source evidence validated and secured in memory."
+    : ingest?.status === "failed"
+    ? `Source validation failed: ${ingest.detail ?? "the selected excerpt could not be prepared."}`
+    : ingest?.status === "running"
+      ? ingest.detail ?? "Validating source evidence and preparing the selected excerpt."
+      : ingest?.status === "complete"
+        ? "Source evidence validated and secured in memory."
+        : "Source evidence is queued for validation.";
+  const pipeText = status === "failed"
+    ? `${current?.label ?? "Analysis"} failed.`
+    : active
+      ? `${current?.label ?? "Passport assembly"} is active.`
+      : hasPassport
+        ? "Generate Live Variant Passport complete."
+        : `${current?.label ?? "Passport assembly"} is pending.`;
+  const mxmText = hasPassport || compareComplete
+    ? "Canonical reference aligned without persisting lyric content."
+    : "Canonical reference waits for a valid excerpt and transcript.";
+
+  return <div className="studio-analysis-log" aria-label="Analysis processing log"><p><span>[SYS]</span> {sysText}</p><p><span>[PIPE]</span> {pipeText}</p><p><span>[MXM]</span> {mxmText}<i /></p></div>;
 }
 
 function StudioStep({ step }: { step: AnalysisStep }) {
@@ -583,7 +605,7 @@ function StudioStep({ step }: { step: AnalysisStep }) {
     : step.status === "failed" ? "Failed"
       : step.status === "running" ? "Running"
         : "Queued";
-  return <div className={`studio-step ${step.status === "running" ? "studio-step-active" : ""} ${step.status === "failed" ? "studio-step-failed" : ""}`}><div className="flex items-center justify-between gap-2">{step.status === "complete" ? <CheckCircle2 size={17} className="studio-cyan" /> : step.status === "failed" ? <CircleAlert size={17} className="studio-orange" /> : step.status === "running" ? <Activity size={17} className="studio-cyan animate-pulse" /> : <span className="studio-step-dot" />}<span className="studio-mono">{label}</span></div><p className="mt-3 text-sm font-bold leading-5">{step.label}</p><div className="studio-step-progress"><span style={{ width: step.status === "complete" ? "100%" : step.status === "running" ? "64%" : "0%" }} /></div></div>;
+  return <div className={`studio-step ${step.status === "running" ? "studio-step-active" : ""} ${step.status === "failed" ? "studio-step-failed" : ""}`}><div className="flex items-center justify-between gap-2">{step.status === "complete" ? <CheckCircle2 size={17} className="studio-cyan" /> : step.status === "failed" ? <CircleAlert size={17} className="studio-orange" /> : step.status === "running" ? <Activity size={17} className="studio-cyan animate-pulse" /> : <span className="studio-step-dot" />}<span className="studio-mono">{label}</span></div><p className="mt-3 text-sm font-bold leading-5">{step.label}</p>{step.detail && <small className="studio-step-detail">{step.detail}</small>}<div className="studio-step-progress"><span style={{ width: step.status === "complete" ? "100%" : step.status === "running" ? "64%" : "0%" }} /></div></div>;
 }
 
 function DataLine({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }

@@ -506,7 +506,7 @@ button {
 }
 
 .studio-step {
-  min-height: 112px;
+  min-height: 126px;
   padding: 12px;
   border: 1px solid var(--studio-border);
   border-radius: 6px;
@@ -528,6 +528,17 @@ button {
   height: 14px;
   border: 1px solid var(--studio-border);
   border-radius: 9999px;
+}
+
+.studio-step-detail {
+  display: -webkit-box;
+  margin-top: 6px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--studio-muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .studio-step-progress {

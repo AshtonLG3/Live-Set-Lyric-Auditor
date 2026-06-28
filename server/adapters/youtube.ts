@@ -27,19 +27,32 @@ export async function extractProviderExcerpt(source: ClipSource): Promise<Expres
     throw new Error("The YouTube excerpt end must be after its start.");
   }
 
-  // When a residential-IP extraction worker is configured (e.g. for a hosted demo whose
-  // datacenter IP YouTube blocks), delegate the actual yt-dlp run to it. Everything downstream
-  // is identical — the worker just returns the mp3 from an IP YouTube trusts.
   if (env.extractWorkerUrl) {
-    return extractViaWorker(env.extractWorkerUrl, source.url, provider, start, end);
+    // When a residential-IP extraction worker is configured (e.g. for a hosted demo whose
+    // datacenter IP YouTube blocks), try it first. If the worker is asleep, slow, or down,
+    // fall back to the local extractor before asking the user to attach a file.
+    try {
+      return await extractViaWorker(env.extractWorkerUrl, source.url, provider, start, end);
+    } catch (workerError) {
+      console.warn(`Live-link extraction worker failed; trying local fallback. ${conciseExtractionDetail(workerError)}`);
+      try {
+        return await extractLocally(source.url, provider, start, end);
+      } catch (localError) {
+        throw new Error(`Could not retrieve the selected ${provider} range. Extraction worker failed (${conciseExtractionDetail(workerError)}); local fallback also failed (${conciseExtractionDetail(localError)}). Attach an authorized excerpt instead.`);
+      }
+    }
   }
 
+  return extractLocally(source.url, provider, start, end);
+}
+
+async function extractLocally(url: string, provider: string, start: number, end: number): Promise<Express.Multer.File> {
   const directory = await mkdtemp(join(tmpdir(), "lsla-youtube-"));
   const outputPath = join(directory, "excerpt.mp3");
   try {
     await assertYouTubeTooling();
     const cookiesFile = await prepareYouTubeCookiesFile(directory);
-    await execFileAsync(env.pythonCommand, buildYouTubeExtractArgs(source.url, start, end, outputPath, { cookiesFile }), {
+    await execFileAsync(env.pythonCommand, buildYouTubeExtractArgs(url, start, end, outputPath, { cookiesFile }), {
       timeout: env.youtubeExtractTimeoutMs,
       maxBuffer: 2 * 1024 * 1024,
       windowsHide: true
@@ -78,12 +91,12 @@ async function extractViaWorker(workerUrl: string, url: string, provider: string
       headers: { "Content-Type": "application/json", "x-worker-token": env.extractWorkerToken ?? "" },
       body: JSON.stringify({ url, start, end, provider })
     },
-    env.youtubeExtractTimeoutMs,
-    `Could not retrieve the selected ${provider} range: the extraction worker timed out. Attach an authorized excerpt instead.`
+    env.extractWorkerTimeoutMs,
+    `the extraction worker did not respond within ${Math.round(env.extractWorkerTimeoutMs / 1000)} seconds`
   );
   if (!response.ok) {
     const detail = (await response.text().catch(() => "")).trim().slice(0, 200);
-    throw new Error(`Could not retrieve the selected ${provider} range: extraction worker returned ${response.status}${detail ? ` (${detail})` : ""}. Attach an authorized excerpt instead.`);
+    throw new Error(`extraction worker returned ${response.status}${detail ? ` (${detail})` : ""}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());
   if (buffer.length === 0) {
@@ -223,6 +236,16 @@ function cleanExtractorDetail(output: string): string {
     .replace(/https?:\/\/\S+/g, "the YouTube URL")
     .slice(0, 280)
     .trim();
+}
+
+function conciseExtractionDetail(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message
+    .replace(/^Could not retrieve the selected [a-z_]+ range[:.]?\s*/i, "")
+    .replace(/\s*Attach an authorized excerpt instead\.?$/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 260) || "unknown error";
 }
 
 function isTimeoutError(error: unknown): boolean {

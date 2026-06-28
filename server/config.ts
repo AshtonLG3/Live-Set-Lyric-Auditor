@@ -61,6 +61,7 @@ export const env = {
   youtubeExtractionEnabled: youtubeExtractionFlag ?? (youtubeCookiesConfigured || configured("EXTRACT_WORKER_URL")),
   extractWorkerUrl: process.env.EXTRACT_WORKER_URL?.trim(),
   extractWorkerToken: process.env.EXTRACT_WORKER_TOKEN?.trim(),
+  extractWorkerTimeoutMs: Math.min(25_000, Math.max(5_000, Number(process.env.EXTRACT_WORKER_TIMEOUT_MS ?? 12_000))),
   audioIdProvider: audioIdProvider
     ?? (acrCloudConfigured ? "acrcloud" : customAudioIdConfigured ? "custom" : undefined),
   audioIdApiUrl: process.env.AUDIO_ID_API_URL?.trim() || process.env.MUSIXMATCH_AUDIO_ID_API_URL?.trim(),

@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFile } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { buildYouTubeExtractArgs, describeYouTubeExtractionFailure, extractProviderExcerpt } from "./youtube";
+
+vi.mock("node:child_process", () => {
+  const execFileMock = vi.fn();
+  return {
+    execFile: execFileMock,
+    default: { execFile: execFileMock }
+  };
+});
 
 describe("YouTube excerpt extraction", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+    vi.mocked(execFile).mockReset();
     vi.resetModules();
   });
 
@@ -23,6 +34,22 @@ describe("YouTube excerpt extraction", () => {
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect((init.headers as Record<string, string>)["x-worker-token"]).toBe("secret");
     expect(JSON.parse(String(init.body))).toMatchObject({ url: "https://www.youtube.com/watch?v=abc123", start: 0, end: 20 });
+  });
+
+  it("falls back to local extraction when the configured worker times out", async () => {
+    vi.stubEnv("EXTRACT_WORKER_URL", "https://worker.example");
+    vi.stubEnv("EXTRACT_WORKER_TIMEOUT_MS", "5000");
+    vi.resetModules();
+    const fetchMock = vi.fn().mockRejectedValue(new Error("the extraction worker did not respond within 5 seconds"));
+    vi.stubGlobal("fetch", fetchMock);
+    mockSuccessfulLocalExtraction();
+
+    const { extractProviderExcerpt: extract } = await import("./youtube");
+    const file = await extract({ kind: "live_link", processingMode: "provider_excerpt", provider: "youtube", url: "https://www.youtube.com/watch?v=abc123", startSeconds: 0, endSeconds: 20 });
+
+    expect(file).toMatchObject({ mimetype: "audio/mpeg", size: 4 });
+    expect(fetchMock).toHaveBeenCalledWith("https://worker.example/extract", expect.any(Object));
+    expect(vi.mocked(execFile).mock.calls.some(([, args]) => Array.isArray(args) && args.includes("-m") && args.includes("yt_dlp"))).toBe(true);
   });
 
   it("rejects an unsupported or lookalike live-link host before shelling out to yt-dlp", async () => {
@@ -97,3 +124,16 @@ describe("YouTube excerpt extraction", () => {
     expect(message).toContain("Refresh YOUTUBE_COOKIES_BASE64");
   });
 });
+
+function mockSuccessfulLocalExtraction() {
+  vi.mocked(execFile).mockImplementation(((...args: unknown[]) => {
+    const argList = Array.isArray(args[1]) ? args[1].map(String) : [];
+    const callback = (typeof args[2] === "function" ? args[2] : args[3]) as ((error: Error | null, stdout: string, stderr: string) => void) | undefined;
+    const outputIndex = argList.indexOf("-o");
+    if (outputIndex >= 0 && argList[outputIndex + 1]) {
+      writeFileSync(argList[outputIndex + 1], Buffer.from([1, 2, 3, 4]));
+    }
+    callback?.(null, "ok", "");
+    return {} as ReturnType<typeof execFile>;
+  }) as typeof execFile);
+}

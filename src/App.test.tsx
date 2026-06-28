@@ -17,7 +17,7 @@ vi.mock("./clip", async () => {
 
 const health: HealthResponse = {
   appName: "Live-Set Lyric Auditor",
-  version: "0.11.32",
+  version: "1.0.0",
   runtimeMode: "fixture",
   integrations: [
     { name: "Musixmatch", configured: false, mode: "fixture", detail: "fixture" },
@@ -47,7 +47,7 @@ const completeJob: AnalysisJob = {
     passport: {
     id: "job-1",
     createdAt: new Date().toISOString(),
-    version: "0.11.32",
+    version: "1.0.0",
     track: {
       id: "fixture-track-midnight-atlas",
       title: "Midnight Atlas",
@@ -276,7 +276,7 @@ async function runUploadedClip(fileName = "concert-snippet.mp3") {
 
 it("shows the app version and theme toggle", async () => {
   render(<App />);
-  expect((await screen.findAllByText(/v0.11.32/)).length).toBeGreaterThan(0);
+  expect((await screen.findAllByText(/v1.0.0/)).length).toBeGreaterThan(0);
   expect(screen.getByText("Setup needed")).toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: /New Session/i })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Tracks" })).not.toBeInTheDocument();
@@ -557,6 +557,43 @@ it("accepts an authorized YouTube live link and submits a provider excerpt for a
     });
   });
 });
+
+it("does not show stale passport success logs when live-link validation fails", async () => {
+  const failure = "Could not retrieve the selected youtube range. Extraction worker failed (timeout); local fallback also failed (YouTube blocked this hosted server). Attach an authorized excerpt instead.";
+  const failedJob: AnalysisJob = {
+    id: "job-1",
+    status: "failed",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    error: failure,
+    progress: [
+      { id: "ingest", label: "Validate source and clip", status: "failed", detail: failure },
+      { id: "isolate", label: "Isolate live vocal", status: "queued" },
+      { id: "profile", label: "Profile live arrangement", status: "queued" },
+      { id: "transcribe", label: "Transcribe vocal", status: "queued" },
+      { id: "anchor", label: "Match recording and version", status: "queued" },
+      { id: "compare", label: "Compare word timing and structure", status: "queued" },
+      { id: "passport", label: "Generate Live Variant Passport", status: "queued" }
+    ]
+  };
+  const baseFetch = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/analyze/job-1") return jsonResponse(failedJob);
+    return baseFetch(url, init);
+  }));
+
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Live link" }));
+  fireEvent.change(screen.getByLabelText("Live performance link"), {
+    target: { value: "https://www.youtube.com/watch?v=abc123" }
+  });
+  fireEvent.click(await screen.findByRole("button", { name: /Fetch & analyze live link/i }));
+
+  expect(await screen.findByText(/Source validation failed/i)).toBeInTheDocument();
+  expect(screen.getByText(/Canonical reference waits for a valid excerpt and transcript/i)).toBeInTheDocument();
+  expect(screen.queryByText("Generate Live Variant Passport complete.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Canonical reference aligned without persisting lyric content.")).not.toBeInTheDocument();
+}, 40000);
 
 it("warns and blocks analysis for an unsupported or unsafe live link", async () => {
   render(<App />);

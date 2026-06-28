@@ -125,13 +125,8 @@ export async function assertYouTubeTooling(): Promise<void> {
       maxBuffer: 256 * 1024,
       windowsHide: true
     });
-    await Promise.all((["ffmpeg", "ffprobe"] as const).map((tool) => execFileAsync(resolveFfmpegTool(tool), ["-version"], {
-      timeout: 15_000,
-      maxBuffer: 256 * 1024,
-      windowsHide: true
-    })));
   } catch {
-    throw new Error("YouTube range extraction needs yt-dlp, ffmpeg, and ffprobe. Install them or attach an authorized excerpt instead.");
+    throw new Error("YouTube range extraction needs yt-dlp. Install yt-dlp or attach an authorized excerpt instead.");
   }
 }
 
