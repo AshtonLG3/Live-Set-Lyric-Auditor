@@ -158,8 +158,8 @@ export function describeYouTubeExtractionFailure(error: unknown, cookiesConfigur
   const output = getExtractorOutput(error);
   if (isYouTubeBotChallenge(output)) {
     return cookiesConfigured
-      ? "YouTube rejected the configured cookies for this hosted server. Refresh YOUTUBE_COOKIES_BASE64 or YOUTUBE_COOKIES_FILE in Replit Secrets, then rerun the analysis, or attach an authorized excerpt."
-      : "YouTube blocked this hosted server with a sign-in or bot challenge. Add an authorized Netscape cookies.txt as YOUTUBE_COOKIES_BASE64 or YOUTUBE_COOKIES_FILE in Replit Secrets, or attach an authorized excerpt.";
+      ? "YouTube rejected the configured cookies for this hosted server. Refresh YOUTUBE_COOKIES_BASE64 or YOUTUBE_COOKIES_FILE in Railway environment variables, then rerun the analysis, or attach an authorized excerpt."
+      : "YouTube blocked this hosted server with a sign-in or bot challenge. Add an authorized Netscape cookies.txt as YOUTUBE_COOKIES_BASE64 or YOUTUBE_COOKIES_FILE in Railway environment variables, or attach an authorized excerpt.";
   }
 
   const detail = cleanExtractorDetail(output);

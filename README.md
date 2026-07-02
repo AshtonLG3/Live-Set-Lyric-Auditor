@@ -22,11 +22,11 @@ Runtime requirement: Node.js 20.6 or newer. The normal analysis path starts from
 
 Real uploads do not silently substitute fixture transcripts, tracks, or canonical lyrics. If live transcription or identification cannot produce defensible evidence, the analysis fails with a corrective message instead of returning a false match.
 
-Replit preview sharing is supported through Vite's allowed-host protection. The default dev allowlist includes `.replit.dev` and `.picard.replit.dev`; override it with `DEV_ALLOWED_HOSTS` if Replit assigns a different preview domain.
+The hosted app should open at `https://lsla.mangezi.xyz`, backed by Railway. Replit preview sharing remains available only for ad hoc development previews through Vite's allowed-host protection; the default dev allowlist includes `lsla.mangezi.xyz`, `.replit.dev`, and `.picard.replit.dev`.
 
 ## Deployment Operations
 
-Railway is the preferred production host for the LSLA service. Replit remains useful for quick previews, but it should not be treated as the production home for media extraction, ASR, or other latency-sensitive service work because its hosted environment has already shown bottleneck and YouTube/datacenter-IP challenge behavior.
+Railway is the preferred production host for the LSLA service. Open the hosted app at `https://lsla.mangezi.xyz` or run `npm run open`. Replit remains useful for quick previews, but it should not be treated as the production home for media extraction, ASR, or other latency-sensitive service work because its hosted environment has already shown bottleneck and YouTube/datacenter-IP challenge behavior.
 
 Preserve the current Railway target `uo72jcda.up.railway.app`. If the Railway service is deleted and recreated, Railway may assign a different `*.up.railway.app` hostname; update the CNAME immediately or the custom domain can silently break in the same way a stale FTP DNS record does.
 
@@ -97,6 +97,14 @@ npm run dev
 
 Open `http://127.0.0.1:4242`.
 
+To open the hosted Railway app instead of a local or Replit preview, run:
+
+```bash
+npm run open
+```
+
+That opens `https://lsla.mangezi.xyz`.
+
 For a phone on the same Wi-Fi network, open the computer's LAN address, for example `http://192.168.0.44:4242`. The development server binds to `0.0.0.0` by default so LAN devices can connect; Windows Firewall must allow Node.js on the active network profile.
 
 Optional environment variables:
@@ -104,7 +112,8 @@ Optional environment variables:
 ```bash
 HOST=0.0.0.0
 PORT=4242
-DEV_ALLOWED_HOSTS=.replit.dev,.picard.replit.dev
+PUBLIC_APP_URL=https://lsla.mangezi.xyz
+DEV_ALLOWED_HOSTS=lsla.mangezi.xyz,.replit.dev,.picard.replit.dev
 MUSIXMATCH_API_KEY=
 MUSIXMATCH_TIMEOUT_MS=12000
 AUDIO_ID_PROVIDER=
@@ -178,7 +187,7 @@ Add credentials to `.env` as they are issued. Keep the default base URLs unless 
 
 Restart the server after adding a key. The Dashboard partner strip and `/api/health` show whether each integration is live, pending, or using a labeled fallback. Songstats and n8n remain intentionally deferred.
 
-## Replit
+## Preview Hosts
 
 Use the same commands:
 
@@ -187,7 +196,7 @@ npm install
 npm run dev
 ```
 
-The Express server hosts both the API and Vite app on one port.
+The Express server hosts both the API and Vite app on one port. Replit is only a preview target; the production service should be opened at `https://lsla.mangezi.xyz` on Railway.
 
 ## Verification
 

@@ -30,5 +30,5 @@ function parseAllowedHosts(value: string | undefined): string[] {
     ?.split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return parsed?.length ? parsed : [".replit.dev", ".picard.replit.dev"];
+  return parsed?.length ? parsed : ["lsla.mangezi.xyz", ".replit.dev", ".picard.replit.dev"];
 }

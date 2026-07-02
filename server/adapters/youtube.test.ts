@@ -104,7 +104,7 @@ describe("YouTube excerpt extraction", () => {
     expect(args).toContain("/tmp/youtube-cookies.txt");
   });
 
-  it("turns Replit-style YouTube bot challenges into a safe setup message", () => {
+  it("turns hosted YouTube bot challenges into a Railway setup message", () => {
     const message = describeYouTubeExtractionFailure({
       message: "Command failed: python -m yt_dlp https://www.youtube.com/shorts/video",
       stderr: "ERROR: [youtube] video: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies."
@@ -112,6 +112,7 @@ describe("YouTube excerpt extraction", () => {
 
     expect(message).toContain("YouTube blocked this hosted server");
     expect(message).toContain("YOUTUBE_COOKIES_BASE64");
+    expect(message).toContain("Railway environment variables");
     expect(message).not.toContain("python -m");
     expect(message).not.toContain("youtube.com/shorts");
   });
@@ -122,6 +123,7 @@ describe("YouTube excerpt extraction", () => {
     }, true);
 
     expect(message).toContain("Refresh YOUTUBE_COOKIES_BASE64");
+    expect(message).toContain("Railway environment variables");
   });
 });
 

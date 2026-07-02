@@ -3,7 +3,7 @@ import type { HealthResponse, IntegrationStatus, RuntimeMode } from "../shared/t
 
 const configured = (name: string) => Boolean(process.env[name]?.trim());
 const configuredAny = (...names: string[]) => names.some(configured);
-const defaultDevAllowedHosts = [".replit.dev", ".picard.replit.dev"];
+const defaultDevAllowedHosts = ["lsla.mangezi.xyz", ".replit.dev", ".picard.replit.dev"];
 const youtubeExtractionFlag = parseBoolean(process.env.YOUTUBE_EXTRACTION_ENABLED);
 const youtubeCookiesConfigured = configuredAny("YOUTUBE_COOKIES_FILE", "YOUTUBE_COOKIES_PATH", "YOUTUBE_COOKIES_BASE64", "YOUTUBE_COOKIES");
 const audioIdProvider = normalizeAudioIdProvider(process.env.AUDIO_ID_PROVIDER);
