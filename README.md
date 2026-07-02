@@ -24,6 +24,16 @@ Real uploads do not silently substitute fixture transcripts, tracks, or canonica
 
 Replit preview sharing is supported through Vite's allowed-host protection. The default dev allowlist includes `.replit.dev` and `.picard.replit.dev`; override it with `DEV_ALLOWED_HOSTS` if Replit assigns a different preview domain.
 
+## Deployment Operations
+
+Railway is the preferred production host for the LSLA service. Replit remains useful for quick previews, but it should not be treated as the production home for media extraction, ASR, or other latency-sensitive service work because its hosted environment has already shown bottleneck and YouTube/datacenter-IP challenge behavior.
+
+Preserve the current Railway target `uo72jcda.up.railway.app`. If the Railway service is deleted and recreated, Railway may assign a different `*.up.railway.app` hostname; update the CNAME immediately or the custom domain can silently break in the same way a stale FTP DNS record does.
+
+For the related `mangezi.xyz` origin, run cPanel AutoSSL after DNS repairs (`SSL/TLS Status` -> `Run AutoSSL`). The cert could not renew while DNS was broken, and a valid origin certificate is required to keep Cloudflare on Full or Full (strict) instead of falling back to Flexible.
+
+Next time any `.github/workflows/deploy.yml` file is touched, update deprecated GitHub Actions versions flagged for old Node runtimes, especially checkout and FTP deploy actions. The warnings are not urgent, but they can become hard failures.
+
 Version `0.9.0` makes the live-vs-studio comparison the center of the product: the Passport now stores full line comparisons, the Analysis view shows matched and changed lines before the review queue, and selected details expose studio context, live context, and word-level changes. It also includes live playback and transcript review, manual track correction and failed-match recovery, reviewer-added live moments, cached reference excerpts for permitted review display, mobile capture, hardened media processing, and automatic loading of the ignored local `.env` file.
 
 ## Real Clip Flow
